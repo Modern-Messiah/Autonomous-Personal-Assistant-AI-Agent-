@@ -3,7 +3,7 @@
 from functools import lru_cache
 from urllib.parse import quote_plus
 
-from pydantic import BaseModel, Field, SecretStr, computed_field
+from pydantic import BaseModel, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,7 +23,6 @@ class DatabaseSettings(BaseModel):
     user: str = Field(min_length=1)
     password: SecretStr
 
-    @computed_field(return_type=str)
     @property
     def sqlalchemy_url(self) -> str:
         safe_password = quote_plus(self.password.get_secret_value())
@@ -38,7 +37,6 @@ class RedisSettings(BaseModel):
     db: int = Field(default=0, ge=0)
     password: SecretStr | None = None
 
-    @computed_field(return_type=str)
     @property
     def redis_url(self) -> str:
         if self.password is None or not self.password.get_secret_value():
@@ -84,5 +82,4 @@ class Settings(BaseSettings):
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     """Return cached settings instance."""
-    return Settings()
-
+    return Settings()  # type: ignore[call-arg]

@@ -1,2 +1,2 @@
 # Autonomous-Personal-Assistant-AI-Agent-
- Autonomous AI agent built with LangGraph that monitors Krisha.kz, scores apartments by user criteria and delivers curated listings to Notion via Telegram
+Multi-agent system (LangGraph) for real estate search in Kazakhstan — parses Krisha.kz, enriches with 2GIS data, ranks listings via LLM and syncs to Notion

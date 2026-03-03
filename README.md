@@ -1,7 +1,7 @@
 # Krisha Agent
 
 Autonomous multi-agent system for apartment discovery in Kazakhstan.  
-Current scope is **Phase 0 + Phase 1**: project foundation, typed domain models, settings, PostgreSQL schema, Alembic migration, tests, and CI.
+Current scope is **Phase 0 + Phase 2 (core parser)**: foundation, typed domain models, settings, PostgreSQL schema, Alembic migration, CI, and a Playwright-first Krisha parser with Redis deduplication.
 
 ## Tech Stack
 
@@ -11,6 +11,7 @@ Current scope is **Phase 0 + Phase 1**: project foundation, typed domain models,
 - LangGraph (planned implementation in Phase 3)
 - aiogram (planned implementation in Phase 4)
 - Redis, PostgreSQL
+- Playwright + BeautifulSoup (Krisha parser)
 - uv, ruff, mypy, pytest, pre-commit
 
 ## Repository Structure
@@ -118,5 +119,10 @@ See `.env.example` for the full contract.
 
 ## Current Status
 
-- Implemented: foundation, models, DB schema, initial migration, tests, CI.
-- Not implemented yet: Krisha parser, LangGraph nodes, Telegram dialog agent, Notion sync, scheduler runtime.
+- Implemented:
+  - Project foundation and tooling.
+  - Pydantic models (`SearchCriteria`, `Apartment`, `ApartmentScore`, `EnrichedApartment`).
+  - SQLAlchemy async schema + Alembic init migration.
+  - `KrishaParser` (Playwright-first), anti-bot fallback, randomized UA support, Redis-based dedup.
+  - HTML fixture-based parser tests and CI checks.
+- Not implemented yet: LangGraph nodes, Telegram dialog agent, Notion sync, scheduler runtime.

@@ -1,0 +1,60 @@
+[build-system]
+requires = ["hatchling>=1.24.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "krisha-agent"
+version = "0.1.0"
+description = "Autonomous AI agent for apartment discovery on Krisha.kz"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [{ name = "Krisha Agent Team" }]
+dependencies = [
+  "aiogram>=3.8.0",
+  "alembic>=1.13.2",
+  "asyncpg>=0.29.0",
+  "langgraph>=0.2.35",
+  "langsmith>=0.1.120",
+  "pydantic>=2.8.2",
+  "pydantic-settings>=2.4.0",
+  "redis>=5.0.8",
+  "sentry-sdk>=2.14.0",
+  "sqlalchemy[asyncio]>=2.0.36",
+]
+
+[dependency-groups]
+dev = [
+  "mypy>=1.11.2",
+  "pre-commit>=3.8.0",
+  "pytest>=8.3.3",
+  "pytest-asyncio>=0.24.0",
+  "ruff>=0.6.4",
+  "types-redis>=4.6.0.20241004",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["agent", "bot", "config", "db", "scheduler"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "C4", "SIM", "ASYNC", "RUF"]
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["sqlalchemy.ext.mypy.plugin"]
+strict = true
+warn_unused_configs = true
+files = ["agent", "config", "db"]
+exclude = ["alembic"]
+
+[[tool.mypy.overrides]]
+module = ["aiogram.*", "langgraph.*", "langsmith.*"]
+ignore_missing_imports = true
+

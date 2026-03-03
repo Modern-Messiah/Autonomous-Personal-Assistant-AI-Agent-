@@ -1,6 +1,7 @@
 """Apartment model returned by parsers."""
 
 from datetime import datetime, timezone
+from typing import Literal
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field, field_validator
@@ -10,7 +11,7 @@ class Apartment(BaseModel):
     """Raw apartment listing from an external source."""
 
     external_id: str = Field(min_length=1)
-    source: str = "krisha"
+    source: Literal["krisha"] = "krisha"
     url: str = Field(min_length=1)
     title: str = Field(min_length=1)
     price_kzt: int = Field(gt=0)
@@ -23,14 +24,6 @@ class Apartment(BaseModel):
     photos: list[str]
     published_at: datetime | None = None
     scraped_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-    @field_validator("source")
-    @classmethod
-    def validate_source(cls, value: str) -> str:
-        if value != "krisha":
-            msg = "only 'krisha' source is supported in phase 1"
-            raise ValueError(msg)
-        return value
 
     @field_validator("url")
     @classmethod
@@ -50,4 +43,3 @@ class Apartment(BaseModel):
                 msg = "each photo must be a valid absolute http(s) URL"
                 raise ValueError(msg)
         return value
-

@@ -46,6 +46,9 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "C4", "SIM", "ASYNC", "RUF"]
 
+[tool.ruff.lint.isort]
+known-first-party = ["agent", "bot", "config", "db", "scheduler"]
+
 [tool.mypy]
 python_version = "3.12"
 plugins = ["sqlalchemy.ext.mypy.plugin"]
@@ -57,4 +60,3 @@ exclude = ["alembic"]
 [[tool.mypy.overrides]]
 module = ["aiogram.*", "langgraph.*", "langsmith.*"]
 ignore_missing_imports = true
-

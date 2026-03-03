@@ -11,8 +11,10 @@ from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from db import models  # noqa: F401
 from db.base import Base
+from db.models import ApartmentRecord, SearchCriteriaRecord, SeenApartment, User
+
+_ = (ApartmentRecord, SearchCriteriaRecord, SeenApartment, User)
 
 config = context.config
 

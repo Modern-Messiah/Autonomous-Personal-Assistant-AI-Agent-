@@ -27,6 +27,10 @@ PRICE_PATTERN = re.compile(r"(\d[\d\s]{2,}\d)")
 AREA_PATTERN = re.compile(r"(\d+(?:[.,]\d+)?)\s*м")
 FLOOR_PATTERN = re.compile(r"(\d+\s*/\s*\d+)")
 ROOMS_PATTERN = re.compile(r"(\d+)\s*[- ]?ком")
+ROOMS_WORD_PATTERN = re.compile(
+    r"\u043a\u043e\u043c\u043d\u0430\u0442\w*\s*[:\-]?\s*(\d+)",
+    re.IGNORECASE,
+)
 PUBLISHED_PATTERN = re.compile(r"(\d{2}\.\d{2}\.\d{4})")
 
 
@@ -222,11 +226,18 @@ class KrishaParser:
                     self._get_selector_text(card, '[data-test="price"]'),
                 ]
             )
-            params_text = self._first_non_empty(
+            subtitle_text = self._get_selector_text(card, ".a-card__subtitle")
+            details_text = self._first_non_empty(
                 [
-                    self._get_selector_text(card, ".a-card__subtitle"),
                     self._get_selector_text(card, ".a-card__text-preview"),
                     self._get_selector_text(card, ".offer__parameters"),
+                ]
+            )
+            params_text = self._first_non_empty(
+                [
+                    " ".join(chunk for chunk in [subtitle_text, details_text] if chunk),
+                    subtitle_text,
+                    details_text,
                 ]
             )
 
@@ -238,7 +249,9 @@ class KrishaParser:
                 rooms=self._extract_rooms(params_text),
                 area_m2=self._extract_area(params_text),
                 floor=self._extract_floor(params_text),
-                district=self._extract_district(params_text),
+                district=(
+                    self._extract_district(subtitle_text) or self._extract_district(params_text)
+                ),
             )
             previews.append(preview)
             seen_ids.add(external_id)
@@ -433,7 +446,10 @@ class KrishaParser:
         return self._extract_int(text, PRICE_PATTERN)
 
     def _extract_rooms(self, text: str | None) -> int | None:
-        return self._extract_int(text, ROOMS_PATTERN)
+        rooms = self._extract_int(text, ROOMS_PATTERN)
+        if rooms is not None:
+            return rooms
+        return self._extract_int(text, ROOMS_WORD_PATTERN)
 
     @staticmethod
     def _extract_area(text: str | None) -> float | None:

@@ -8,10 +8,10 @@ from importlib import import_module
 from logging.config import fileConfig
 from urllib.parse import quote_plus
 
-from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+from alembic import context
 from db.base import Base
 
 config = context.config

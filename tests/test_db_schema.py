@@ -1,5 +1,6 @@
 """Schema-level smoke tests for ORM metadata and migration file."""
 
+import re
 from pathlib import Path
 
 from sqlalchemy import UniqueConstraint
@@ -45,11 +46,10 @@ def test_init_migration_contains_required_operations() -> None:
     assert len(init_migrations) == 1
     migration_text = init_migrations[0].read_text(encoding="utf-8")
 
-    assert 'op.create_table("users"' in migration_text
-    assert 'op.create_table("search_criteria"' in migration_text
-    assert 'op.create_table("apartments"' in migration_text
-    assert 'op.create_table("seen_apartments"' in migration_text
+    assert re.search(r'op\.create_table\(\s*"users"', migration_text) is not None
+    assert re.search(r'op\.create_table\(\s*"search_criteria"', migration_text) is not None
+    assert re.search(r'op\.create_table\(\s*"apartments"', migration_text) is not None
+    assert re.search(r'op\.create_table\(\s*"seen_apartments"', migration_text) is not None
     assert "idx_search_criteria_user_active" in migration_text
     assert "idx_apartments_created_at" in migration_text
     assert "idx_seen_apartments_first_seen_at" in migration_text
-

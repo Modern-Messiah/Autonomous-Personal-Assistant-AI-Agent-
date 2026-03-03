@@ -9,16 +9,18 @@ from typing import Protocol, TypedDict, cast
 
 from agent.models.apartment import Apartment
 from agent.models.criteria import SearchCriteria
+from agent.models.enriched import EnrichedApartment
 from agent.tools import KrishaParser, build_redis_client
 from agent.tools.krisha_parser import BrowserContextProtocol
 from config.settings import get_settings
 
 
-class SearchGraphState(TypedDict):
+class SearchGraphState(TypedDict, total=False):
     """LangGraph state for apartment search."""
 
     criteria: SearchCriteria
     apartments: list[Apartment]
+    enriched_apartments: list[EnrichedApartment]
 
 
 class ParserProtocol(Protocol):

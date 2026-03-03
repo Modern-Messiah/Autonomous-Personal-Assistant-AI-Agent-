@@ -1,14 +1,32 @@
 """LangGraph entrypoints for search workflows."""
 
+from typing import Any, cast
+
+from langgraph.graph import END, START, StateGraph
+
 from agent.models.criteria import SearchCriteria
 from agent.models.enriched import EnrichedApartment
+from agent.nodes.search_node import SearchGraphState, SearchNode, create_default_search_node
 
 
-async def run_search_graph(criteria: SearchCriteria) -> list[EnrichedApartment]:
-    """Execute apartment search workflow.
+def build_search_graph(search_node: SearchNode) -> Any:
+    """Build a minimal LangGraph pipeline for apartment search."""
+    graph = StateGraph(SearchGraphState)
+    graph.add_node("search", search_node)
+    graph.add_edge(START, "search")
+    graph.add_edge("search", END)
+    return graph.compile()
 
-    This graph is implemented in Phase 3. The function is defined now so the
-    project has a stable typed interface from the start.
-    """
-    raise NotImplementedError("Search graph is not implemented yet.")
 
+async def run_search_graph(
+    criteria: SearchCriteria,
+    *,
+    search_node: SearchNode | None = None,
+) -> list[EnrichedApartment]:
+    """Execute search pipeline and map results to enriched apartments."""
+    active_node = search_node or create_default_search_node()
+    app = build_search_graph(active_node)
+    initial_state: SearchGraphState = {"criteria": criteria, "apartments": []}
+    final_state = cast(SearchGraphState, await app.ainvoke(initial_state))
+    apartments = final_state["apartments"]
+    return [EnrichedApartment(apartment=apartment) for apartment in apartments]

@@ -1,6 +1,6 @@
 """Tests for Pydantic domain models."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
@@ -78,7 +78,6 @@ def test_apartment_defaults_scraped_at() -> None:
         price_kzt=25_000_000,
         city="Almaty",
         photos=["https://krisha.kz/images/1.jpg"],
-        published_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+        published_at=datetime(2025, 1, 1, tzinfo=UTC),
     )
     assert apartment.scraped_at.tzinfo is not None
-

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from importlib import import_module
 from logging.config import fileConfig
 from urllib.parse import quote_plus
 
@@ -12,15 +13,18 @@ from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from db.base import Base
-from db.models import ApartmentRecord, SearchCriteriaRecord, SeenApartment, User
-
-_ = (ApartmentRecord, SearchCriteriaRecord, SeenApartment, User)
 
 config = context.config
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
+def load_orm_models() -> None:
+    """Import ORM models so metadata is populated before migrations run."""
+    import_module("db.models")
+
+
+load_orm_models()
 target_metadata = Base.metadata
 
 

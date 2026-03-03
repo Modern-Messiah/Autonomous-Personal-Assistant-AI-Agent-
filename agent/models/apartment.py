@@ -1,6 +1,6 @@
 """Apartment model returned by parsers."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal
 from urllib.parse import urlparse
 
@@ -23,7 +23,7 @@ class Apartment(BaseModel):
     rooms: int | None = Field(default=None, gt=0)
     photos: list[str]
     published_at: datetime | None = None
-    scraped_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    scraped_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @field_validator("url")
     @classmethod

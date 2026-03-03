@@ -13,8 +13,11 @@ dependencies = [
   "aiogram>=3.8.0",
   "alembic>=1.13.2",
   "asyncpg>=0.29.0",
+  "beautifulsoup4>=4.12.3",
+  "fake-useragent>=1.5.1",
   "langgraph>=0.2.35",
   "langsmith>=0.1.120",
+  "playwright>=1.47.0",
   "pydantic>=2.8.2",
   "pydantic-settings>=2.4.0",
   "redis>=5.0.8",
@@ -58,5 +61,12 @@ files = ["agent", "config", "db"]
 exclude = ["alembic"]
 
 [[tool.mypy.overrides]]
-module = ["aiogram.*", "langgraph.*", "langsmith.*"]
+module = [
+  "aiogram.*",
+  "bs4.*",
+  "fake_useragent.*",
+  "langgraph.*",
+  "langsmith.*",
+  "playwright.*",
+]
 ignore_missing_imports = true

@@ -126,5 +126,6 @@ See `.env.example` for the full contract.
   - `KrishaParser` (Playwright-first), anti-bot fallback, randomized UA support, Redis-based dedup.
   - `IntentNode` (rule-based text -> `SearchCriteria`) and `run_search_graph_from_text`.
   - `SearchNode` + `run_search_graph` pipeline on LangGraph.
+  - `EnrichNode` with mortgage annuity calculation and 2GIS nearby summary client.
   - HTML fixture-based parser tests and CI checks.
-- Not implemented yet: intent parsing/enrichment/scoring LangGraph nodes, Telegram dialog agent, Notion sync, scheduler runtime.
+- Not implemented yet: Gemini scoring node, memory/checkpoint integration, Telegram dialog agent, Notion sync, scheduler runtime.

@@ -58,9 +58,9 @@ PAGE_LIMIT_PATTERN = re.compile(
 
 CITY_ALIASES = {
     "almaty": "Almaty",
-    "\u0430\u043b\u043c\u0430\u0442\u044b": "Almaty",
+    "\u0430\u043b\u043c\u0430\u0442": "Almaty",
     "astana": "Astana",
-    "\u0430\u0441\u0442\u0430\u043d\u0430": "Astana",
+    "\u0430\u0441\u0442\u0430\u043d": "Astana",
     "\u043d\u0443\u0440-\u0441\u0443\u043b\u0442\u0430\u043d": "Astana",
     "shymkent": "Shymkent",
     "\u0448\u044b\u043c\u043a\u0435\u043d\u0442": "Shymkent",

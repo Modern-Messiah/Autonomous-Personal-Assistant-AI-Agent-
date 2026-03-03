@@ -8,7 +8,7 @@ Current scope is **Phase 0 + Phase 2 (core parser)**: foundation, typed domain m
 - Python 3.12
 - Pydantic + pydantic-settings
 - SQLAlchemy 2 (async) + Alembic
-- LangGraph (planned implementation in Phase 3)
+- LangGraph (search graph baseline implemented)
 - aiogram (planned implementation in Phase 4)
 - Redis, PostgreSQL
 - Playwright + BeautifulSoup (Krisha parser)
@@ -124,5 +124,6 @@ See `.env.example` for the full contract.
   - Pydantic models (`SearchCriteria`, `Apartment`, `ApartmentScore`, `EnrichedApartment`).
   - SQLAlchemy async schema + Alembic init migration.
   - `KrishaParser` (Playwright-first), anti-bot fallback, randomized UA support, Redis-based dedup.
+  - `SearchNode` + `run_search_graph` pipeline on LangGraph.
   - HTML fixture-based parser tests and CI checks.
-- Not implemented yet: LangGraph nodes, Telegram dialog agent, Notion sync, scheduler runtime.
+- Not implemented yet: intent parsing/enrichment/scoring LangGraph nodes, Telegram dialog agent, Notion sync, scheduler runtime.

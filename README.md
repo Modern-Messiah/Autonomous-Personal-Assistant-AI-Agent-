@@ -1,7 +1,7 @@
 # Krisha Agent
 
 Autonomous multi-agent system for apartment discovery in Kazakhstan.  
-Current scope is **Phase 0 + Phase 6 baseline**: foundation, parser, LangGraph search pipeline, enrichment, Gemini-backed scoring, checkpoint memory, Telegram bot, persistent monitor settings, scheduler runtime baseline, tests, and CI.
+Current scope is **Phase 0 + Phase 6 baseline with Notion sync**: foundation, parser, LangGraph search pipeline, enrichment, Gemini-backed scoring, checkpoint memory, Telegram bot, persistent monitor settings, scheduler runtime baseline, Notion export, tests, and CI.
 
 ## Tech Stack
 
@@ -114,6 +114,7 @@ The project uses nested settings via `pydantic-settings` and `env_nested_delimit
 - `API__TWO_GIS_API_KEY`, `API__GEMINI_API_KEY`
 - `API__LANGSMITH_API_KEY`, `API__LANGSMITH_PROJECT`
 - `API__SENTRY_DSN`
+- `NOTION__ENABLED`, `NOTION__API_TOKEN`, `NOTION__DATABASE_ID`, `NOTION__TIMEOUT_SECONDS`
 - `SCHEDULER__POLL_INTERVAL_SECONDS`, `SCHEDULER__BATCH_SIZE`
 
 See `.env.example` for the full contract.
@@ -134,10 +135,11 @@ See `.env.example` for the full contract.
 - Supervisor-style dialog agent for free-text turns, refinement routing, and natural-language fallback without explicit commands.
   - Dialog refinement baseline with `/refine`, `/cancel`, FSM-based follow-up text, and inline "Сохранить" / "Отклонить" / "Уточнить критерии" actions after search results.
   - Search result persistence in `apartments` / `seen_apartments`, plus `apartment_feedback` memory for explicit `saved/rejected` decisions and `/list` for saved apartments.
+  - Optional Notion sync for saved apartments with local `page_id` metadata for idempotent updates.
   - Persistent monitor settings with `/monitor`, `/monitor on|off`, and `/monitor interval 6h`.
   - Scheduler runtime baseline that polls enabled monitor targets, respects `interval_minutes`, and sends only newly discovered apartments.
   - HTML fixture-based parser tests and CI checks.
-- Not implemented yet: multi-step approval workflows, ARQ-based production scheduler, Notion sync.
+- Not implemented yet: multi-step approval workflows, ARQ-based production scheduler, richer Notion database bootstrap/template automation.
 
 ## Telegram Bot Baseline
 
@@ -168,6 +170,21 @@ Current dialog additions:
 - the "Уточнить критерии" action opens FSM-based follow-up mode,
 - a plain-text clarification like `только 3 комнаты и до 35 млн` merges into active criteria instead of resetting the whole search,
 - free-text messages like `покажи сохраненные квартиры` or `какой сейчас мониторинг` are routed through the dialog supervisor without slash commands.
+
+## Notion Sync
+
+Saved apartments can be exported to Notion automatically when all of these are set:
+
+- `NOTION__ENABLED=true`
+- `NOTION__API_TOKEN=<integration_token>`
+- `NOTION__DATABASE_ID=<database_id>`
+
+Current behavior:
+
+- sync is triggered after the user presses "Сохранить",
+- local save in PostgreSQL succeeds even if the Notion API is unavailable,
+- successful sync stores `notion_page_id` and `notion_synced_at` in `apartment_feedback`,
+- subsequent saves update the same Notion page instead of creating duplicates for the same user/apartment pair.
 
 ## Scheduler Baseline
 

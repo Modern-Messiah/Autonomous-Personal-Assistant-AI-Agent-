@@ -16,6 +16,7 @@ def format_start_message() -> str:
         "/search 2-комнатная квартира в Алматы до 45 млн\n\n"
         "Текущие критерии можно посмотреть через /criteria.\n"
         "Последние сохраненные варианты доступны через /list.\n"
+        "Уточнение критериев: /refine и /cancel.\n"
         "Мониторинг: /monitor, /monitor on, /monitor interval 6h."
     )
 

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from aiogram import Router
+from aiogram import F, Router
 from aiogram.filters import Command, CommandObject, CommandStart
-from aiogram.types import Message
+from aiogram.fsm.context import FSMContext
+from aiogram.types import CallbackQuery, Message
 
 from bot.formatters import (
     format_criteria,
@@ -13,13 +14,26 @@ from bot.formatters import (
     format_search_results,
     format_start_message,
 )
+from bot.keyboards import (
+    LIST_CALLBACK_DATA,
+    REFINE_CALLBACK_DATA,
+    build_search_followup_keyboard,
+)
 from bot.monitoring import parse_monitor_interval
-from bot.service import SearchBotService
+from bot.service import ActiveCriteriaNotFoundError, SearchBotService, SearchExecution
+from bot.states import SearchDialogStates
 
 
 def create_bot_router(service: SearchBotService) -> Router:
     """Create router with minimal command set for the bot."""
     router = Router(name="krisha-agent")
+
+    async def send_search_execution(message: Message, result: SearchExecution) -> None:
+        await message.answer(format_criteria(result.criteria))
+        await message.answer(
+            format_search_results(result.apartments),
+            reply_markup=build_search_followup_keyboard(),
+        )
 
     @router.message(CommandStart())
     async def handle_start(message: Message) -> None:
@@ -49,8 +63,55 @@ def create_bot_router(service: SearchBotService) -> Router:
             username=message.from_user.username,
             query=query,
         )
-        await message.answer(format_criteria(result.criteria))
-        await message.answer(format_search_results(result.apartments))
+        await send_search_execution(message, result)
+
+    @router.message(Command("refine"))
+    async def handle_refine_command(
+        message: Message,
+        command: CommandObject,
+        state: FSMContext,
+    ) -> None:
+        if message.from_user is None:
+            return
+
+        query = (command.args or "").strip()
+        if not query:
+            criteria = await service.get_active_criteria(
+                telegram_user_id=message.from_user.id,
+            )
+            if criteria is None:
+                await message.answer(
+                    "Активные критерии не найдены. Сначала выполни поиск через /search."
+                )
+                return
+            await state.set_state(SearchDialogStates.waiting_for_refinement)
+            await message.answer(
+                "Напиши, что изменить в критериях, например:\n"
+                "только 3 комнаты и до 35 млн\n\n"
+                "Для выхода из режима уточнения используй /cancel."
+            )
+            return
+
+        await message.answer("Уточняю критерии и запускаю поиск заново...")
+        try:
+            result = await service.refine_search(
+                telegram_user_id=message.from_user.id,
+                username=message.from_user.username,
+                message=query,
+            )
+        except ActiveCriteriaNotFoundError:
+            await message.answer(
+                "Активные критерии не найдены. Сначала выполни поиск через /search."
+            )
+            return
+
+        await state.clear()
+        await send_search_execution(message, result)
+
+    @router.message(Command("cancel"))
+    async def handle_cancel(message: Message, state: FSMContext) -> None:
+        await state.clear()
+        await message.answer("Режим уточнения критериев отменен.")
 
     @router.message(Command("criteria"))
     async def handle_criteria(message: Message) -> None:
@@ -141,5 +202,69 @@ def create_bot_router(service: SearchBotService) -> Router:
             "Поддерживаются команды: /monitor, /monitor on, /monitor off, "
             "/monitor interval 6h"
         )
+
+    @router.callback_query(F.data == REFINE_CALLBACK_DATA)
+    async def handle_refine_callback(callback: CallbackQuery, state: FSMContext) -> None:
+        if callback.from_user is None:
+            await callback.answer()
+            return
+
+        criteria = await service.get_active_criteria(
+            telegram_user_id=callback.from_user.id,
+        )
+        if criteria is None:
+            if callback.message is not None:
+                await callback.message.answer(
+                    "Активные критерии не найдены. Сначала выполни поиск через /search."
+                )
+            await callback.answer()
+            return
+
+        await state.set_state(SearchDialogStates.waiting_for_refinement)
+        if callback.message is not None:
+            await callback.message.answer(
+                "Опиши уточнение свободным текстом. Пример:\n"
+                "добавь район Медеу и бюджет до 50 млн"
+            )
+        await callback.answer()
+
+    @router.callback_query(F.data == LIST_CALLBACK_DATA)
+    async def handle_list_callback(callback: CallbackQuery) -> None:
+        if callback.from_user is None:
+            await callback.answer()
+            return
+        apartments = await service.get_saved_apartments(
+            telegram_user_id=callback.from_user.id,
+        )
+        if callback.message is not None:
+            await callback.message.answer(format_saved_apartments(apartments))
+        await callback.answer()
+
+    @router.message(SearchDialogStates.waiting_for_refinement)
+    async def handle_refinement_message(message: Message, state: FSMContext) -> None:
+        if message.from_user is None:
+            return
+
+        text = (message.text or "").strip()
+        if not text:
+            await message.answer("Опиши уточнение текстом или используй /cancel.")
+            return
+
+        await message.answer("Уточняю критерии и запускаю поиск заново...")
+        try:
+            result = await service.refine_search(
+                telegram_user_id=message.from_user.id,
+                username=message.from_user.username,
+                message=text,
+            )
+        except ActiveCriteriaNotFoundError:
+            await state.clear()
+            await message.answer(
+                "Активные критерии не найдены. Сначала выполни поиск через /search."
+            )
+            return
+
+        await state.clear()
+        await send_search_execution(message, result)
 
     return router

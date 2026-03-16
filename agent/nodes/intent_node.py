@@ -138,7 +138,38 @@ class IntentNode:
             page_limit=page_limit,
         )
 
+    def refine(self, *, criteria: SearchCriteria, message: str) -> SearchCriteria:
+        """Merge free-form refinement text into existing criteria."""
+        normalized = message.strip().lower()
+        deal_type = self._find_deal_type(normalized)
+        city = self._find_city(normalized)
+        min_price, max_price = self._parse_price_bounds(normalized)
+        min_area, max_area = self._parse_area_bounds(normalized)
+        rooms = self._parse_rooms(normalized)
+        districts = self._parse_districts(normalized)
+        page_limit = self._find_page_limit(normalized)
+
+        return SearchCriteria(
+            user_id=criteria.user_id,
+            city=city or criteria.city,
+            deal_type=deal_type or criteria.deal_type,
+            property_type=criteria.property_type,
+            min_price_kzt=criteria.min_price_kzt if min_price is None else min_price,
+            max_price_kzt=criteria.max_price_kzt if max_price is None else max_price,
+            rooms=criteria.rooms if rooms is None else rooms,
+            districts=criteria.districts if districts is None else districts,
+            min_area_m2=criteria.min_area_m2 if min_area is None else min_area,
+            max_area_m2=criteria.max_area_m2 if max_area is None else max_area,
+            page_limit=criteria.page_limit if page_limit is None else page_limit,
+        )
+
     def _parse_deal_type(self, text: str) -> Literal["sale", "rent"]:
+        deal_type = self._find_deal_type(text)
+        if deal_type is not None:
+            return deal_type
+        return self._default_deal_type
+
+    def _find_deal_type(self, text: str) -> Literal["sale", "rent"] | None:
         rent_markers = (
             "\u0430\u0440\u0435\u043d\u0434",
             "\u0441\u043d\u044f\u0442",
@@ -146,13 +177,27 @@ class IntentNode:
         )
         if any(marker in text for marker in rent_markers):
             return "rent"
-        return self._default_deal_type
+        sale_markers = (
+            "\u043a\u0443\u043f",
+            "\u043f\u043e\u043a\u0443\u043f",
+            "sale",
+            "buy",
+        )
+        if any(marker in text for marker in sale_markers):
+            return "sale"
+        return None
 
     def _parse_city(self, text: str) -> str:
+        city = self._find_city(text)
+        if city is not None:
+            return city
+        return self._default_city
+
+    def _find_city(self, text: str) -> str | None:
         for alias, city in CITY_ALIASES.items():
             if alias in text:
                 return city
-        return self._default_city
+        return None
 
     def _parse_price_bounds(self, text: str) -> tuple[int | None, int | None]:
         range_match = PRICE_RANGE_PATTERN.search(text)
@@ -239,9 +284,15 @@ class IntentNode:
         return districts or None
 
     def _parse_page_limit(self, text: str) -> int:
+        parsed = self._find_page_limit(text)
+        if parsed is not None:
+            return parsed
+        return self._default_page_limit
+
+    def _find_page_limit(self, text: str) -> int | None:
         match = PAGE_LIMIT_PATTERN.search(text)
         if match is None:
-            return self._default_page_limit
+            return None
         parsed = int(match.group(1))
         return min(max(parsed, 1), 20)
 

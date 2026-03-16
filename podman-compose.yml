@@ -1,0 +1,89 @@
+services:
+  postgres:
+    image: docker.io/postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB__NAME}
+      POSTGRES_USER: ${DB__USER}
+      POSTGRES_PASSWORD: ${DB__PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB__USER} -d ${DB__NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: docker.io/redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  migrate:
+    image: localhost/krisha-agent:dev
+    build:
+      context: .
+      dockerfile: Containerfile
+    env_file:
+      - .env
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      - postgres
+      - redis
+    restart: "no"
+
+  bot:
+    image: localhost/krisha-agent:dev
+    build:
+      context: .
+      dockerfile: Containerfile
+    env_file:
+      - .env
+    command: ["python", "-m", "bot"]
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+
+  scheduler-producer:
+    image: localhost/krisha-agent:dev
+    build:
+      context: .
+      dockerfile: Containerfile
+    env_file:
+      - .env
+    environment:
+      SCHEDULER__RUNTIME: arq
+    command: ["python", "-m", "scheduler"]
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+
+  scheduler-worker:
+    image: localhost/krisha-agent:dev
+    build:
+      context: .
+      dockerfile: Containerfile
+    env_file:
+      - .env
+    command: ["arq", "scheduler.arq_worker.WorkerSettings"]
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:

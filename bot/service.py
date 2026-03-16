@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Protocol
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -21,6 +24,7 @@ from db import (
     list_feedback_apartments,
     mark_apartments_seen,
     replace_active_search_criteria,
+    update_apartment_feedback_notion_sync,
     upsert_apartment_feedback,
     upsert_apartment_records,
     upsert_monitor_settings,
@@ -28,6 +32,17 @@ from db import (
 )
 
 SearchRunner = Callable[..., Awaitable[list[EnrichedApartment]]]
+
+
+class NotionApartmentSync(Protocol):
+    """Minimal sync contract for pushing saved apartments to Notion."""
+
+    async def sync_apartment(
+        self,
+        apartment: EnrichedApartment,
+        *,
+        page_id: str | None = None,
+    ) -> str: ...
 
 
 @dataclass(slots=True, frozen=True)
@@ -59,10 +74,12 @@ class SearchBotService:
         session_factory: async_sessionmaker[AsyncSession],
         intent_node: IntentNode | None = None,
         search_runner: SearchRunner = run_search_graph,
+        notion_sync: NotionApartmentSync | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._intent_node = intent_node or IntentNode()
         self._search_runner = search_runner
+        self._notion_sync = notion_sync
 
     async def register_user(self, *, telegram_user_id: int, username: str | None) -> None:
         """Create or update user profile for Telegram user."""
@@ -239,26 +256,87 @@ class SearchBotService:
         if not unique_urls:
             return 0
 
+        user_id: int | None = None
+        apartments_count = 0
+        apartments_to_sync: list[tuple[uuid.UUID, EnrichedApartment, str | None]] = []
+
         async with self._session_factory() as session:
             user = await upsert_telegram_user(
                 session,
                 telegram_user_id=telegram_user_id,
                 username=username,
             )
+            user_id = user.id
             apartments = await list_apartment_records_by_urls(
                 session,
                 urls=unique_urls,
             )
             if not apartments:
                 return 0
-            await upsert_apartment_feedback(
+            apartments_count = len(apartments)
+            feedback_records = await upsert_apartment_feedback(
                 session,
                 user_id=user.id,
                 apartments=apartments,
                 decision=decision,
             )
+            if decision == "saved" and self._notion_sync is not None:
+                feedback_by_apartment_id = {
+                    record.apartment_id: record
+                    for record in feedback_records
+                }
+                apartments_to_sync = [
+                    (
+                        apartment.id,
+                        EnrichedApartment.model_validate(apartment.payload),
+                        feedback_by_apartment_id[apartment.id].notion_page_id,
+                    )
+                    for apartment in apartments
+                    if apartment.id in feedback_by_apartment_id
+                ]
             await session.commit()
-            return len(apartments)
+
+        if (
+            decision == "saved"
+            and self._notion_sync is not None
+            and user_id is not None
+            and apartments_to_sync
+        ):
+            synced_pages = await self._sync_saved_apartments_to_notion(
+                apartments_to_sync=apartments_to_sync,
+            )
+            if synced_pages:
+                async with self._session_factory() as session:
+                    await update_apartment_feedback_notion_sync(
+                        session,
+                        user_id=user_id,
+                        synced_pages=synced_pages,
+                        synced_at=datetime.now(UTC),
+                    )
+                    await session.commit()
+
+        return apartments_count
+
+    async def _sync_saved_apartments_to_notion(
+        self,
+        *,
+        apartments_to_sync: list[tuple[uuid.UUID, EnrichedApartment, str | None]],
+    ) -> dict[uuid.UUID, str]:
+        """Best-effort Notion sync for saved apartments."""
+        if self._notion_sync is None:
+            return {}
+
+        synced_pages: dict[uuid.UUID, str] = {}
+        for apartment_id, apartment, page_id in apartments_to_sync:
+            try:
+                synced_page_id = await self._notion_sync.sync_apartment(
+                    apartment,
+                    page_id=page_id,
+                )
+            except Exception:
+                continue
+            synced_pages[apartment_id] = synced_page_id
+        return synced_pages
 
     async def get_monitor_status(
         self,

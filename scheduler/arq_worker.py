@@ -61,7 +61,6 @@ def build_worker_redis_settings() -> RedisSettings:
         port=settings.redis.port,
         database=settings.redis.db,
         password=password,
-        default_queue_name=settings.arq.queue_name,
     )
 
 

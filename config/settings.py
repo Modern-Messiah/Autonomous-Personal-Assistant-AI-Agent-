@@ -90,6 +90,13 @@ class ScoringSettings(BaseModel):
     timeout_seconds: float = Field(default=15.0, gt=0, le=120)
 
 
+class SchedulerSettings(BaseModel):
+    """Background scheduler behavior settings."""
+
+    poll_interval_seconds: int = Field(default=60, ge=1, le=3600)
+    batch_size: int = Field(default=50, ge=1, le=1000)
+
+
 class Settings(BaseSettings):
     """Root settings object loaded from .env and process environment."""
 
@@ -108,6 +115,7 @@ class Settings(BaseSettings):
     api: APISettings
     parser: ParserSettings = Field(default_factory=ParserSettings)
     scoring: ScoringSettings = Field(default_factory=ScoringSettings)
+    scheduler: SchedulerSettings = Field(default_factory=SchedulerSettings)
 
 
 @lru_cache(maxsize=1)

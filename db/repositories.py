@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from datetime import UTC, datetime
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import Select, select, tuple_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agent.models.apartment import Apartment
+from agent.models.criteria import SearchCriteria
 from agent.models.enriched import EnrichedApartment
 from db.models import (
     ApartmentRecord,
@@ -18,6 +20,18 @@ from db.models import (
     SeenApartment,
     User,
 )
+
+
+@dataclass(slots=True, frozen=True)
+class MonitorTarget:
+    """Resolved monitor job for one user."""
+
+    user_id: int
+    telegram_user_id: int
+    username: str | None
+    criteria: SearchCriteria
+    interval_minutes: int
+    last_checked_at: datetime | None
 
 
 async def upsert_telegram_user(
@@ -128,6 +142,76 @@ async def get_monitor_settings_record(
     return result.scalar_one_or_none()
 
 
+async def list_due_monitor_targets(
+    session: AsyncSession,
+    *,
+    now: datetime,
+    limit: int = 100,
+) -> list[MonitorTarget]:
+    """Return monitor targets that should be processed now."""
+    statement = (
+        select(
+            User.id,
+            User.telegram_user_id,
+            User.username,
+            SearchCriteriaRecord.criteria,
+            MonitorSettingsRecord.interval_minutes,
+            MonitorSettingsRecord.last_checked_at,
+        )
+        .join(MonitorSettingsRecord, MonitorSettingsRecord.user_id == User.id)
+        .join(SearchCriteriaRecord, SearchCriteriaRecord.user_id == User.id)
+        .where(
+            MonitorSettingsRecord.is_enabled.is_(True),
+            SearchCriteriaRecord.is_active.is_(True),
+        )
+        .order_by(MonitorSettingsRecord.last_checked_at.asc().nullsfirst(), User.id.asc())
+    )
+    result = await session.execute(statement)
+
+    targets: list[MonitorTarget] = []
+    for (
+        user_id,
+        telegram_user_id,
+        username,
+        criteria_payload,
+        interval_minutes,
+        last_checked_at,
+    ) in result.all():
+        if last_checked_at is not None:
+            next_due_at = last_checked_at + timedelta(minutes=interval_minutes)
+            if next_due_at > now:
+                continue
+        targets.append(
+            MonitorTarget(
+                user_id=user_id,
+                telegram_user_id=telegram_user_id,
+                username=username,
+                criteria=SearchCriteria.model_validate(criteria_payload),
+                interval_minutes=interval_minutes,
+                last_checked_at=last_checked_at,
+            )
+        )
+        if len(targets) >= limit:
+            break
+    return targets
+
+
+async def touch_monitor_last_checked_at(
+    session: AsyncSession,
+    *,
+    user_id: int,
+    checked_at: datetime,
+) -> MonitorSettingsRecord | None:
+    """Persist the latest successful scheduler check time for a user."""
+    record = await session.get(MonitorSettingsRecord, user_id)
+    if record is None:
+        return None
+    record.last_checked_at = checked_at
+    record.updated_at = checked_at
+    await session.flush()
+    return record
+
+
 async def upsert_apartment_records(
     session: AsyncSession,
     *,
@@ -202,11 +286,38 @@ async def mark_apartments_seen(
     *,
     user_id: int,
     apartments: Sequence[ApartmentRecord],
-) -> None:
+) -> list[ApartmentRecord]:
     """Attach apartment records to a user without duplicating seen rows."""
+    unseen_apartments = await get_unseen_apartment_records(
+        session,
+        user_id=user_id,
+        apartments=apartments,
+    )
+    if not unseen_apartments:
+        return []
+
+    for apartment in unseen_apartments:
+        session.add(
+            SeenApartment(
+                user_id=user_id,
+                apartment_id=apartment.id,
+            )
+        )
+
+    await session.flush()
+    return unseen_apartments
+
+
+async def get_unseen_apartment_records(
+    session: AsyncSession,
+    *,
+    user_id: int,
+    apartments: Sequence[ApartmentRecord],
+) -> list[ApartmentRecord]:
+    """Return apartment records not yet linked to the user."""
     apartment_ids = [record.id for record in apartments]
     if not apartment_ids:
-        return
+        return []
 
     result = await session.execute(
         select(SeenApartment.apartment_id).where(
@@ -215,19 +326,11 @@ async def mark_apartments_seen(
         )
     )
     existing_ids = set(result.scalars())
-
-    for apartment in apartments:
-        if apartment.id in existing_ids:
-            continue
-        session.add(
-            SeenApartment(
-                user_id=user_id,
-                apartment_id=apartment.id,
-            )
-        )
-        existing_ids.add(apartment.id)
-
-    await session.flush()
+    return [
+        apartment
+        for apartment in apartments
+        if apartment.id not in existing_ids
+    ]
 
 
 async def list_seen_apartments(

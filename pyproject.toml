@@ -60,7 +60,7 @@ python_version = "3.12"
 plugins = ["sqlalchemy.ext.mypy.plugin"]
 strict = true
 warn_unused_configs = true
-files = ["agent", "bot", "config", "db"]
+files = ["agent", "bot", "config", "db", "scheduler"]
 exclude = ["alembic"]
 
 [[tool.mypy.overrides]]

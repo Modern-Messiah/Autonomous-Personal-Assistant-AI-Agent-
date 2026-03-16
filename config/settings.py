@@ -97,6 +97,27 @@ class SchedulerSettings(BaseModel):
     batch_size: int = Field(default=50, ge=1, le=1000)
 
 
+class NotionSettings(BaseModel):
+    """Optional Notion sync settings."""
+
+    enabled: bool = False
+    api_token: SecretStr | None = None
+    database_id: str | None = Field(default=None, min_length=1)
+    timeout_seconds: float = Field(default=15.0, gt=0, le=120)
+
+    @model_validator(mode="after")
+    def validate_enabled_contract(self) -> "NotionSettings":
+        if not self.enabled:
+            return self
+        if self.api_token is None or not self.api_token.get_secret_value():
+            msg = "api_token is required when notion sync is enabled"
+            raise ValueError(msg)
+        if self.database_id is None:
+            msg = "database_id is required when notion sync is enabled"
+            raise ValueError(msg)
+        return self
+
+
 class Settings(BaseSettings):
     """Root settings object loaded from .env and process environment."""
 
@@ -116,6 +137,7 @@ class Settings(BaseSettings):
     parser: ParserSettings = Field(default_factory=ParserSettings)
     scoring: ScoringSettings = Field(default_factory=ScoringSettings)
     scheduler: SchedulerSettings = Field(default_factory=SchedulerSettings)
+    notion: NotionSettings = Field(default_factory=NotionSettings)
 
 
 @lru_cache(maxsize=1)

@@ -346,6 +346,36 @@ async def upsert_apartment_feedback(
     return feedback_records
 
 
+async def update_apartment_feedback_notion_sync(
+    session: AsyncSession,
+    *,
+    user_id: int,
+    synced_pages: Mapping[uuid.UUID, str],
+    synced_at: datetime,
+) -> list[ApartmentFeedbackRecord]:
+    """Persist Notion sync metadata for already saved apartment feedback rows."""
+    apartment_ids = list(synced_pages.keys())
+    if not apartment_ids:
+        return []
+
+    result = await session.execute(
+        select(ApartmentFeedbackRecord).where(
+            ApartmentFeedbackRecord.user_id == user_id,
+            ApartmentFeedbackRecord.apartment_id.in_(apartment_ids),
+        )
+    )
+    feedback_records = list(result.scalars())
+    for feedback_record in feedback_records:
+        page_id = synced_pages.get(feedback_record.apartment_id)
+        if page_id is None:
+            continue
+        feedback_record.notion_page_id = page_id
+        feedback_record.notion_synced_at = synced_at
+
+    await session.flush()
+    return feedback_records
+
+
 async def get_apartment_feedback_map(
     session: AsyncSession,
     *,

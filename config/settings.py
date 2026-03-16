@@ -28,6 +28,11 @@ class DatabaseSettings(BaseModel):
         safe_password = quote_plus(self.password.get_secret_value())
         return f"postgresql+asyncpg://{self.user}:{safe_password}@{self.host}:{self.port}/{self.name}"
 
+    @property
+    def psycopg_url(self) -> str:
+        safe_password = quote_plus(self.password.get_secret_value())
+        return f"postgresql://{self.user}:{safe_password}@{self.host}:{self.port}/{self.name}"
+
 
 class RedisSettings(BaseModel):
     """Redis settings."""

@@ -11,10 +11,12 @@ from agent.models.criteria import SearchCriteria
 from agent.models.enriched import EnrichedApartment
 from bot.formatters import (
     format_criteria,
+    format_monitor_status,
     format_saved_apartments,
     format_search_results,
     format_start_message,
 )
+from bot.monitoring import format_monitor_interval, parse_monitor_interval
 from bot.service import SearchBotService
 
 
@@ -169,7 +171,102 @@ async def test_search_bot_service_loads_saved_apartments(monkeypatch: pytest.Mon
     assert apartments[0].apartment.title == "Bot test apartment"
 
 
+@pytest.mark.asyncio
+async def test_search_bot_service_reads_monitor_status(monkeypatch: pytest.MonkeyPatch) -> None:
+    session_factory = FakeSessionFactory()
+    service = SearchBotService(session_factory=session_factory, search_runner=fake_search_runner)
+
+    async def fake_get_monitor_record(session, *, telegram_user_id: int):
+        del session
+        assert telegram_user_id == 77
+        return SimpleNamespace(is_enabled=True, interval_minutes=180)
+
+    monkeypatch.setattr("bot.service.get_monitor_settings_record", fake_get_monitor_record)
+
+    status = await service.get_monitor_status(telegram_user_id=77)
+
+    assert status is not None
+    assert status.enabled is True
+    assert status.interval_minutes == 180
+
+
+@pytest.mark.asyncio
+async def test_search_bot_service_updates_monitor_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    session_factory = FakeSessionFactory()
+    service = SearchBotService(session_factory=session_factory, search_runner=fake_search_runner)
+
+    async def fake_upsert(session, *, telegram_user_id: int, username: str | None):
+        del session
+        assert telegram_user_id == 77
+        assert username == "tester"
+        return SimpleNamespace(id=123)
+
+    stored_changes: list[dict[str, object]] = []
+
+    async def fake_upsert_monitor(
+        session,
+        *,
+        user_id: int,
+        is_enabled: bool | None = None,
+        interval_minutes: int | None = None,
+    ):
+        del session
+        stored_changes.append(
+            {
+                "user_id": user_id,
+                "is_enabled": is_enabled,
+                "interval_minutes": interval_minutes,
+            }
+        )
+        return SimpleNamespace(
+            is_enabled=is_enabled if is_enabled is not None else False,
+            interval_minutes=interval_minutes if interval_minutes is not None else 360,
+        )
+
+    monkeypatch.setattr("bot.service.upsert_telegram_user", fake_upsert)
+    monkeypatch.setattr("bot.service.upsert_monitor_settings", fake_upsert_monitor)
+
+    enabled_status = await service.set_monitor_enabled(
+        telegram_user_id=77,
+        username="tester",
+        enabled=True,
+    )
+    interval_status = await service.set_monitor_interval(
+        telegram_user_id=77,
+        username="tester",
+        interval_minutes=720,
+    )
+
+    assert enabled_status.enabled is True
+    assert enabled_status.interval_minutes == 360
+    assert interval_status.enabled is False
+    assert interval_status.interval_minutes == 720
+    assert stored_changes == [
+        {"user_id": 123, "is_enabled": True, "interval_minutes": None},
+        {"user_id": 123, "is_enabled": None, "interval_minutes": 720},
+    ]
+    assert session_factory.session.commit_calls == 2
+
+
+def test_monitor_interval_helpers_validate_and_format() -> None:
+    assert parse_monitor_interval("30m") == 30
+    assert parse_monitor_interval("6h") == 360
+    assert parse_monitor_interval("1d") == 1440
+    assert format_monitor_interval(360) == "6h"
+    assert format_monitor_interval(45) == "45m"
+
+    with pytest.raises(ValueError):
+        parse_monitor_interval("10m")
+
+    with pytest.raises(ValueError):
+        parse_monitor_interval("abc")
+
+
 def test_formatters_render_expected_content() -> None:
+    service = SearchBotService(
+        session_factory=FakeSessionFactory(),
+        search_runner=fake_search_runner,
+    )
     criteria = SearchCriteria(
         user_id=77,
         city="Almaty",
@@ -182,14 +279,19 @@ def test_formatters_render_expected_content() -> None:
     text = format_criteria(criteria)
     results_text = format_search_results([build_apartment()])
     saved_text = format_saved_apartments([build_apartment()])
+    monitor_text = format_monitor_status(service.get_default_monitor_status())
+    empty_monitor_text = format_monitor_status(None)
 
     assert "/search" in format_start_message()
     assert "/list" in format_start_message()
+    assert "/monitor" in format_start_message()
     assert "Алматы" not in text
     assert "Город: Almaty" in text
     assert "40 000 000 KZT" in text
     assert "Bot test apartment" in results_text
     assert "Сохраненные квартиры" in saved_text
+    assert "Статус мониторинга" in monitor_text
+    assert "Мониторинг пока не настроен" in empty_monitor_text
 
 
 async def fake_search_runner(

@@ -25,6 +25,33 @@ class DummyService:
         del telegram_user_id, limit
         return []
 
+    async def get_monitor_status(self, *, telegram_user_id: int):
+        del telegram_user_id
+        return None
+
+    async def set_monitor_enabled(
+        self,
+        *,
+        telegram_user_id: int,
+        username: str | None,
+        enabled: bool,
+    ):
+        del telegram_user_id, username, enabled
+        return None
+
+    async def set_monitor_interval(
+        self,
+        *,
+        telegram_user_id: int,
+        username: str | None,
+        interval_minutes: int,
+    ):
+        del telegram_user_id, username, interval_minutes
+        return None
+
+    def get_default_monitor_status(self):
+        return None
+
 
 def test_create_dispatcher_includes_bot_routes() -> None:
     dispatcher = create_dispatcher(service=DummyService())  # type: ignore[arg-type]

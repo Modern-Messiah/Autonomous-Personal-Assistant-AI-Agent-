@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from types import SimpleNamespace
 
 import pytest
@@ -314,6 +315,104 @@ async def test_search_bot_service_records_save_and_reject_feedback(
     assert decisions == [
         (123, "saved", 2),
         (123, "rejected", 2),
+    ]
+    assert session_factory.session.commit_calls == 2
+
+
+@pytest.mark.asyncio
+async def test_search_bot_service_syncs_saved_apartments_to_notion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_factory = FakeSessionFactory()
+    notion_calls: list[tuple[str, str | None]] = []
+
+    class FakeNotionSync:
+        async def sync_apartment(
+            self,
+            apartment: EnrichedApartment,
+            *,
+            page_id: str | None = None,
+        ) -> str:
+            notion_calls.append((apartment.apartment.external_id, page_id))
+            if apartment.apartment.external_id == "900100":
+                return "page-100"
+            return "page-101"
+
+    service = SearchBotService(
+        session_factory=session_factory,
+        search_runner=fake_search_runner,
+        notion_sync=FakeNotionSync(),
+    )
+
+    apartment_id_one = uuid.uuid4()
+    apartment_id_two = uuid.uuid4()
+    synced_updates: list[dict[uuid.UUID, str]] = []
+
+    async def fake_upsert(session, *, telegram_user_id: int, username: str | None):
+        del session
+        assert telegram_user_id == 77
+        assert username == "tester"
+        return SimpleNamespace(id=123)
+
+    async def fake_list_apartments(session, *, urls: list[str]):
+        del session
+        assert urls == [
+            "https://krisha.kz/a/show/900100",
+            "https://krisha.kz/a/show/900101",
+        ]
+        return [
+            SimpleNamespace(
+                id=apartment_id_one,
+                url=urls[0],
+                payload=build_apartment("900100").model_dump(mode="json"),
+            ),
+            SimpleNamespace(
+                id=apartment_id_two,
+                url=urls[1],
+                payload=build_apartment("900101").model_dump(mode="json"),
+            ),
+        ]
+
+    async def fake_upsert_feedback(session, *, user_id: int, apartments, decision: str):
+        del session
+        assert user_id == 123
+        assert decision == "saved"
+        return [
+            SimpleNamespace(apartment_id=apartment_id_one, notion_page_id=None),
+            SimpleNamespace(apartment_id=apartment_id_two, notion_page_id="page-existing"),
+        ]
+
+    async def fake_update_sync(session, *, user_id: int, synced_pages, synced_at):
+        del session
+        assert user_id == 123
+        assert synced_at.tzinfo is not None
+        synced_updates.append(dict(synced_pages))
+        return []
+
+    monkeypatch.setattr("bot.service.upsert_telegram_user", fake_upsert)
+    monkeypatch.setattr("bot.service.list_apartment_records_by_urls", fake_list_apartments)
+    monkeypatch.setattr("bot.service.upsert_apartment_feedback", fake_upsert_feedback)
+    monkeypatch.setattr("bot.service.update_apartment_feedback_notion_sync", fake_update_sync)
+
+    saved_count = await service.save_apartments(
+        telegram_user_id=77,
+        username="tester",
+        apartment_urls=[
+            "https://krisha.kz/a/show/900100",
+            "https://krisha.kz/a/show/900101",
+        ],
+    )
+
+    assert saved_count == 2
+    assert notion_calls == [
+        ("900100", None),
+        ("900101", "page-existing"),
+    ]
+    assert synced_updates == [
+        {
+            apartment_id_one: "page-100",
+            apartment_id_two: "page-101",
+        }
     ]
     assert session_factory.session.commit_calls == 2
 

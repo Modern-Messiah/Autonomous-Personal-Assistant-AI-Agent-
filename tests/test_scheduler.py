@@ -11,6 +11,7 @@ from agent.models.apartment import Apartment
 from agent.models.criteria import SearchCriteria
 from agent.models.enriched import EnrichedApartment
 from db.repositories import MonitorTarget
+from scheduler.producer import PROCESS_MONITOR_TARGET_JOB, SchedulerJobProducer
 from scheduler.service import SchedulerService
 
 
@@ -239,6 +240,164 @@ async def test_scheduler_does_not_mark_seen_when_notifier_fails(
     assert mark_calls == 0
     assert touched_users == []
     assert session_factory.session.commit_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_scheduler_processes_one_monitor_target_by_telegram_user_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_factory = FakeSessionFactory()
+    now = datetime(2026, 3, 16, 15, 0, tzinfo=UTC)
+    service = SchedulerService(
+        session_factory=session_factory,
+        notifier=fake_notifier_factory([]),
+        search_runner=fake_scheduler_search_runner,
+        now_provider=lambda: now,
+    )
+
+    async def fake_get_target(session, *, telegram_user_id: int):
+        del session
+        assert telegram_user_id == 77
+        return MonitorTarget(
+            user_id=1,
+            telegram_user_id=77,
+            username="tester",
+            criteria=build_criteria(),
+            interval_minutes=360,
+            last_checked_at=None,
+        )
+
+    async def fake_process_target(*, target: MonitorTarget, checked_at: datetime | None = None):
+        assert target.telegram_user_id == 77
+        assert checked_at == now
+        return SimpleNamespace(
+            notified_users=1,
+            new_apartments=2,
+            failed_users=0,
+        )
+
+    monkeypatch.setattr(
+        "scheduler.service.get_monitor_target_by_telegram_user_id",
+        fake_get_target,
+    )
+    monkeypatch.setattr(service, "process_target", fake_process_target)
+
+    summary = await service.process_monitor_target(
+        telegram_user_id=77,
+        checked_at=now,
+    )
+
+    assert summary.processed_users == 1
+    assert summary.notified_users == 1
+    assert summary.new_apartments == 2
+    assert summary.failed_users == 0
+
+
+@pytest.mark.asyncio
+async def test_scheduler_returns_zero_when_single_target_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = SchedulerService(
+        session_factory=FakeSessionFactory(),
+        notifier=fake_notifier_factory([]),
+        search_runner=fake_scheduler_search_runner,
+    )
+
+    async def fake_get_target(session, *, telegram_user_id: int):
+        del session, telegram_user_id
+        return None
+
+    monkeypatch.setattr(
+        "scheduler.service.get_monitor_target_by_telegram_user_id",
+        fake_get_target,
+    )
+
+    summary = await service.process_monitor_target(telegram_user_id=77)
+
+    assert summary.processed_users == 0
+    assert summary.notified_users == 0
+    assert summary.new_apartments == 0
+    assert summary.failed_users == 0
+
+
+@pytest.mark.asyncio
+async def test_scheduler_job_producer_enqueues_due_targets() -> None:
+    now = datetime(2026, 3, 16, 16, 5, 42, tzinfo=UTC)
+    enqueue_calls: list[tuple[str, tuple[object, ...], str | None, str | None]] = []
+
+    class FakeQueue:
+        async def enqueue_job(
+            self,
+            function: str,
+            *args: object,
+            _job_id: str | None = None,
+            _queue_name: str | None = None,
+        ) -> object | None:
+            enqueue_calls.append((function, args, _job_id, _queue_name))
+            if len(enqueue_calls) == 2:
+                return None
+            return object()
+
+    class FakeService:
+        def __init__(self) -> None:
+            self.checked_at: datetime | None = None
+            self.limit: int | None = None
+
+        async def get_due_targets(
+            self,
+            *,
+            limit: int | None = None,
+            checked_at: datetime | None = None,
+        ) -> list[MonitorTarget]:
+            self.limit = limit
+            self.checked_at = checked_at
+            return [
+                MonitorTarget(
+                    user_id=1,
+                    telegram_user_id=77,
+                    username="tester",
+                    criteria=build_criteria(),
+                    interval_minutes=360,
+                    last_checked_at=None,
+                ),
+                MonitorTarget(
+                    user_id=2,
+                    telegram_user_id=88,
+                    username="tester2",
+                    criteria=build_criteria(),
+                    interval_minutes=360,
+                    last_checked_at=None,
+                ),
+            ]
+
+    service = FakeService()
+    producer = SchedulerJobProducer(
+        service=service,  # type: ignore[arg-type]
+        queue=FakeQueue(),
+        queue_name="krisha:monitor",
+    )
+
+    summary = await producer.enqueue_due_monitor_jobs(limit=20, checked_at=now)
+
+    assert summary.due_users == 2
+    assert summary.enqueued_jobs == 1
+    assert summary.skipped_jobs == 1
+    assert service.limit == 20
+    assert service.checked_at == now
+    assert enqueue_calls == [
+        (
+            PROCESS_MONITOR_TARGET_JOB,
+            (77, now.isoformat()),
+            "monitor:77:2026-03-16T16:05:00+00:00",
+            "krisha:monitor",
+        ),
+        (
+            PROCESS_MONITOR_TARGET_JOB,
+            (88, now.isoformat()),
+            "monitor:88:2026-03-16T16:05:00+00:00",
+            "krisha:monitor",
+        ),
+    ]
 
 
 def fake_notifier_factory(

@@ -17,6 +17,10 @@ class DummyService:
         del telegram_user_id, username, query
         raise AssertionError("Handler body should not run in router smoke test")
 
+    async def refine_search(self, *, telegram_user_id: int, username: str | None, message: str):
+        del telegram_user_id, username, message
+        raise AssertionError("Handler body should not run in router smoke test")
+
     async def get_active_criteria(self, *, telegram_user_id: int):
         del telegram_user_id
         return None
@@ -57,4 +61,6 @@ def test_create_dispatcher_includes_bot_routes() -> None:
     dispatcher = create_dispatcher(service=DummyService())  # type: ignore[arg-type]
 
     assert isinstance(dispatcher, Dispatcher)
-    assert dispatcher.resolve_used_update_types()
+    update_types = dispatcher.resolve_used_update_types()
+    assert "message" in update_types
+    assert "callback_query" in update_types

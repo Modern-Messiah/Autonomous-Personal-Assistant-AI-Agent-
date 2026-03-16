@@ -9,6 +9,7 @@ import pytest
 
 from agent.graph import run_search_graph_from_text
 from agent.models.apartment import Apartment
+from agent.models.criteria import SearchCriteria
 from agent.nodes.intent_node import IntentNode
 from agent.nodes.search_node import SearchNode
 
@@ -89,6 +90,36 @@ def test_intent_node_parses_rent_message() -> None:
     assert criteria.max_price_kzt == 300_000
     assert criteria.rooms == [1]
     assert criteria.page_limit == 2
+
+
+def test_intent_node_refines_existing_criteria() -> None:
+    node = IntentNode()
+    base = SearchCriteria(
+        user_id=10,
+        city="Almaty",
+        deal_type="sale",
+        property_type="apartment",
+        min_price_kzt=25_000_000,
+        max_price_kzt=45_000_000,
+        rooms=[2, 3],
+        districts=["Bostandyk"],
+        min_area_m2=50.0,
+        max_area_m2=80.0,
+        page_limit=3,
+    )
+
+    refined = node.refine(
+        criteria=base,
+        message="только 3 комнаты, район Медеу и до 35 млн, pages 5",
+    )
+
+    assert refined.city == "Almaty"
+    assert refined.deal_type == "sale"
+    assert refined.min_price_kzt == 25_000_000
+    assert refined.max_price_kzt == 35_000_000
+    assert refined.rooms == [3]
+    assert refined.districts == ["Medeu"]
+    assert refined.page_limit == 5
 
 
 @pytest.mark.asyncio

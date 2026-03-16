@@ -1,7 +1,7 @@
 # Krisha Agent
 
 Autonomous multi-agent system for apartment discovery in Kazakhstan.  
-Current scope is **Phase 0 + Phase 6 baseline with Notion sync**: foundation, parser, LangGraph search pipeline, enrichment, Gemini-backed scoring, checkpoint memory, Telegram bot, persistent monitor settings, scheduler runtime baseline, Notion export, tests, and CI.
+Current scope is **Phase 0 + Phase 7 infra baseline**: foundation, parser, LangGraph search pipeline, enrichment, Gemini-backed scoring, checkpoint memory, Telegram bot, persistent monitor settings, ARQ scheduler runtime, Notion export, Podman stack, tests, and CI.
 
 ## Tech Stack
 
@@ -13,6 +13,7 @@ Current scope is **Phase 0 + Phase 6 baseline with Notion sync**: foundation, pa
 - Redis, PostgreSQL
 - Playwright + BeautifulSoup (Krisha parser)
 - uv, ruff, mypy, pytest, pre-commit
+- Podman Compose + GHCR image workflow
 
 ## Repository Structure
 
@@ -30,6 +31,8 @@ Current scope is **Phase 0 + Phase 6 baseline with Notion sync**: foundation, pa
 ├── alembic/
 │   └── versions/
 ├── tests/
+├── Containerfile
+├── podman-compose.yml
 └── .github/workflows/ci.yml
 ```
 
@@ -139,8 +142,9 @@ See `.env.example` for the full contract.
   - Optional Notion sync for saved apartments with local `page_id` metadata for idempotent updates.
   - Persistent monitor settings with `/monitor`, `/monitor on|off`, and `/monitor interval 6h`.
   - Scheduler runtime with inline mode plus ARQ producer/worker mode for monitor jobs.
+  - Podman container image, local `podman-compose.yml` stack, and GHCR build workflow.
   - HTML fixture-based parser tests and CI checks.
-- Not implemented yet: multi-step approval workflows, richer Notion database bootstrap/template automation.
+- Not implemented yet: multi-step approval workflows, richer Notion database bootstrap/template automation, VPS/systemd deploy automation.
 
 ## Telegram Bot Baseline
 
@@ -210,3 +214,41 @@ Current scheduler behavior:
 - in `arq` mode: enqueues one Redis job per due user and processes it in the ARQ worker,
 - persists search results,
 - sends Telegram notifications only for apartments not yet linked in `seen_apartments`.
+
+## Podman Stack
+
+The repository includes a shared runtime image in [Containerfile](/home/workpc/Desktop/Autonomous-Personal-Assistant-AI-Agent-/Containerfile) and a local stack in [podman-compose.yml](/home/workpc/Desktop/Autonomous-Personal-Assistant-AI-Agent-/podman-compose.yml).
+
+Suggested local flow:
+
+```bash
+cp .env.example .env
+podman-compose build
+podman-compose up -d postgres redis
+podman-compose run --rm migrate
+podman-compose up -d bot scheduler-producer scheduler-worker
+```
+
+Useful commands:
+
+```bash
+podman-compose logs -f bot
+podman-compose logs -f scheduler-worker
+podman-compose down
+```
+
+Current stack layout:
+
+- `postgres`: PostgreSQL 16 with persistent volume,
+- `redis`: Redis 7 queue/cache backend,
+- `migrate`: one-shot Alembic upgrade service,
+- `bot`: Telegram bot runtime,
+- `scheduler-producer`: ARQ job producer (`SCHEDULER__RUNTIME=arq`),
+- `scheduler-worker`: ARQ worker processing per-user monitor jobs.
+
+## Container Workflow
+
+GitHub Actions now includes [container.yml](/home/workpc/Desktop/Autonomous-Personal-Assistant-AI-Agent-/.github/workflows/container.yml):
+
+- pull requests build the runtime image for validation,
+- pushes to `main` build and push the image to `ghcr.io/<owner>/krisha-agent`.

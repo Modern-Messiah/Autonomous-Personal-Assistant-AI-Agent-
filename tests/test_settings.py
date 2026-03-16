@@ -47,8 +47,12 @@ def test_settings_load_from_env_file(tmp_path: Path) -> None:
     assert settings.db.name == "krisha_agent"
     assert settings.db.sqlalchemy_url.startswith("postgresql+asyncpg://")
     assert settings.redis.redis_url == "redis://localhost:6379/0"
+    assert settings.scheduler.runtime == "inline"
     assert settings.scheduler.poll_interval_seconds == 60
     assert settings.scheduler.batch_size == 50
+    assert settings.arq.queue_name == "krisha:monitor"
+    assert settings.arq.job_timeout_seconds == 900
+    assert settings.arq.max_tries == 3
     assert settings.notion.enabled is False
 
 

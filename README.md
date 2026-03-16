@@ -1,7 +1,7 @@
 # Krisha Agent
 
 Autonomous multi-agent system for apartment discovery in Kazakhstan.  
-Current scope is **Phase 0 + Phase 3 baseline**: foundation, parser, LangGraph search pipeline, enrichment, Gemini-backed scoring, checkpoint memory, tests, and CI.
+Current scope is **Phase 0 + Phase 4 baseline**: foundation, parser, LangGraph search pipeline, enrichment, Gemini-backed scoring, checkpoint memory, Telegram bot skeleton, tests, and CI.
 
 ## Tech Stack
 
@@ -9,7 +9,7 @@ Current scope is **Phase 0 + Phase 3 baseline**: foundation, parser, LangGraph s
 - Pydantic + pydantic-settings
 - SQLAlchemy 2 (async) + Alembic
 - LangGraph (search graph baseline implemented)
-- aiogram (planned implementation in Phase 4)
+- aiogram
 - Redis, PostgreSQL
 - Playwright + BeautifulSoup (Krisha parser)
 - uv, ruff, mypy, pytest, pre-commit
@@ -83,7 +83,7 @@ uv run ruff check .
 uv run ruff format .
 
 # type check
-uv run mypy agent config db
+uv run mypy agent bot config db
 
 # tests
 uv run pytest
@@ -129,5 +129,20 @@ See `.env.example` for the full contract.
   - `EnrichNode` with mortgage annuity calculation and 2GIS nearby summary client.
   - `ScoringNode` with Gemini structured JSON scoring and graceful fallback on scorer errors.
   - Optional Postgres-backed LangGraph checkpointing via `thread_id` and official saver integration.
+  - Telegram bot baseline on `aiogram` with `/start`, `/search`, `/criteria`, user registration, and active criteria persistence.
   - HTML fixture-based parser tests and CI checks.
-- Not implemented yet: Telegram dialog agent, Notion sync, scheduler runtime.
+- Not implemented yet: conversational bot flow, `/list`, `/monitor`, Notion sync, scheduler runtime.
+
+## Telegram Bot Baseline
+
+Run the bot locally after filling `.env`:
+
+```bash
+uv run python -m bot
+```
+
+Available commands:
+
+- `/start` registers the Telegram user and shows a short usage guide.
+- `/search <query>` parses text into `SearchCriteria`, stores it as active criteria, and runs the LangGraph search pipeline.
+- `/criteria` returns the last active criteria stored for the Telegram user.

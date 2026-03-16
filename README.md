@@ -1,7 +1,7 @@
 # Krisha Agent
 
 Autonomous multi-agent system for apartment discovery in Kazakhstan.  
-Current scope is **Phase 0 + Phase 7 infra baseline**: foundation, parser, LangGraph search pipeline, enrichment, Gemini-backed scoring, checkpoint memory, Telegram bot, persistent monitor settings, ARQ scheduler runtime, Notion export, Podman stack, tests, and CI.
+Current scope is **Phase 0 + Phase 7 infra baseline**: foundation, parser, LangGraph search pipeline, enrichment, Gemini-backed scoring, checkpoint memory, Telegram bot, persistent monitor settings, ARQ scheduler runtime, Notion export, Podman stack, VPS deploy automation, tests, and CI.
 
 ## Tech Stack
 
@@ -27,6 +27,7 @@ Current scope is **Phase 0 + Phase 7 infra baseline**: foundation, parser, LangG
 ├── bot/
 ├── config/
 ├── db/
+├── deploy/
 ├── scheduler/
 ├── alembic/
 │   └── versions/
@@ -144,7 +145,7 @@ See `.env.example` for the full contract.
   - Scheduler runtime with inline mode plus ARQ producer/worker mode for monitor jobs.
   - Podman container image, local `podman-compose.yml` stack, and GHCR build workflow.
   - HTML fixture-based parser tests and CI checks.
-- Not implemented yet: multi-step approval workflows, richer Notion database bootstrap/template automation, VPS/systemd deploy automation.
+- Not implemented yet: multi-step approval workflows, richer Notion database bootstrap/template automation.
 
 ## Telegram Bot Baseline
 
@@ -252,3 +253,33 @@ GitHub Actions now includes [container.yml](/home/workpc/Desktop/Autonomous-Pers
 
 - pull requests build the runtime image for validation,
 - pushes to `main` build and push the image to `ghcr.io/<owner>/krisha-agent`.
+
+## VPS Deploy
+
+The repository includes a rootless Podman deploy path for Ubuntu 24:
+
+- [bootstrap_ubuntu_24.sh](/home/workpc/Desktop/Autonomous-Personal-Assistant-AI-Agent-/deploy/vps/bootstrap_ubuntu_24.sh) installs Podman prerequisites and enables linger for the deploy user.
+- [krisha-agent-compose.service.template](/home/workpc/Desktop/Autonomous-Personal-Assistant-AI-Agent-/deploy/systemd/krisha-agent-compose.service.template) wraps the full `podman-compose` stack in a user-level systemd service.
+- [install_user_service.sh](/home/workpc/Desktop/Autonomous-Personal-Assistant-AI-Agent-/deploy/systemd/install_user_service.sh) renders the template into `~/.config/systemd/user`.
+
+Suggested VPS flow:
+
+```bash
+# once, as root
+sudo ./deploy/vps/bootstrap_ubuntu_24.sh
+
+# as the deploy user
+cp .env.example .env
+podman-compose build
+./deploy/systemd/install_user_service.sh
+systemctl --user start krisha-agent-compose.service
+systemctl --user status krisha-agent-compose.service
+```
+
+To roll out a code update:
+
+```bash
+git pull
+podman-compose build
+systemctl --user restart krisha-agent-compose.service
+```

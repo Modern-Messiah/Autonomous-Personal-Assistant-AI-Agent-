@@ -7,6 +7,7 @@ from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
+from bot.dialog_agent import DialogAgent, DialogTurnResult
 from bot.formatters import (
     format_criteria,
     format_monitor_status,
@@ -17,6 +18,8 @@ from bot.formatters import (
 from bot.keyboards import (
     LIST_CALLBACK_DATA,
     REFINE_CALLBACK_DATA,
+    REJECT_CALLBACK_DATA,
+    SAVE_CALLBACK_DATA,
     build_search_followup_keyboard,
 )
 from bot.monitoring import parse_monitor_interval
@@ -28,12 +31,38 @@ def create_bot_router(service: SearchBotService) -> Router:
     """Create router with minimal command set for the bot."""
     router = Router(name="krisha-agent")
 
-    async def send_search_execution(message: Message, result: SearchExecution) -> None:
+    def create_dialog_agent() -> DialogAgent:
+        return DialogAgent(service)
+
+    async def send_search_execution(
+        message: Message,
+        state: FSMContext,
+        result: SearchExecution,
+    ) -> None:
         await message.answer(format_criteria(result.criteria))
         await message.answer(
             format_search_results(result.apartments),
             reply_markup=build_search_followup_keyboard(),
         )
+        await state.set_state(SearchDialogStates.waiting_for_feedback)
+
+    async def send_dialog_turn(
+        message: Message,
+        state: FSMContext,
+        result: DialogTurnResult,
+    ) -> None:
+        for item in result.messages:
+            await message.answer(item)
+
+        if result.search_execution is not None:
+            await send_search_execution(message, state, result.search_execution)
+            return
+
+        if result.next_state == "clear":
+            await state.clear()
+            return
+
+        await state.set_state(SearchDialogStates.waiting_for_feedback)
 
     @router.message(CommandStart())
     async def handle_start(message: Message) -> None:
@@ -46,7 +75,11 @@ def create_bot_router(service: SearchBotService) -> Router:
         await message.answer(format_start_message())
 
     @router.message(Command("search"))
-    async def handle_search(message: Message, command: CommandObject) -> None:
+    async def handle_search(
+        message: Message,
+        command: CommandObject,
+        state: FSMContext,
+    ) -> None:
         if message.from_user is None:
             return
         query = (command.args or "").strip()
@@ -63,7 +96,7 @@ def create_bot_router(service: SearchBotService) -> Router:
             username=message.from_user.username,
             query=query,
         )
-        await send_search_execution(message, result)
+        await send_search_execution(message, state, result)
 
     @router.message(Command("refine"))
     async def handle_refine_command(
@@ -106,7 +139,7 @@ def create_bot_router(service: SearchBotService) -> Router:
             return
 
         await state.clear()
-        await send_search_execution(message, result)
+        await send_search_execution(message, state, result)
 
     @router.message(Command("cancel"))
     async def handle_cancel(message: Message, state: FSMContext) -> None:
@@ -228,6 +261,25 @@ def create_bot_router(service: SearchBotService) -> Router:
             )
         await callback.answer()
 
+    @router.callback_query(F.data == SAVE_CALLBACK_DATA)
+    async def handle_save_callback(callback: CallbackQuery, state: FSMContext) -> None:
+        if callback.message is not None:
+            await callback.message.answer(
+                "Подборка уже сохранена и доступна через /list."
+            )
+        await state.clear()
+        await callback.answer()
+
+    @router.callback_query(F.data == REJECT_CALLBACK_DATA)
+    async def handle_reject_callback(callback: CallbackQuery, state: FSMContext) -> None:
+        if callback.message is not None:
+            await callback.message.answer(
+                "Подборку отклонил для текущего диалога. "
+                "Можешь написать новый запрос или уточнение."
+            )
+        await state.clear()
+        await callback.answer()
+
     @router.callback_query(F.data == LIST_CALLBACK_DATA)
     async def handle_list_callback(callback: CallbackQuery) -> None:
         if callback.from_user is None:
@@ -265,6 +317,38 @@ def create_bot_router(service: SearchBotService) -> Router:
             return
 
         await state.clear()
-        await send_search_execution(message, result)
+        await send_search_execution(message, state, result)
+
+    @router.message(SearchDialogStates.waiting_for_feedback)
+    async def handle_feedback_message(message: Message, state: FSMContext) -> None:
+        if message.from_user is None:
+            return
+        text = (message.text or "").strip()
+        if not text:
+            await message.answer("Напиши новый запрос, уточнение или используй /cancel.")
+            return
+
+        result = await create_dialog_agent().handle_message(
+            telegram_user_id=message.from_user.id,
+            username=message.from_user.username,
+            message=text,
+        )
+        await send_dialog_turn(message, state, result)
+
+    @router.message()
+    async def handle_dialog_message(message: Message, state: FSMContext) -> None:
+        if message.from_user is None:
+            return
+        text = (message.text or "").strip()
+        if not text:
+            await message.answer("Поддерживаются текстовые команды и обычные текстовые запросы.")
+            return
+
+        result = await create_dialog_agent().handle_message(
+            telegram_user_id=message.from_user.id,
+            username=message.from_user.username,
+            message=text,
+        )
+        await send_dialog_turn(message, state, result)
 
     return router

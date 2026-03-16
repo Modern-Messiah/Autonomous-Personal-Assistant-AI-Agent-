@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Literal, cast
 
 from sqlalchemy import Select, select, tuple_, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,12 +15,15 @@ from agent.models.apartment import Apartment
 from agent.models.criteria import SearchCriteria
 from agent.models.enriched import EnrichedApartment
 from db.models import (
+    ApartmentFeedbackRecord,
     ApartmentRecord,
     MonitorSettingsRecord,
     SearchCriteriaRecord,
     SeenApartment,
     User,
 )
+
+ApartmentDecision = Literal["saved", "rejected"]
 
 
 @dataclass(slots=True, frozen=True)
@@ -281,6 +285,94 @@ async def upsert_apartment_records(
     return records
 
 
+async def list_apartment_records_by_urls(
+    session: AsyncSession,
+    *,
+    urls: Sequence[str],
+) -> list[ApartmentRecord]:
+    """Load apartment records by URL while preserving the requested order."""
+    unique_urls = list(dict.fromkeys(urls))
+    if not unique_urls:
+        return []
+
+    result = await session.execute(
+        select(ApartmentRecord).where(ApartmentRecord.url.in_(unique_urls))
+    )
+    records_by_url = {record.url: record for record in result.scalars()}
+    return [records_by_url[url] for url in unique_urls if url in records_by_url]
+
+
+async def upsert_apartment_feedback(
+    session: AsyncSession,
+    *,
+    user_id: int,
+    apartments: Sequence[ApartmentRecord],
+    decision: ApartmentDecision,
+) -> list[ApartmentFeedbackRecord]:
+    """Persist one feedback decision for each apartment in the selection."""
+    apartment_ids = [record.id for record in apartments]
+    if not apartment_ids:
+        return []
+
+    result = await session.execute(
+        select(ApartmentFeedbackRecord).where(
+            ApartmentFeedbackRecord.user_id == user_id,
+            ApartmentFeedbackRecord.apartment_id.in_(apartment_ids),
+        )
+    )
+    existing_by_id = {
+        record.apartment_id: record
+        for record in result.scalars()
+    }
+    decided_at = datetime.now(UTC)
+
+    feedback_records: list[ApartmentFeedbackRecord] = []
+    for apartment in apartments:
+        feedback = existing_by_id.get(apartment.id)
+        if feedback is None:
+            feedback = ApartmentFeedbackRecord(
+                user_id=user_id,
+                apartment_id=apartment.id,
+                decision=decision,
+                decided_at=decided_at,
+            )
+            session.add(feedback)
+        else:
+            feedback.decision = decision
+            feedback.decided_at = decided_at
+        feedback_records.append(feedback)
+
+    await session.flush()
+    return feedback_records
+
+
+async def get_apartment_feedback_map(
+    session: AsyncSession,
+    *,
+    user_id: int,
+    apartments: Sequence[ApartmentRecord],
+) -> dict[uuid.UUID, ApartmentDecision]:
+    """Load persisted feedback decision by apartment id for one user."""
+    apartment_ids = [record.id for record in apartments]
+    if not apartment_ids:
+        return {}
+
+    result = await session.execute(
+        select(
+            ApartmentFeedbackRecord.apartment_id,
+            ApartmentFeedbackRecord.decision,
+        ).where(
+            ApartmentFeedbackRecord.user_id == user_id,
+            ApartmentFeedbackRecord.apartment_id.in_(apartment_ids),
+        )
+    )
+    rows = [
+        (cast(uuid.UUID, apartment_id), cast(ApartmentDecision, decision))
+        for apartment_id, decision in result.all()
+    ]
+    return dict(rows)
+
+
 async def mark_apartments_seen(
     session: AsyncSession,
     *,
@@ -346,6 +438,32 @@ async def list_seen_apartments(
         .join(User, SeenApartment.user_id == User.id)
         .where(User.telegram_user_id == telegram_user_id)
         .order_by(SeenApartment.first_seen_at.desc())
+        .limit(limit)
+    )
+    result = await session.execute(statement)
+    return [
+        _load_enriched_apartment(payload)
+        for payload in result.scalars()
+    ]
+
+
+async def list_feedback_apartments(
+    session: AsyncSession,
+    *,
+    telegram_user_id: int,
+    decision: ApartmentDecision,
+    limit: int = 10,
+) -> list[EnrichedApartment]:
+    """Return apartments matching one persisted user feedback decision."""
+    statement = (
+        select(ApartmentRecord.payload)
+        .join(ApartmentFeedbackRecord, ApartmentFeedbackRecord.apartment_id == ApartmentRecord.id)
+        .join(User, ApartmentFeedbackRecord.user_id == User.id)
+        .where(
+            User.telegram_user_id == telegram_user_id,
+            ApartmentFeedbackRecord.decision == decision,
+        )
+        .order_by(ApartmentFeedbackRecord.decided_at.desc())
         .limit(limit)
     )
     result = await session.execute(statement)

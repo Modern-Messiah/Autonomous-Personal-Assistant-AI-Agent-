@@ -14,6 +14,7 @@ def test_metadata_contains_expected_tables() -> None:
         "users",
         "search_criteria",
         "apartments",
+        "apartment_feedback",
         "monitor_settings",
         "seen_apartments",
     }
@@ -35,19 +36,24 @@ def test_apartments_constraints_and_indexes_present() -> None:
 
 
 def test_other_indexes_present() -> None:
+    apartment_feedback = Base.metadata.tables["apartment_feedback"]
     monitor_settings = Base.metadata.tables["monitor_settings"]
     search_criteria = Base.metadata.tables["search_criteria"]
     seen_apartments = Base.metadata.tables["seen_apartments"]
 
+    feedback_index_names = {index.name for index in apartment_feedback.indexes}
     monitor_index_names = {index.name for index in monitor_settings.indexes}
     search_index_names = {index.name for index in search_criteria.indexes}
     seen_index_names = {index.name for index in seen_apartments.indexes}
 
+    assert "idx_apartment_feedback_decision_decided_at" in feedback_index_names
     assert "idx_monitor_settings_is_enabled" in monitor_index_names
     assert "idx_search_criteria_user_active" in search_index_names
     assert "idx_seen_apartments_first_seen_at" in seen_index_names
 
+    feedback_columns = apartment_feedback.c.keys()
     monitor_columns = monitor_settings.c.keys()
+    assert "decision" in feedback_columns
     assert "last_checked_at" in monitor_columns
 
 
@@ -88,3 +94,15 @@ def test_monitor_last_checked_at_migration_contains_required_operations() -> Non
 
     assert re.search(r'op\.add_column\(\s*"monitor_settings"', migration_text) is not None
     assert "last_checked_at" in migration_text
+
+
+def test_apartment_feedback_migration_contains_required_operations() -> None:
+    versions_dir = Path(__file__).resolve().parents[1] / "alembic" / "versions"
+    feedback_migrations = sorted(versions_dir.glob("*_add_apartment_feedback.py"))
+
+    assert len(feedback_migrations) == 1
+    migration_text = feedback_migrations[0].read_text(encoding="utf-8")
+
+    assert re.search(r'op\.create_table\(\s*"apartment_feedback"', migration_text) is not None
+    assert "ck_apartment_feedback_decision" in migration_text
+    assert "idx_apartment_feedback_decision_decided_at" in migration_text

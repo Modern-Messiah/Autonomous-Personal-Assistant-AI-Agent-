@@ -1,6 +1,7 @@
 """Application settings loaded from environment variables."""
 
 from functools import lru_cache
+from typing import Literal
 from urllib.parse import quote_plus
 
 from pydantic import BaseModel, Field, SecretStr, model_validator
@@ -93,8 +94,17 @@ class ScoringSettings(BaseModel):
 class SchedulerSettings(BaseModel):
     """Background scheduler behavior settings."""
 
+    runtime: Literal["inline", "arq"] = "inline"
     poll_interval_seconds: int = Field(default=60, ge=1, le=3600)
     batch_size: int = Field(default=50, ge=1, le=1000)
+
+
+class ArqSettings(BaseModel):
+    """ARQ queue settings for background worker mode."""
+
+    queue_name: str = Field(default="krisha:monitor", min_length=1)
+    job_timeout_seconds: int = Field(default=900, ge=1, le=86_400)
+    max_tries: int = Field(default=3, ge=1, le=100)
 
 
 class NotionSettings(BaseModel):
@@ -137,6 +147,7 @@ class Settings(BaseSettings):
     parser: ParserSettings = Field(default_factory=ParserSettings)
     scoring: ScoringSettings = Field(default_factory=ScoringSettings)
     scheduler: SchedulerSettings = Field(default_factory=SchedulerSettings)
+    arq: ArqSettings = Field(default_factory=ArqSettings)
     notion: NotionSettings = Field(default_factory=NotionSettings)
 
 

@@ -133,11 +133,11 @@ See `.env.example` for the full contract.
   - Telegram bot baseline on `aiogram` with `/start`, `/search`, `/criteria`, user registration, and active criteria persistence.
 - Supervisor-style dialog agent for free-text turns, refinement routing, and natural-language fallback without explicit commands.
   - Dialog refinement baseline with `/refine`, `/cancel`, FSM-based follow-up text, and inline "Сохранить" / "Отклонить" / "Уточнить критерии" actions after search results.
-  - Search result persistence in `apartments` / `seen_apartments` and `/list` for the latest saved apartments.
+  - Search result persistence in `apartments` / `seen_apartments`, plus `apartment_feedback` memory for explicit `saved/rejected` decisions and `/list` for saved apartments.
   - Persistent monitor settings with `/monitor`, `/monitor on|off`, and `/monitor interval 6h`.
   - Scheduler runtime baseline that polls enabled monitor targets, respects `interval_minutes`, and sends only newly discovered apartments.
   - HTML fixture-based parser tests and CI checks.
-- Not implemented yet: richer multi-step approval memory, ARQ-based production scheduler, Notion sync.
+- Not implemented yet: multi-step approval workflows, ARQ-based production scheduler, Notion sync.
 
 ## Telegram Bot Baseline
 
@@ -155,7 +155,7 @@ Available commands:
 - `/refine <query>` merges a free-text refinement into the active criteria and reruns the search.
 - `/cancel` exits refinement mode after an inline or manual refine prompt.
 - `/criteria` returns the last active criteria stored for the Telegram user.
-- `/list` returns recently saved apartments linked to the Telegram user.
+- `/list` returns apartments explicitly saved through dialog follow-up actions.
 - `/monitor` shows current monitor settings.
 - `/monitor on|off` enables or disables monitoring for the user.
 - `/monitor interval 6h` updates the monitor interval in persistent settings.
@@ -164,6 +164,7 @@ Current dialog additions:
 
 - after `/search`, the bot shows inline actions for criteria refinement and saved listings,
 - after search results, the dialog enters follow-up mode and waits for feedback or a natural-language clarification,
+- "Сохранить" persists the currently shown shortlist, while "Отклонить" stores a negative decision and filters those listings from later manual search results,
 - the "Уточнить критерии" action opens FSM-based follow-up mode,
 - a plain-text clarification like `только 3 комнаты и до 35 млн` merges into active criteria instead of resetting the whole search,
 - free-text messages like `покажи сохраненные квартиры` or `какой сейчас мониторинг` are routed through the dialog supervisor without slash commands.

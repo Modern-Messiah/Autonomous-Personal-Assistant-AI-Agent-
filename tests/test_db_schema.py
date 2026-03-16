@@ -54,6 +54,8 @@ def test_other_indexes_present() -> None:
     feedback_columns = apartment_feedback.c.keys()
     monitor_columns = monitor_settings.c.keys()
     assert "decision" in feedback_columns
+    assert "notion_page_id" in feedback_columns
+    assert "notion_synced_at" in feedback_columns
     assert "last_checked_at" in monitor_columns
 
 
@@ -106,3 +108,17 @@ def test_apartment_feedback_migration_contains_required_operations() -> None:
     assert re.search(r'op\.create_table\(\s*"apartment_feedback"', migration_text) is not None
     assert "ck_apartment_feedback_decision" in migration_text
     assert "idx_apartment_feedback_decision_decided_at" in migration_text
+
+
+def test_apartment_feedback_notion_sync_migration_contains_required_operations() -> None:
+    versions_dir = Path(__file__).resolve().parents[1] / "alembic" / "versions"
+    feedback_migrations = sorted(
+        versions_dir.glob("*_add_notion_sync_fields_to_apartment_feedback.py")
+    )
+
+    assert len(feedback_migrations) == 1
+    migration_text = feedback_migrations[0].read_text(encoding="utf-8")
+
+    assert re.search(r'op\.add_column\(\s*"apartment_feedback"', migration_text) is not None
+    assert "notion_page_id" in migration_text
+    assert "notion_synced_at" in migration_text

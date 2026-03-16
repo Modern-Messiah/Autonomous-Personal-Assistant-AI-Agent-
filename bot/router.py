@@ -6,7 +6,12 @@ from aiogram import Router
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import Message
 
-from bot.formatters import format_criteria, format_search_results, format_start_message
+from bot.formatters import (
+    format_criteria,
+    format_saved_apartments,
+    format_search_results,
+    format_start_message,
+)
 from bot.service import SearchBotService
 
 
@@ -59,5 +64,13 @@ def create_bot_router(service: SearchBotService) -> Router:
             return
         await message.answer(format_criteria(criteria))
 
-    return router
+    @router.message(Command("list"))
+    async def handle_list(message: Message) -> None:
+        if message.from_user is None:
+            return
+        apartments = await service.get_saved_apartments(
+            telegram_user_id=message.from_user.id,
+        )
+        await message.answer(format_saved_apartments(apartments))
 
+    return router

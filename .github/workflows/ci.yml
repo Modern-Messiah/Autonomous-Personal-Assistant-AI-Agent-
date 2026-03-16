@@ -28,8 +28,7 @@ jobs:
         run: uv run ruff check .
 
       - name: MyPy
-        run: uv run mypy agent config db
+        run: uv run mypy agent bot config db
 
       - name: Pytest
         run: uv run pytest
-

@@ -60,7 +60,7 @@ python_version = "3.12"
 plugins = ["sqlalchemy.ext.mypy.plugin"]
 strict = true
 warn_unused_configs = true
-files = ["agent", "config", "db"]
+files = ["agent", "bot", "config", "db"]
 exclude = ["alembic"]
 
 [[tool.mypy.overrides]]
@@ -73,3 +73,7 @@ module = [
   "playwright.*",
 ]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["bot.router"]
+disable_error_code = ["untyped-decorator"]

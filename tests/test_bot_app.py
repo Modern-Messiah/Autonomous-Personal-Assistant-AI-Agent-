@@ -21,10 +21,13 @@ class DummyService:
         del telegram_user_id
         return None
 
+    async def get_saved_apartments(self, *, telegram_user_id: int, limit: int = 10):
+        del telegram_user_id, limit
+        return []
+
 
 def test_create_dispatcher_includes_bot_routes() -> None:
     dispatcher = create_dispatcher(service=DummyService())  # type: ignore[arg-type]
 
     assert isinstance(dispatcher, Dispatcher)
     assert dispatcher.resolve_used_update_types()
-

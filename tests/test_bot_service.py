@@ -16,8 +16,9 @@ from bot.formatters import (
     format_search_results,
     format_start_message,
 )
+from bot.keyboards import LIST_CALLBACK_DATA, REFINE_CALLBACK_DATA, build_search_followup_keyboard
 from bot.monitoring import format_monitor_interval, parse_monitor_interval
-from bot.service import SearchBotService
+from bot.service import ActiveCriteriaNotFoundError, SearchBotService
 
 
 class FakeSessionFactory:
@@ -172,6 +173,95 @@ async def test_search_bot_service_loads_saved_apartments(monkeypatch: pytest.Mon
 
 
 @pytest.mark.asyncio
+async def test_search_bot_service_refines_active_criteria(monkeypatch: pytest.MonkeyPatch) -> None:
+    session_factory = FakeSessionFactory()
+    service = SearchBotService(session_factory=session_factory, search_runner=fake_search_runner)
+
+    async def fake_get_record(session, *, telegram_user_id: int):
+        del session
+        assert telegram_user_id == 77
+        return SimpleNamespace(
+            criteria={
+                "user_id": 77,
+                "city": "Almaty",
+                "deal_type": "sale",
+                "property_type": "apartment",
+                "min_price_kzt": 25_000_000,
+                "max_price_kzt": 45_000_000,
+                "rooms": [2, 3],
+                "districts": ["Bostandyk"],
+                "min_area_m2": 50.0,
+                "max_area_m2": 80.0,
+                "page_limit": 3,
+            }
+        )
+
+    async def fake_upsert(session, *, telegram_user_id: int, username: str | None):
+        del session
+        assert telegram_user_id == 77
+        assert username == "tester"
+        return SimpleNamespace(id=123)
+
+    stored_payloads: list[dict[str, object]] = []
+
+    async def fake_replace(session, *, user_id: int, criteria_payload):
+        del session
+        assert user_id == 123
+        stored_payloads.append(dict(criteria_payload))
+        return SimpleNamespace()
+
+    async def fake_upsert_apartments(session, *, apartments: list[EnrichedApartment]):
+        del session
+        return [SimpleNamespace(id="apt-1") for _ in apartments]
+
+    async def fake_mark_seen(session, *, user_id: int, apartments: list[SimpleNamespace]):
+        del session, user_id, apartments
+
+    monkeypatch.setattr("bot.service.get_active_search_criteria_record", fake_get_record)
+    monkeypatch.setattr("bot.service.upsert_telegram_user", fake_upsert)
+    monkeypatch.setattr("bot.service.replace_active_search_criteria", fake_replace)
+    monkeypatch.setattr("bot.service.upsert_apartment_records", fake_upsert_apartments)
+    monkeypatch.setattr("bot.service.mark_apartments_seen", fake_mark_seen)
+
+    result = await service.refine_search(
+        telegram_user_id=77,
+        username="tester",
+        message="только 3 комнаты и до 35 млн",
+    )
+
+    assert result.criteria.city == "Almaty"
+    assert result.criteria.min_price_kzt == 25_000_000
+    assert result.criteria.max_price_kzt == 35_000_000
+    assert result.criteria.rooms == [3]
+    assert stored_payloads[0]["max_price_kzt"] == 35_000_000
+    assert stored_payloads[0]["rooms"] == [3]
+    assert session_factory.session.commit_calls == 2
+
+
+@pytest.mark.asyncio
+async def test_search_bot_service_refine_requires_active_criteria(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = SearchBotService(
+        session_factory=FakeSessionFactory(),
+        search_runner=fake_search_runner,
+    )
+
+    async def fake_get_record(session, *, telegram_user_id: int):
+        del session, telegram_user_id
+        return None
+
+    monkeypatch.setattr("bot.service.get_active_search_criteria_record", fake_get_record)
+
+    with pytest.raises(ActiveCriteriaNotFoundError):
+        await service.refine_search(
+            telegram_user_id=77,
+            username="tester",
+            message="до 35 млн",
+        )
+
+
+@pytest.mark.asyncio
 async def test_search_bot_service_reads_monitor_status(monkeypatch: pytest.MonkeyPatch) -> None:
     session_factory = FakeSessionFactory()
     service = SearchBotService(session_factory=session_factory, search_runner=fake_search_runner)
@@ -281,9 +371,11 @@ def test_formatters_render_expected_content() -> None:
     saved_text = format_saved_apartments([build_apartment()])
     monitor_text = format_monitor_status(service.get_default_monitor_status())
     empty_monitor_text = format_monitor_status(None)
+    keyboard = build_search_followup_keyboard()
 
     assert "/search" in format_start_message()
     assert "/list" in format_start_message()
+    assert "/refine" in format_start_message()
     assert "/monitor" in format_start_message()
     assert "Алматы" not in text
     assert "Город: Almaty" in text
@@ -292,6 +384,8 @@ def test_formatters_render_expected_content() -> None:
     assert "Сохраненные квартиры" in saved_text
     assert "Статус мониторинга" in monitor_text
     assert "Мониторинг пока не настроен" in empty_monitor_text
+    assert keyboard.inline_keyboard[0][0].callback_data == REFINE_CALLBACK_DATA
+    assert keyboard.inline_keyboard[0][1].callback_data == LIST_CALLBACK_DATA
 
 
 async def fake_search_runner(

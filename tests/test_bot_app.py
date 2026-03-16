@@ -29,6 +29,26 @@ class DummyService:
         del telegram_user_id, limit
         return []
 
+    async def save_apartments(
+        self,
+        *,
+        telegram_user_id: int,
+        username: str | None,
+        apartment_urls: list[str],
+    ):
+        del telegram_user_id, username, apartment_urls
+        return 0
+
+    async def reject_apartments(
+        self,
+        *,
+        telegram_user_id: int,
+        username: str | None,
+        apartment_urls: list[str],
+    ):
+        del telegram_user_id, username, apartment_urls
+        return 0
+
     async def get_monitor_status(self, *, telegram_user_id: int):
         del telegram_user_id
         return None

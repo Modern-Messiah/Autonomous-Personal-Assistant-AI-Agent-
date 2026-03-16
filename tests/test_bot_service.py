@@ -53,19 +53,19 @@ class FakeSession:
         self.commit_calls += 1
 
 
-def build_apartment() -> EnrichedApartment:
+def build_apartment(external_id: str = "900100") -> EnrichedApartment:
     return EnrichedApartment(
         apartment=Apartment(
-            external_id="900100",
+            external_id=external_id,
             source="krisha",
-            url="https://krisha.kz/a/show/900100",
-            title="Bot test apartment",
+            url=f"https://krisha.kz/a/show/{external_id}",
+            title=f"Bot test apartment {external_id}",
             price_kzt=31_000_000,
             city="Almaty",
             rooms=2,
             area_m2=53.0,
             floor="5/9",
-            photos=["https://photos.krisha.kz/900100/1.jpg"],
+            photos=[f"https://photos.krisha.kz/{external_id}/1.jpg"],
         ),
         nearby_schools=5,
         nearby_parks=3,
@@ -107,10 +107,15 @@ async def test_search_bot_service_registers_and_runs_search(
         del session
         seen_links.append((user_id, len(apartments)))
 
+    async def fake_feedback_map(session, *, user_id: int, apartments: list[SimpleNamespace]):
+        del session, user_id, apartments
+        return {}
+
     monkeypatch.setattr("bot.service.upsert_telegram_user", fake_upsert)
     monkeypatch.setattr("bot.service.replace_active_search_criteria", fake_replace)
     monkeypatch.setattr("bot.service.upsert_apartment_records", fake_upsert_apartments)
     monkeypatch.setattr("bot.service.mark_apartments_seen", fake_mark_seen)
+    monkeypatch.setattr("bot.service.get_apartment_feedback_map", fake_feedback_map)
 
     result = await service.run_search(
         telegram_user_id=77,
@@ -164,18 +169,153 @@ async def test_search_bot_service_loads_saved_apartments(monkeypatch: pytest.Mon
     session_factory = FakeSessionFactory()
     service = SearchBotService(session_factory=session_factory, search_runner=fake_search_runner)
 
-    async def fake_list_seen(session, *, telegram_user_id: int, limit: int):
+    async def fake_list_feedback(
+        session,
+        *,
+        telegram_user_id: int,
+        decision: str,
+        limit: int,
+    ):
         del session
         assert telegram_user_id == 77
+        assert decision == "saved"
         assert limit == 5
         return [build_apartment()]
 
-    monkeypatch.setattr("bot.service.list_seen_apartments", fake_list_seen)
+    monkeypatch.setattr("bot.service.list_feedback_apartments", fake_list_feedback)
 
     apartments = await service.get_saved_apartments(telegram_user_id=77, limit=5)
 
     assert len(apartments) == 1
-    assert apartments[0].apartment.title == "Bot test apartment"
+    assert apartments[0].apartment.title == "Bot test apartment 900100"
+
+
+@pytest.mark.asyncio
+async def test_search_bot_service_filters_rejected_apartments(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_factory = FakeSessionFactory()
+
+    async def fake_runner(
+        criteria: SearchCriteria,
+        *,
+        thread_id: str,
+        checkpoint_ns: str,
+    ) -> list[EnrichedApartment]:
+        assert criteria.city == "Almaty"
+        assert thread_id == "telegram-user:77"
+        assert checkpoint_ns == "telegram-search"
+        return [build_apartment("900100"), build_apartment("900101")]
+
+    service = SearchBotService(session_factory=session_factory, search_runner=fake_runner)
+
+    async def fake_upsert(session, *, telegram_user_id: int, username: str | None):
+        del session, telegram_user_id, username
+        return SimpleNamespace(id=123)
+
+    async def fake_replace(session, *, user_id: int, criteria_payload):
+        del session, criteria_payload
+        assert user_id == 123
+        return SimpleNamespace()
+
+    seen_links: list[tuple[int, int]] = []
+    stored_records = [
+        SimpleNamespace(id="record-1"),
+        SimpleNamespace(id="record-2"),
+    ]
+
+    async def fake_upsert_apartments(session, *, apartments: list[EnrichedApartment]):
+        del session
+        assert [item.apartment.external_id for item in apartments] == ["900100", "900101"]
+        return stored_records
+
+    async def fake_mark_seen(session, *, user_id: int, apartments: list[SimpleNamespace]):
+        del session
+        seen_links.append((user_id, len(apartments)))
+
+    async def fake_feedback_map(session, *, user_id: int, apartments: list[SimpleNamespace]):
+        del session
+        assert user_id == 123
+        assert apartments == stored_records
+        return {"record-2": "rejected"}
+
+    monkeypatch.setattr("bot.service.upsert_telegram_user", fake_upsert)
+    monkeypatch.setattr("bot.service.replace_active_search_criteria", fake_replace)
+    monkeypatch.setattr("bot.service.upsert_apartment_records", fake_upsert_apartments)
+    monkeypatch.setattr("bot.service.mark_apartments_seen", fake_mark_seen)
+    monkeypatch.setattr("bot.service.get_apartment_feedback_map", fake_feedback_map)
+
+    result = await service.run_search(
+        telegram_user_id=77,
+        username="tester",
+        query="2-комнатная квартира в Алматы до 40 млн",
+    )
+
+    assert [item.apartment.external_id for item in result.apartments] == ["900100"]
+    assert seen_links == [(123, 2)]
+    assert session_factory.session.commit_calls == 2
+
+
+@pytest.mark.asyncio
+async def test_search_bot_service_records_save_and_reject_feedback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_factory = FakeSessionFactory()
+    service = SearchBotService(session_factory=session_factory, search_runner=fake_search_runner)
+
+    async def fake_upsert(session, *, telegram_user_id: int, username: str | None):
+        del session
+        assert telegram_user_id == 77
+        assert username == "tester"
+        return SimpleNamespace(id=123)
+
+    async def fake_list_apartments(session, *, urls: list[str]):
+        del session
+        assert urls == [
+            "https://krisha.kz/a/show/900100",
+            "https://krisha.kz/a/show/900101",
+        ]
+        return [
+            SimpleNamespace(id="record-1", url=urls[0]),
+            SimpleNamespace(id="record-2", url=urls[1]),
+        ]
+
+    decisions: list[tuple[int, str, int]] = []
+
+    async def fake_upsert_feedback(session, *, user_id: int, apartments, decision: str):
+        del session
+        decisions.append((user_id, decision, len(apartments)))
+        return []
+
+    monkeypatch.setattr("bot.service.upsert_telegram_user", fake_upsert)
+    monkeypatch.setattr("bot.service.list_apartment_records_by_urls", fake_list_apartments)
+    monkeypatch.setattr("bot.service.upsert_apartment_feedback", fake_upsert_feedback)
+
+    saved_count = await service.save_apartments(
+        telegram_user_id=77,
+        username="tester",
+        apartment_urls=[
+            "https://krisha.kz/a/show/900100",
+            "https://krisha.kz/a/show/900101",
+            "https://krisha.kz/a/show/900100",
+        ],
+    )
+    rejected_count = await service.reject_apartments(
+        telegram_user_id=77,
+        username="tester",
+        apartment_urls=[
+            "https://krisha.kz/a/show/900100",
+            "https://krisha.kz/a/show/900101",
+        ],
+    )
+
+    assert saved_count == 2
+    assert rejected_count == 2
+    assert decisions == [
+        (123, "saved", 2),
+        (123, "rejected", 2),
+    ]
+    assert session_factory.session.commit_calls == 2
 
 
 @pytest.mark.asyncio
@@ -223,11 +363,16 @@ async def test_search_bot_service_refines_active_criteria(monkeypatch: pytest.Mo
     async def fake_mark_seen(session, *, user_id: int, apartments: list[SimpleNamespace]):
         del session, user_id, apartments
 
+    async def fake_feedback_map(session, *, user_id: int, apartments: list[SimpleNamespace]):
+        del session, user_id, apartments
+        return {}
+
     monkeypatch.setattr("bot.service.get_active_search_criteria_record", fake_get_record)
     monkeypatch.setattr("bot.service.upsert_telegram_user", fake_upsert)
     monkeypatch.setattr("bot.service.replace_active_search_criteria", fake_replace)
     monkeypatch.setattr("bot.service.upsert_apartment_records", fake_upsert_apartments)
     monkeypatch.setattr("bot.service.mark_apartments_seen", fake_mark_seen)
+    monkeypatch.setattr("bot.service.get_apartment_feedback_map", fake_feedback_map)
 
     result = await service.refine_search(
         telegram_user_id=77,

@@ -1,0 +1,21 @@
+[Unit]
+Description=Krisha Agent Podman Compose Stack
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=__PROJECT_ROOT__
+Environment=PODMAN_COMPOSE_WARNING_LOGS=false
+ExecStartPre=-/usr/bin/env podman-compose -f __PROJECT_ROOT__/podman-compose.yml up -d postgres redis
+ExecStartPre=/usr/bin/env podman-compose -f __PROJECT_ROOT__/podman-compose.yml run --rm migrate
+ExecStart=/usr/bin/env podman-compose -f __PROJECT_ROOT__/podman-compose.yml up --remove-orphans
+ExecStop=/usr/bin/env podman-compose -f __PROJECT_ROOT__/podman-compose.yml down
+Restart=always
+RestartSec=10
+TimeoutStartSec=900
+TimeoutStopSec=120
+ExecReload=/usr/bin/env podman-compose -f __PROJECT_ROOT__/podman-compose.yml up -d --remove-orphans
+
+[Install]
+WantedBy=default.target

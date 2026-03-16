@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import Select, select, tuple_, update
@@ -10,7 +11,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from agent.models.apartment import Apartment
 from agent.models.enriched import EnrichedApartment
-from db.models import ApartmentRecord, SearchCriteriaRecord, SeenApartment, User
+from db.models import (
+    ApartmentRecord,
+    MonitorSettingsRecord,
+    SearchCriteriaRecord,
+    SeenApartment,
+    User,
+)
 
 
 async def upsert_telegram_user(
@@ -77,6 +84,44 @@ async def get_active_search_criteria_record(
             SearchCriteriaRecord.is_active.is_(True),
         )
         .order_by(SearchCriteriaRecord.created_at.desc())
+        .limit(1)
+    )
+    result = await session.execute(statement)
+    return result.scalar_one_or_none()
+
+
+async def upsert_monitor_settings(
+    session: AsyncSession,
+    *,
+    user_id: int,
+    is_enabled: bool | None = None,
+    interval_minutes: int | None = None,
+) -> MonitorSettingsRecord:
+    """Create or update monitor settings for a user."""
+    record = await session.get(MonitorSettingsRecord, user_id)
+    if record is None:
+        record = MonitorSettingsRecord(user_id=user_id)
+        session.add(record)
+
+    if is_enabled is not None:
+        record.is_enabled = is_enabled
+    if interval_minutes is not None:
+        record.interval_minutes = interval_minutes
+    record.updated_at = datetime.now(UTC)
+    await session.flush()
+    return record
+
+
+async def get_monitor_settings_record(
+    session: AsyncSession,
+    *,
+    telegram_user_id: int,
+) -> MonitorSettingsRecord | None:
+    """Load monitor settings for a Telegram user."""
+    statement: Select[tuple[MonitorSettingsRecord]] = (
+        select(MonitorSettingsRecord)
+        .join(User, MonitorSettingsRecord.user_id == User.id)
+        .where(User.telegram_user_id == telegram_user_id)
         .limit(1)
     )
     result = await session.execute(statement)

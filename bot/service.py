@@ -11,12 +11,15 @@ from agent.graph import run_search_graph
 from agent.models.criteria import SearchCriteria
 from agent.models.enriched import EnrichedApartment
 from agent.nodes.intent_node import IntentNode
+from bot.monitoring import DEFAULT_MONITOR_INTERVAL_MINUTES
 from db import (
     get_active_search_criteria_record,
+    get_monitor_settings_record,
     list_seen_apartments,
     mark_apartments_seen,
     replace_active_search_criteria,
     upsert_apartment_records,
+    upsert_monitor_settings,
     upsert_telegram_user,
 )
 
@@ -29,6 +32,14 @@ class SearchExecution:
 
     criteria: SearchCriteria
     apartments: list[EnrichedApartment]
+
+
+@dataclass(slots=True, frozen=True)
+class MonitorStatus:
+    """Persistent monitoring settings exposed to bot handlers."""
+
+    enabled: bool
+    interval_minutes: int
 
 
 class SearchBotService:
@@ -125,3 +136,78 @@ class SearchBotService:
                 telegram_user_id=telegram_user_id,
                 limit=limit,
             )
+
+    async def get_monitor_status(
+        self,
+        *,
+        telegram_user_id: int,
+    ) -> MonitorStatus | None:
+        """Return current monitoring settings for a Telegram user."""
+        async with self._session_factory() as session:
+            record = await get_monitor_settings_record(
+                session,
+                telegram_user_id=telegram_user_id,
+            )
+            if record is None:
+                return None
+            return MonitorStatus(
+                enabled=record.is_enabled,
+                interval_minutes=record.interval_minutes,
+            )
+
+    async def set_monitor_enabled(
+        self,
+        *,
+        telegram_user_id: int,
+        username: str | None,
+        enabled: bool,
+    ) -> MonitorStatus:
+        """Create or update monitor flag for a Telegram user."""
+        async with self._session_factory() as session:
+            user = await upsert_telegram_user(
+                session,
+                telegram_user_id=telegram_user_id,
+                username=username,
+            )
+            record = await upsert_monitor_settings(
+                session,
+                user_id=user.id,
+                is_enabled=enabled,
+            )
+            await session.commit()
+            return MonitorStatus(
+                enabled=record.is_enabled,
+                interval_minutes=record.interval_minutes,
+            )
+
+    async def set_monitor_interval(
+        self,
+        *,
+        telegram_user_id: int,
+        username: str | None,
+        interval_minutes: int,
+    ) -> MonitorStatus:
+        """Create or update monitor interval for a Telegram user."""
+        async with self._session_factory() as session:
+            user = await upsert_telegram_user(
+                session,
+                telegram_user_id=telegram_user_id,
+                username=username,
+            )
+            record = await upsert_monitor_settings(
+                session,
+                user_id=user.id,
+                interval_minutes=interval_minutes,
+            )
+            await session.commit()
+            return MonitorStatus(
+                enabled=record.is_enabled,
+                interval_minutes=record.interval_minutes,
+            )
+
+    def get_default_monitor_status(self) -> MonitorStatus:
+        """Return default monitor settings when nothing is stored yet."""
+        return MonitorStatus(
+            enabled=False,
+            interval_minutes=DEFAULT_MONITOR_INTERVAL_MINUTES,
+        )

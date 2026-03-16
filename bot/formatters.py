@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from agent.models.criteria import SearchCriteria
 from agent.models.enriched import EnrichedApartment
+from bot.monitoring import format_monitor_interval
+from bot.service import MonitorStatus
 
 
 def format_start_message() -> str:
@@ -13,7 +15,8 @@ def format_start_message() -> str:
         "Используй /search <запрос>, например:\n"
         "/search 2-комнатная квартира в Алматы до 45 млн\n\n"
         "Текущие критерии можно посмотреть через /criteria.\n"
-        "Последние сохраненные варианты доступны через /list."
+        "Последние сохраненные варианты доступны через /list.\n"
+        "Мониторинг: /monitor, /monitor on, /monitor interval 6h."
     )
 
 
@@ -62,6 +65,23 @@ def format_saved_apartments(apartments: list[EnrichedApartment], *, limit: int =
     lines = ["Сохраненные квартиры:"]
     lines.extend(_format_apartment_lines(apartments, limit=limit))
     return "\n".join(lines)
+
+
+def format_monitor_status(status: MonitorStatus | None) -> str:
+    """Render persisted monitor settings for `/monitor` command."""
+    if status is None:
+        return (
+            "Мониторинг пока не настроен.\n"
+            "Используй /monitor on, /monitor off или /monitor interval 6h."
+        )
+
+    state = "включен" if status.enabled else "выключен"
+    interval = format_monitor_interval(status.interval_minutes)
+    return (
+        "Статус мониторинга:\n"
+        f"Состояние: {state}\n"
+        f"Интервал: {interval}"
+    )
 
 
 def _format_apartment_lines(

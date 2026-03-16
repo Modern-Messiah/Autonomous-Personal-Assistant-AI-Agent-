@@ -47,6 +47,9 @@ def test_other_indexes_present() -> None:
     assert "idx_search_criteria_user_active" in search_index_names
     assert "idx_seen_apartments_first_seen_at" in seen_index_names
 
+    monitor_columns = monitor_settings.c.keys()
+    assert "last_checked_at" in monitor_columns
+
 
 def test_init_migration_contains_required_operations() -> None:
     versions_dir = Path(__file__).resolve().parents[1] / "alembic" / "versions"
@@ -74,3 +77,14 @@ def test_monitor_settings_migration_contains_required_operations() -> None:
     assert re.search(r'op\.create_table\(\s*"monitor_settings"', migration_text) is not None
     assert "interval_minutes" in migration_text
     assert "idx_monitor_settings_is_enabled" in migration_text
+
+
+def test_monitor_last_checked_at_migration_contains_required_operations() -> None:
+    versions_dir = Path(__file__).resolve().parents[1] / "alembic" / "versions"
+    monitor_migrations = sorted(versions_dir.glob("*_add_monitor_last_checked_at.py"))
+
+    assert len(monitor_migrations) == 1
+    migration_text = monitor_migrations[0].read_text(encoding="utf-8")
+
+    assert re.search(r'op\.add_column\(\s*"monitor_settings"', migration_text) is not None
+    assert "last_checked_at" in migration_text

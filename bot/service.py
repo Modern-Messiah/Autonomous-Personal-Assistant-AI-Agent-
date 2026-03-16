@@ -13,11 +13,15 @@ from agent.models.enriched import EnrichedApartment
 from agent.nodes.intent_node import IntentNode
 from bot.monitoring import DEFAULT_MONITOR_INTERVAL_MINUTES
 from db import (
+    ApartmentDecision,
     get_active_search_criteria_record,
+    get_apartment_feedback_map,
     get_monitor_settings_record,
-    list_seen_apartments,
+    list_apartment_records_by_urls,
+    list_feedback_apartments,
     mark_apartments_seen,
     replace_active_search_criteria,
+    upsert_apartment_feedback,
     upsert_apartment_records,
     upsert_monitor_settings,
     upsert_telegram_user,
@@ -123,9 +127,10 @@ class SearchBotService:
                 telegram_user_id=telegram_user_id,
                 username=username,
             )
+            user_id = user.id
             await replace_active_search_criteria(
                 session,
-                user_id=user.id,
+                user_id=user_id,
                 criteria_payload=criteria.model_dump(mode="json"),
             )
             await session.commit()
@@ -141,12 +146,24 @@ class SearchBotService:
                     session,
                     apartments=apartments,
                 )
+                feedback_map = await get_apartment_feedback_map(
+                    session,
+                    user_id=user_id,
+                    apartments=records,
+                )
                 await mark_apartments_seen(
                     session,
-                    user_id=user.id,
+                    user_id=user_id,
                     apartments=records,
                 )
                 await session.commit()
+
+            apartments = [
+                apartment
+                for apartment, record in zip(apartments, records, strict=True)
+                if feedback_map.get(record.id) != "rejected"
+            ]
+
         return SearchExecution(criteria=criteria, apartments=apartments)
 
     async def get_active_criteria(
@@ -172,11 +189,76 @@ class SearchBotService:
     ) -> list[EnrichedApartment]:
         """Return recently saved apartments for one Telegram user."""
         async with self._session_factory() as session:
-            return await list_seen_apartments(
+            return await list_feedback_apartments(
                 session,
                 telegram_user_id=telegram_user_id,
+                decision="saved",
                 limit=limit,
             )
+
+    async def save_apartments(
+        self,
+        *,
+        telegram_user_id: int,
+        username: str | None,
+        apartment_urls: list[str],
+    ) -> int:
+        """Persist a positive decision for the current apartment selection."""
+        return await self._record_apartment_feedback(
+            telegram_user_id=telegram_user_id,
+            username=username,
+            apartment_urls=apartment_urls,
+            decision="saved",
+        )
+
+    async def reject_apartments(
+        self,
+        *,
+        telegram_user_id: int,
+        username: str | None,
+        apartment_urls: list[str],
+    ) -> int:
+        """Persist a negative decision for the current apartment selection."""
+        return await self._record_apartment_feedback(
+            telegram_user_id=telegram_user_id,
+            username=username,
+            apartment_urls=apartment_urls,
+            decision="rejected",
+        )
+
+    async def _record_apartment_feedback(
+        self,
+        *,
+        telegram_user_id: int,
+        username: str | None,
+        apartment_urls: list[str],
+        decision: ApartmentDecision,
+    ) -> int:
+        """Persist one user decision for the apartments currently in focus."""
+        unique_urls = list(dict.fromkeys(apartment_urls))
+        if not unique_urls:
+            return 0
+
+        async with self._session_factory() as session:
+            user = await upsert_telegram_user(
+                session,
+                telegram_user_id=telegram_user_id,
+                username=username,
+            )
+            apartments = await list_apartment_records_by_urls(
+                session,
+                urls=unique_urls,
+            )
+            if not apartments:
+                return 0
+            await upsert_apartment_feedback(
+                session,
+                user_id=user.id,
+                apartments=apartments,
+                decision=decision,
+            )
+            await session.commit()
+            return len(apartments)
 
     async def get_monitor_status(
         self,

@@ -9,6 +9,7 @@ from aiogram.types import CallbackQuery, Message
 
 from bot.dialog_agent import DialogAgent, DialogTurnResult
 from bot.formatters import (
+    DEFAULT_SEARCH_RESULTS_LIMIT,
     format_criteria,
     format_monitor_status,
     format_saved_apartments,
@@ -39,10 +40,25 @@ def create_bot_router(service: SearchBotService) -> Router:
         state: FSMContext,
         result: SearchExecution,
     ) -> None:
+        presented_apartments = result.apartments[:DEFAULT_SEARCH_RESULTS_LIMIT]
         await message.answer(format_criteria(result.criteria))
+        if not presented_apartments:
+            await state.clear()
+            await message.answer(format_search_results([]))
+            return
+
         await message.answer(
-            format_search_results(result.apartments),
+            format_search_results(
+                presented_apartments,
+                limit=DEFAULT_SEARCH_RESULTS_LIMIT,
+            ),
             reply_markup=build_search_followup_keyboard(),
+        )
+        await state.update_data(
+            presented_apartment_urls=[
+                apartment.apartment.url
+                for apartment in presented_apartments
+            ]
         )
         await state.set_state(SearchDialogStates.waiting_for_feedback)
 
@@ -263,20 +279,50 @@ def create_bot_router(service: SearchBotService) -> Router:
 
     @router.callback_query(F.data == SAVE_CALLBACK_DATA)
     async def handle_save_callback(callback: CallbackQuery, state: FSMContext) -> None:
+        data = await state.get_data()
+        apartment_urls = list(data.get("presented_apartment_urls", []))
+        if callback.from_user is None:
+            await state.clear()
+            await callback.answer()
+            return
+
+        saved_count = await service.save_apartments(
+            telegram_user_id=callback.from_user.id,
+            username=callback.from_user.username,
+            apartment_urls=apartment_urls,
+        )
         if callback.message is not None:
-            await callback.message.answer(
-                "Подборка уже сохранена и доступна через /list."
-            )
+            if saved_count == 0:
+                await callback.message.answer("Нет активной подборки для сохранения.")
+            else:
+                await callback.message.answer(
+                    f"Сохранил {saved_count} квартир. Они доступны через /list."
+                )
         await state.clear()
         await callback.answer()
 
     @router.callback_query(F.data == REJECT_CALLBACK_DATA)
     async def handle_reject_callback(callback: CallbackQuery, state: FSMContext) -> None:
+        data = await state.get_data()
+        apartment_urls = list(data.get("presented_apartment_urls", []))
+        if callback.from_user is None:
+            await state.clear()
+            await callback.answer()
+            return
+
+        rejected_count = await service.reject_apartments(
+            telegram_user_id=callback.from_user.id,
+            username=callback.from_user.username,
+            apartment_urls=apartment_urls,
+        )
         if callback.message is not None:
-            await callback.message.answer(
-                "Подборку отклонил для текущего диалога. "
-                "Можешь написать новый запрос или уточнение."
-            )
+            if rejected_count == 0:
+                await callback.message.answer("Нет активной подборки для отклонения.")
+            else:
+                await callback.message.answer(
+                    f"Отклонил {rejected_count} квартир. "
+                    "Эти квартиры больше не покажу в следующих ручных подборках."
+                )
         await state.clear()
         await callback.answer()
 

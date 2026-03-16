@@ -7,6 +7,8 @@ from agent.models.enriched import EnrichedApartment
 from bot.monitoring import format_monitor_interval
 from bot.service import MonitorStatus
 
+DEFAULT_SEARCH_RESULTS_LIMIT = 3
+
 
 def format_start_message() -> str:
     """Return onboarding message for `/start`."""
@@ -48,7 +50,11 @@ def format_criteria(criteria: SearchCriteria) -> str:
     return "Текущие критерии:\n" + "\n".join(parts)
 
 
-def format_search_results(apartments: list[EnrichedApartment], *, limit: int = 3) -> str:
+def format_search_results(
+    apartments: list[EnrichedApartment],
+    *,
+    limit: int = DEFAULT_SEARCH_RESULTS_LIMIT,
+) -> str:
     """Render compact list of top apartments."""
     if not apartments:
         return "Подходящих квартир не найдено."

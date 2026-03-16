@@ -10,6 +10,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     Text,
     UniqueConstraint,
     desc,
@@ -36,6 +37,9 @@ class User(Base):
 
     search_criteria: Mapped[list["SearchCriteriaRecord"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
+    )
+    monitor_settings: Mapped["MonitorSettingsRecord | None"] = relationship(
+        back_populates="user", cascade="all, delete-orphan", uselist=False
     )
     seen_apartments: Mapped[list["SeenApartment"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
@@ -91,6 +95,31 @@ class ApartmentRecord(Base):
     )
 
 
+class MonitorSettingsRecord(Base):
+    """Per-user monitoring configuration for background checks."""
+
+    __tablename__ = "monitor_settings"
+    __table_args__ = (Index("idx_monitor_settings_is_enabled", "is_enabled"),)
+
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    is_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    interval_minutes: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=360, server_default=text("360")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    user: Mapped["User"] = relationship(back_populates="monitor_settings")
+
+
 class SeenApartment(Base):
     """Many-to-many table for user/listing deduplication."""
 
@@ -109,4 +138,3 @@ class SeenApartment(Base):
 
     user: Mapped["User"] = relationship(back_populates="seen_apartments")
     apartment: Mapped["ApartmentRecord"] = relationship(back_populates="seen_by_users")
-

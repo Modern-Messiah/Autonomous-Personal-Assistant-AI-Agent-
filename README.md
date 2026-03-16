@@ -1,7 +1,7 @@
 # Krisha Agent
 
 Autonomous multi-agent system for apartment discovery in Kazakhstan.  
-Current scope is **Phase 0 + Phase 4 baseline**: foundation, parser, LangGraph search pipeline, enrichment, Gemini-backed scoring, checkpoint memory, Telegram bot skeleton, tests, and CI.
+Current scope is **Phase 0 + Phase 6 baseline**: foundation, parser, LangGraph search pipeline, enrichment, Gemini-backed scoring, checkpoint memory, Telegram bot, persistent monitor settings, scheduler runtime baseline, tests, and CI.
 
 ## Tech Stack
 
@@ -83,7 +83,7 @@ uv run ruff check .
 uv run ruff format .
 
 # type check
-uv run mypy agent bot config db
+uv run mypy agent bot config db scheduler
 
 # tests
 uv run pytest
@@ -114,6 +114,7 @@ The project uses nested settings via `pydantic-settings` and `env_nested_delimit
 - `API__TWO_GIS_API_KEY`, `API__GEMINI_API_KEY`
 - `API__LANGSMITH_API_KEY`, `API__LANGSMITH_PROJECT`
 - `API__SENTRY_DSN`
+- `SCHEDULER__POLL_INTERVAL_SECONDS`, `SCHEDULER__BATCH_SIZE`
 
 See `.env.example` for the full contract.
 
@@ -132,8 +133,9 @@ See `.env.example` for the full contract.
   - Telegram bot baseline on `aiogram` with `/start`, `/search`, `/criteria`, user registration, and active criteria persistence.
   - Search result persistence in `apartments` / `seen_apartments` and `/list` for the latest saved apartments.
   - Persistent monitor settings with `/monitor`, `/monitor on|off`, and `/monitor interval 6h`.
+  - Scheduler runtime baseline that polls enabled monitor targets, respects `interval_minutes`, and sends only newly discovered apartments.
   - HTML fixture-based parser tests and CI checks.
-- Not implemented yet: conversational bot flow, scheduler runtime, Notion sync.
+- Not implemented yet: conversational bot flow, ARQ-based production scheduler, Notion sync.
 
 ## Telegram Bot Baseline
 
@@ -152,3 +154,19 @@ Available commands:
 - `/monitor` shows current monitor settings.
 - `/monitor on|off` enables or disables monitoring for the user.
 - `/monitor interval 6h` updates the monitor interval in persistent settings.
+
+## Scheduler Baseline
+
+Run one long-lived scheduler loop after filling `.env`:
+
+```bash
+uv run python -m scheduler
+```
+
+Current scheduler behavior:
+
+- loads enabled users with active criteria from PostgreSQL,
+- skips users until `interval_minutes` has elapsed since `last_checked_at`,
+- runs the LangGraph search pipeline,
+- persists search results,
+- sends Telegram notifications only for apartments not yet linked in `seen_apartments`.

@@ -42,6 +42,10 @@ class MonitorStatus:
     interval_minutes: int
 
 
+class ActiveCriteriaNotFoundError(RuntimeError):
+    """Raised when a refinement flow requires active criteria but none are stored."""
+
+
 class SearchBotService:
     """Coordinates persistence and graph execution for Telegram flows."""
 
@@ -75,6 +79,43 @@ class SearchBotService:
     ) -> SearchExecution:
         """Parse criteria, persist them, and run the search graph."""
         criteria = self._intent_node.parse(user_id=telegram_user_id, message=query)
+        return await self._persist_and_run_search(
+            telegram_user_id=telegram_user_id,
+            username=username,
+            criteria=criteria,
+        )
+
+    async def refine_search(
+        self,
+        *,
+        telegram_user_id: int,
+        username: str | None,
+        message: str,
+    ) -> SearchExecution:
+        """Merge refinement text into active criteria and rerun the search graph."""
+        active_criteria = await self.get_active_criteria(telegram_user_id=telegram_user_id)
+        if active_criteria is None:
+            msg = "active criteria not found"
+            raise ActiveCriteriaNotFoundError(msg)
+
+        criteria = self._intent_node.refine(
+            criteria=active_criteria,
+            message=message,
+        )
+        return await self._persist_and_run_search(
+            telegram_user_id=telegram_user_id,
+            username=username,
+            criteria=criteria,
+        )
+
+    async def _persist_and_run_search(
+        self,
+        *,
+        telegram_user_id: int,
+        username: str | None,
+        criteria: SearchCriteria,
+    ) -> SearchExecution:
+        """Persist active criteria, execute search graph, and store results."""
 
         async with self._session_factory() as session:
             user = await upsert_telegram_user(

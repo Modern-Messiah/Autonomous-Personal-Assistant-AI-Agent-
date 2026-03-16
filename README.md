@@ -130,8 +130,9 @@ See `.env.example` for the full contract.
   - `ScoringNode` with Gemini structured JSON scoring and graceful fallback on scorer errors.
   - Optional Postgres-backed LangGraph checkpointing via `thread_id` and official saver integration.
   - Telegram bot baseline on `aiogram` with `/start`, `/search`, `/criteria`, user registration, and active criteria persistence.
+  - Search result persistence in `apartments` / `seen_apartments` and `/list` for the latest saved apartments.
   - HTML fixture-based parser tests and CI checks.
-- Not implemented yet: conversational bot flow, `/list`, `/monitor`, Notion sync, scheduler runtime.
+- Not implemented yet: conversational bot flow, `/monitor`, Notion sync, scheduler runtime.
 
 ## Telegram Bot Baseline
 
@@ -146,3 +147,4 @@ Available commands:
 - `/start` registers the Telegram user and shows a short usage guide.
 - `/search <query>` parses text into `SearchCriteria`, stores it as active criteria, and runs the LangGraph search pipeline.
 - `/criteria` returns the last active criteria stored for the Telegram user.
+- `/list` returns recently saved apartments linked to the Telegram user.

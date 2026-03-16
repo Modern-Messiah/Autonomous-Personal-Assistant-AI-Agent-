@@ -10,7 +10,13 @@ from db.base import Base
 
 
 def test_metadata_contains_expected_tables() -> None:
-    expected_tables = {"users", "search_criteria", "apartments", "seen_apartments"}
+    expected_tables = {
+        "users",
+        "search_criteria",
+        "apartments",
+        "monitor_settings",
+        "seen_apartments",
+    }
     assert expected_tables.issubset(Base.metadata.tables.keys())
 
 
@@ -29,12 +35,15 @@ def test_apartments_constraints_and_indexes_present() -> None:
 
 
 def test_other_indexes_present() -> None:
+    monitor_settings = Base.metadata.tables["monitor_settings"]
     search_criteria = Base.metadata.tables["search_criteria"]
     seen_apartments = Base.metadata.tables["seen_apartments"]
 
+    monitor_index_names = {index.name for index in monitor_settings.indexes}
     search_index_names = {index.name for index in search_criteria.indexes}
     seen_index_names = {index.name for index in seen_apartments.indexes}
 
+    assert "idx_monitor_settings_is_enabled" in monitor_index_names
     assert "idx_search_criteria_user_active" in search_index_names
     assert "idx_seen_apartments_first_seen_at" in seen_index_names
 
@@ -53,3 +62,15 @@ def test_init_migration_contains_required_operations() -> None:
     assert "idx_search_criteria_user_active" in migration_text
     assert "idx_apartments_created_at" in migration_text
     assert "idx_seen_apartments_first_seen_at" in migration_text
+
+
+def test_monitor_settings_migration_contains_required_operations() -> None:
+    versions_dir = Path(__file__).resolve().parents[1] / "alembic" / "versions"
+    monitor_migrations = sorted(versions_dir.glob("*_add_monitor_settings.py"))
+
+    assert len(monitor_migrations) == 1
+    migration_text = monitor_migrations[0].read_text(encoding="utf-8")
+
+    assert re.search(r'op\.create_table\(\s*"monitor_settings"', migration_text) is not None
+    assert "interval_minutes" in migration_text
+    assert "idx_monitor_settings_is_enabled" in migration_text

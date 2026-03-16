@@ -45,6 +45,7 @@ def _build_arq_redis_settings(arq_settings: ArqSettings) -> Any:
     settings = get_settings()
     connections_module = import_module("arq.connections")
     redis_settings_cls = connections_module.RedisSettings
+    del arq_settings
     password = (
         settings.redis.password.get_secret_value()
         if settings.redis.password is not None
@@ -55,7 +56,6 @@ def _build_arq_redis_settings(arq_settings: ArqSettings) -> Any:
         port=settings.redis.port,
         database=settings.redis.db,
         password=password,
-        default_queue_name=arq_settings.queue_name,
     )
 
 

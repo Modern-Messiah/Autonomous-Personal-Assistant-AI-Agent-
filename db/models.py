@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
@@ -42,6 +43,9 @@ class User(Base):
         back_populates="user", cascade="all, delete-orphan", uselist=False
     )
     seen_apartments: Mapped[list["SeenApartment"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    apartment_feedback: Mapped[list["ApartmentFeedbackRecord"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
 
@@ -93,6 +97,9 @@ class ApartmentRecord(Base):
     seen_by_users: Mapped[list["SeenApartment"]] = relationship(
         back_populates="apartment", cascade="all, delete-orphan"
     )
+    feedback_by_users: Mapped[list["ApartmentFeedbackRecord"]] = relationship(
+        back_populates="apartment", cascade="all, delete-orphan"
+    )
 
 
 class MonitorSettingsRecord(Base):
@@ -141,3 +148,30 @@ class SeenApartment(Base):
 
     user: Mapped["User"] = relationship(back_populates="seen_apartments")
     apartment: Mapped["ApartmentRecord"] = relationship(back_populates="seen_by_users")
+
+
+class ApartmentFeedbackRecord(Base):
+    """Per-user decision memory for apartments shown in dialog."""
+
+    __tablename__ = "apartment_feedback"
+    __table_args__ = (
+        CheckConstraint(
+            "decision IN ('saved', 'rejected')",
+            name="ck_apartment_feedback_decision",
+        ),
+        Index("idx_apartment_feedback_decision_decided_at", "decision", desc("decided_at")),
+    )
+
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    apartment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("apartments.id", ondelete="CASCADE"), primary_key=True
+    )
+    decision: Mapped[str] = mapped_column(Text, nullable=False)
+    decided_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    user: Mapped["User"] = relationship(back_populates="apartment_feedback")
+    apartment: Mapped["ApartmentRecord"] = relationship(back_populates="feedback_by_users")

@@ -131,8 +131,9 @@ See `.env.example` for the full contract.
   - Optional Postgres-backed LangGraph checkpointing via `thread_id` and official saver integration.
   - Telegram bot baseline on `aiogram` with `/start`, `/search`, `/criteria`, user registration, and active criteria persistence.
   - Search result persistence in `apartments` / `seen_apartments` and `/list` for the latest saved apartments.
+  - Persistent monitor settings with `/monitor`, `/monitor on|off`, and `/monitor interval 6h`.
   - HTML fixture-based parser tests and CI checks.
-- Not implemented yet: conversational bot flow, `/monitor`, Notion sync, scheduler runtime.
+- Not implemented yet: conversational bot flow, scheduler runtime, Notion sync.
 
 ## Telegram Bot Baseline
 
@@ -148,3 +149,6 @@ Available commands:
 - `/search <query>` parses text into `SearchCriteria`, stores it as active criteria, and runs the LangGraph search pipeline.
 - `/criteria` returns the last active criteria stored for the Telegram user.
 - `/list` returns recently saved apartments linked to the Telegram user.
+- `/monitor` shows current monitor settings.
+- `/monitor on|off` enables or disables monitoring for the user.
+- `/monitor interval 6h` updates the monitor interval in persistent settings.

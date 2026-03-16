@@ -131,12 +131,13 @@ See `.env.example` for the full contract.
   - `ScoringNode` with Gemini structured JSON scoring and graceful fallback on scorer errors.
   - Optional Postgres-backed LangGraph checkpointing via `thread_id` and official saver integration.
   - Telegram bot baseline on `aiogram` with `/start`, `/search`, `/criteria`, user registration, and active criteria persistence.
-  - Dialog refinement baseline with `/refine`, `/cancel`, FSM-based follow-up text, and inline "Уточнить критерии" actions after search results.
+- Supervisor-style dialog agent for free-text turns, refinement routing, and natural-language fallback without explicit commands.
+  - Dialog refinement baseline with `/refine`, `/cancel`, FSM-based follow-up text, and inline "Сохранить" / "Отклонить" / "Уточнить критерии" actions after search results.
   - Search result persistence in `apartments` / `seen_apartments` and `/list` for the latest saved apartments.
   - Persistent monitor settings with `/monitor`, `/monitor on|off`, and `/monitor interval 6h`.
   - Scheduler runtime baseline that polls enabled monitor targets, respects `interval_minutes`, and sends only newly discovered apartments.
   - HTML fixture-based parser tests and CI checks.
-- Not implemented yet: multi-step supervisor dialog agent, ARQ-based production scheduler, Notion sync.
+- Not implemented yet: richer multi-step approval memory, ARQ-based production scheduler, Notion sync.
 
 ## Telegram Bot Baseline
 
@@ -150,6 +151,7 @@ Available commands:
 
 - `/start` registers the Telegram user and shows a short usage guide.
 - `/search <query>` parses text into `SearchCriteria`, stores it as active criteria, and runs the LangGraph search pipeline.
+- plain free-text messages are routed through the dialog agent and can trigger search, refinement, saved-list, criteria, or monitor actions.
 - `/refine <query>` merges a free-text refinement into the active criteria and reruns the search.
 - `/cancel` exits refinement mode after an inline or manual refine prompt.
 - `/criteria` returns the last active criteria stored for the Telegram user.
@@ -161,8 +163,10 @@ Available commands:
 Current dialog additions:
 
 - after `/search`, the bot shows inline actions for criteria refinement and saved listings,
+- after search results, the dialog enters follow-up mode and waits for feedback or a natural-language clarification,
 - the "Уточнить критерии" action opens FSM-based follow-up mode,
-- a plain-text clarification like `только 3 комнаты и до 35 млн` merges into active criteria instead of resetting the whole search.
+- a plain-text clarification like `только 3 комнаты и до 35 млн` merges into active criteria instead of resetting the whole search,
+- free-text messages like `покажи сохраненные квартиры` or `какой сейчас мониторинг` are routed through the dialog supervisor without slash commands.
 
 ## Scheduler Baseline
 

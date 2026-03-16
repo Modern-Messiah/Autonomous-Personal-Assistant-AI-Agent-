@@ -77,6 +77,14 @@ class ParserSettings(BaseModel):
         return self
 
 
+class ScoringSettings(BaseModel):
+    """LLM scoring behavior settings."""
+
+    model: str = Field(default="gemini-2.5-flash", min_length=1)
+    temperature: float = Field(default=0.2, ge=0, le=1)
+    timeout_seconds: float = Field(default=15.0, gt=0, le=120)
+
+
 class Settings(BaseSettings):
     """Root settings object loaded from .env and process environment."""
 
@@ -94,6 +102,7 @@ class Settings(BaseSettings):
     telegram: TelegramSettings
     api: APISettings
     parser: ParserSettings = Field(default_factory=ParserSettings)
+    scoring: ScoringSettings = Field(default_factory=ScoringSettings)
 
 
 @lru_cache(maxsize=1)

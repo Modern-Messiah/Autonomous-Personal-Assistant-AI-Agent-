@@ -200,6 +200,54 @@ async def list_due_monitor_targets(
     return targets
 
 
+async def get_monitor_target_by_telegram_user_id(
+    session: AsyncSession,
+    *,
+    telegram_user_id: int,
+) -> MonitorTarget | None:
+    """Load active monitor target for one Telegram user if configured."""
+    statement = (
+        select(
+            User.id,
+            User.telegram_user_id,
+            User.username,
+            SearchCriteriaRecord.criteria,
+            MonitorSettingsRecord.interval_minutes,
+            MonitorSettingsRecord.last_checked_at,
+        )
+        .join(MonitorSettingsRecord, MonitorSettingsRecord.user_id == User.id)
+        .join(SearchCriteriaRecord, SearchCriteriaRecord.user_id == User.id)
+        .where(
+            User.telegram_user_id == telegram_user_id,
+            MonitorSettingsRecord.is_enabled.is_(True),
+            SearchCriteriaRecord.is_active.is_(True),
+        )
+        .order_by(SearchCriteriaRecord.created_at.desc())
+        .limit(1)
+    )
+    result = await session.execute(statement)
+    row = result.first()
+    if row is None:
+        return None
+
+    (
+        user_id,
+        resolved_telegram_user_id,
+        username,
+        criteria_payload,
+        interval_minutes,
+        last_checked_at,
+    ) = row
+    return MonitorTarget(
+        user_id=user_id,
+        telegram_user_id=resolved_telegram_user_id,
+        username=username,
+        criteria=SearchCriteria.model_validate(criteria_payload),
+        interval_minutes=interval_minutes,
+        last_checked_at=last_checked_at,
+    )
+
+
 async def touch_monitor_last_checked_at(
     session: AsyncSession,
     *,

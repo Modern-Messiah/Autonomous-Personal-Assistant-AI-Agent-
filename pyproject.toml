@@ -12,6 +12,7 @@ authors = [{ name = "Krisha Agent Team" }]
 dependencies = [
   "aiogram>=3.8.0",
   "alembic>=1.13.2",
+  "arq>=0.26.3",
   "asyncpg>=0.29.0",
   "beautifulsoup4>=4.12.3",
   "fake-useragent>=1.5.1",
@@ -66,6 +67,8 @@ exclude = ["alembic"]
 [[tool.mypy.overrides]]
 module = [
   "aiogram.*",
+  "arq",
+  "arq.*",
   "bs4.*",
   "fake_useragent.*",
   "langgraph.*",

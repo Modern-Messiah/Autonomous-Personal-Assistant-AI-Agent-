@@ -13,6 +13,7 @@ from agent.models.criteria import SearchCriteria
 from agent.models.enriched import EnrichedApartment
 from db import (
     MonitorTarget,
+    get_monitor_target_by_telegram_user_id,
     get_unseen_apartment_records,
     list_due_monitor_targets,
     mark_apartments_seen,
@@ -59,19 +60,15 @@ class SchedulerService:
     ) -> SchedulerRunSummary:
         """Process due monitor targets once."""
         now = self._now_provider()
-        active_limit = limit or self._batch_size
-
-        async with self._session_factory() as session:
-            targets = await list_due_monitor_targets(
-                session,
-                now=now,
-                limit=active_limit,
-            )
+        targets = await self.get_due_targets(limit=limit, checked_at=now)
 
         summary = SchedulerRunSummary()
         for target in targets:
             try:
-                target_summary = await self._process_target(target=target, checked_at=now)
+                target_summary = await self.process_target(
+                    target=target,
+                    checked_at=now,
+                )
             except Exception:
                 summary = SchedulerRunSummary(
                     processed_users=summary.processed_users + 1,
@@ -88,6 +85,64 @@ class SchedulerService:
                 failed_users=summary.failed_users,
             )
         return summary
+
+    async def get_due_targets(
+        self,
+        *,
+        limit: int | None = None,
+        checked_at: datetime | None = None,
+    ) -> list[MonitorTarget]:
+        """Load monitor targets that are due for processing."""
+        now = checked_at or self._now_provider()
+        active_limit = limit or self._batch_size
+
+        async with self._session_factory() as session:
+            return await list_due_monitor_targets(
+                session,
+                now=now,
+                limit=active_limit,
+            )
+
+    async def process_target(
+        self,
+        *,
+        target: MonitorTarget,
+        checked_at: datetime | None = None,
+    ) -> SchedulerRunSummary:
+        """Process one resolved monitor target."""
+        active_checked_at = checked_at or self._now_provider()
+        return await self._process_target(target=target, checked_at=active_checked_at)
+
+    async def process_monitor_target(
+        self,
+        *,
+        telegram_user_id: int,
+        checked_at: datetime | None = None,
+    ) -> SchedulerRunSummary:
+        """Process one user monitor job loaded by Telegram user id."""
+        async with self._session_factory() as session:
+            target = await get_monitor_target_by_telegram_user_id(
+                session,
+                telegram_user_id=telegram_user_id,
+            )
+        if target is None:
+            return SchedulerRunSummary()
+
+        active_checked_at = checked_at or self._now_provider()
+        try:
+            target_summary = await self.process_target(
+                target=target,
+                checked_at=active_checked_at,
+            )
+        except Exception:
+            return SchedulerRunSummary(processed_users=1, failed_users=1)
+
+        return SchedulerRunSummary(
+            processed_users=1,
+            notified_users=target_summary.notified_users,
+            new_apartments=target_summary.new_apartments,
+            failed_users=target_summary.failed_users,
+        )
 
     async def _process_target(
         self,

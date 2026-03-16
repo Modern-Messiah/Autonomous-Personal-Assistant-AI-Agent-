@@ -1,7 +1,7 @@
 # Krisha Agent
 
 Autonomous multi-agent system for apartment discovery in Kazakhstan.  
-Current scope is **Phase 0 + Phase 2 (core parser)**: foundation, typed domain models, settings, PostgreSQL schema, Alembic migration, CI, and a Playwright-first Krisha parser with Redis deduplication.
+Current scope is **Phase 0 + Phase 3 baseline**: foundation, parser, LangGraph search pipeline, enrichment, Gemini-backed scoring, tests, and CI.
 
 ## Tech Stack
 
@@ -127,5 +127,6 @@ See `.env.example` for the full contract.
   - `IntentNode` (rule-based text -> `SearchCriteria`) and `run_search_graph_from_text`.
   - `SearchNode` + `run_search_graph` pipeline on LangGraph.
   - `EnrichNode` with mortgage annuity calculation and 2GIS nearby summary client.
+  - `ScoringNode` with Gemini structured JSON scoring and graceful fallback on scorer errors.
   - HTML fixture-based parser tests and CI checks.
-- Not implemented yet: Gemini scoring node, memory/checkpoint integration, Telegram dialog agent, Notion sync, scheduler runtime.
+- Not implemented yet: memory/checkpoint integration, Telegram dialog agent, Notion sync, scheduler runtime.

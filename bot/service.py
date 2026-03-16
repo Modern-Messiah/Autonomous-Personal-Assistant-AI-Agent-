@@ -13,7 +13,10 @@ from agent.models.enriched import EnrichedApartment
 from agent.nodes.intent_node import IntentNode
 from db import (
     get_active_search_criteria_record,
+    list_seen_apartments,
+    mark_apartments_seen,
     replace_active_search_criteria,
+    upsert_apartment_records,
     upsert_telegram_user,
 )
 
@@ -80,6 +83,18 @@ class SearchBotService:
             thread_id=f"telegram-user:{telegram_user_id}",
             checkpoint_ns="telegram-search",
         )
+        if apartments:
+            async with self._session_factory() as session:
+                records = await upsert_apartment_records(
+                    session,
+                    apartments=apartments,
+                )
+                await mark_apartments_seen(
+                    session,
+                    user_id=user.id,
+                    apartments=records,
+                )
+                await session.commit()
         return SearchExecution(criteria=criteria, apartments=apartments)
 
     async def get_active_criteria(
@@ -96,3 +111,17 @@ class SearchBotService:
             if record is None:
                 return None
             return SearchCriteria.model_validate(record.criteria)
+
+    async def get_saved_apartments(
+        self,
+        *,
+        telegram_user_id: int,
+        limit: int = 10,
+    ) -> list[EnrichedApartment]:
+        """Return recently saved apartments for one Telegram user."""
+        async with self._session_factory() as session:
+            return await list_seen_apartments(
+                session,
+                telegram_user_id=telegram_user_id,
+                limit=limit,
+            )

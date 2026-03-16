@@ -12,7 +12,8 @@ def format_start_message() -> str:
         "Krisha Agent готов к работе.\n\n"
         "Используй /search <запрос>, например:\n"
         "/search 2-комнатная квартира в Алматы до 45 млн\n\n"
-        "Текущие критерии можно посмотреть через /criteria."
+        "Текущие критерии можно посмотреть через /criteria.\n"
+        "Последние сохраненные варианты доступны через /list."
     )
 
 
@@ -49,6 +50,27 @@ def format_search_results(apartments: list[EnrichedApartment], *, limit: int = 3
         return "Подходящих квартир не найдено."
 
     lines = ["Нашел варианты:"]
+    lines.extend(_format_apartment_lines(apartments, limit=limit))
+    return "\n".join(lines)
+
+
+def format_saved_apartments(apartments: list[EnrichedApartment], *, limit: int = 10) -> str:
+    """Render saved apartments list for `/list` command."""
+    if not apartments:
+        return "Сохраненных квартир пока нет."
+
+    lines = ["Сохраненные квартиры:"]
+    lines.extend(_format_apartment_lines(apartments, limit=limit))
+    return "\n".join(lines)
+
+
+def _format_apartment_lines(
+    apartments: list[EnrichedApartment],
+    *,
+    limit: int,
+) -> list[str]:
+    """Format apartment rows shared by search and saved list replies."""
+    lines: list[str] = []
     for index, item in enumerate(apartments[:limit], start=1):
         apartment = item.apartment
         lines.append(
@@ -68,4 +90,4 @@ def format_search_results(apartments: list[EnrichedApartment], *, limit: int = 3
                 f"parks={item.nearby_parks or 0}, "
                 f"metro={item.nearby_metro or 0}"
             )
-    return "\n".join(lines)
+    return lines

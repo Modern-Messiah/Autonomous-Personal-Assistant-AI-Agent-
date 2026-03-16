@@ -9,7 +9,12 @@ import pytest
 from agent.models.apartment import Apartment
 from agent.models.criteria import SearchCriteria
 from agent.models.enriched import EnrichedApartment
-from bot.formatters import format_criteria, format_search_results, format_start_message
+from bot.formatters import (
+    format_criteria,
+    format_saved_apartments,
+    format_search_results,
+    format_start_message,
+)
 from bot.service import SearchBotService
 
 
@@ -81,8 +86,22 @@ async def test_search_bot_service_registers_and_runs_search(
         stored_payloads.append(dict(criteria_payload))
         return SimpleNamespace()
 
+    stored_apartments: list[list[EnrichedApartment]] = []
+    seen_links: list[tuple[int, int]] = []
+
+    async def fake_upsert_apartments(session, *, apartments: list[EnrichedApartment]):
+        del session
+        stored_apartments.append(list(apartments))
+        return [SimpleNamespace(id="apt-1")]
+
+    async def fake_mark_seen(session, *, user_id: int, apartments: list[SimpleNamespace]):
+        del session
+        seen_links.append((user_id, len(apartments)))
+
     monkeypatch.setattr("bot.service.upsert_telegram_user", fake_upsert)
     monkeypatch.setattr("bot.service.replace_active_search_criteria", fake_replace)
+    monkeypatch.setattr("bot.service.upsert_apartment_records", fake_upsert_apartments)
+    monkeypatch.setattr("bot.service.mark_apartments_seen", fake_mark_seen)
 
     result = await service.run_search(
         telegram_user_id=77,
@@ -94,7 +113,9 @@ async def test_search_bot_service_registers_and_runs_search(
     assert result.criteria.max_price_kzt == 40_000_000
     assert len(result.apartments) == 1
     assert stored_payloads[0]["city"] == "Almaty"
-    assert session_factory.session.commit_calls == 1
+    assert stored_apartments[0][0].apartment.external_id == "900100"
+    assert seen_links == [(123, 1)]
+    assert session_factory.session.commit_calls == 2
 
 
 @pytest.mark.asyncio
@@ -129,6 +150,25 @@ async def test_search_bot_service_loads_active_criteria(monkeypatch: pytest.Monk
     assert criteria.deal_type == "rent"
 
 
+@pytest.mark.asyncio
+async def test_search_bot_service_loads_saved_apartments(monkeypatch: pytest.MonkeyPatch) -> None:
+    session_factory = FakeSessionFactory()
+    service = SearchBotService(session_factory=session_factory, search_runner=fake_search_runner)
+
+    async def fake_list_seen(session, *, telegram_user_id: int, limit: int):
+        del session
+        assert telegram_user_id == 77
+        assert limit == 5
+        return [build_apartment()]
+
+    monkeypatch.setattr("bot.service.list_seen_apartments", fake_list_seen)
+
+    apartments = await service.get_saved_apartments(telegram_user_id=77, limit=5)
+
+    assert len(apartments) == 1
+    assert apartments[0].apartment.title == "Bot test apartment"
+
+
 def test_formatters_render_expected_content() -> None:
     criteria = SearchCriteria(
         user_id=77,
@@ -141,12 +181,15 @@ def test_formatters_render_expected_content() -> None:
     )
     text = format_criteria(criteria)
     results_text = format_search_results([build_apartment()])
+    saved_text = format_saved_apartments([build_apartment()])
 
     assert "/search" in format_start_message()
+    assert "/list" in format_start_message()
     assert "Алматы" not in text
     assert "Город: Almaty" in text
     assert "40 000 000 KZT" in text
     assert "Bot test apartment" in results_text
+    assert "Сохраненные квартиры" in saved_text
 
 
 async def fake_search_runner(

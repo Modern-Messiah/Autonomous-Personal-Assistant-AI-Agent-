@@ -74,7 +74,11 @@ class ParserSettings(BaseModel):
     max_delay_seconds: float = Field(default=3.0, ge=0, le=30)
     timeout_ms: int = Field(default=30_000, ge=1_000, le=120_000)
     dedup_ttl_seconds: int = Field(default=86_400, ge=60)
-    max_results: int = Field(default=12, ge=1, le=100)
+    # Candidate pool fetched in detail, enriched, scored and ranked before the
+    # bot shows its short list. Kept small to stay within 2GIS free-tier limits
+    # and avoid hammering krisha; there is no cheap pre-ranking signal, so
+    # fetching more than we enrich would be pure waste.
+    max_results: int = Field(default=6, ge=1, le=100)
 
     @model_validator(mode="after")
     def validate_delay_range(self) -> "ParserSettings":

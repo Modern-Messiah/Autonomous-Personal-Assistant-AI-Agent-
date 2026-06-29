@@ -15,6 +15,7 @@ from agent.graph import run_search_graph
 from agent.models.criteria import SearchCriteria
 from agent.models.enriched import EnrichedApartment
 from agent.nodes.intent_node import IntentNode
+from agent.tools.krisha_parser import AntiBotBlockedError
 from bot.monitoring import DEFAULT_MONITOR_INTERVAL_MINUTES
 from db import (
     ApartmentDecision,
@@ -38,6 +39,14 @@ SEARCH_EXECUTION_ERROR_MESSAGE = (
     "\u043f\u043e\u043b\u0443\u0447\u0438\u0442\u044c "
     "\u043e\u0431\u044a\u044f\u0432\u043b\u0435\u043d\u0438\u044f. "
     "\u041f\u043e\u043f\u0440\u043e\u0431\u0443\u0439 \u043f\u043e\u0437\u0436\u0435."
+)
+SEARCH_BLOCKED_MESSAGE = (
+    "\u0421\u0430\u0439\u0442 \u0432\u0440\u0435\u043c\u0435\u043d\u043d\u043e "
+    "\u043e\u0433\u0440\u0430\u043d\u0438\u0447\u0438\u043b "
+    "\u0434\u043e\u0441\u0442\u0443\u043f \u0438\u0437-\u0437\u0430 "
+    "\u0437\u0430\u0449\u0438\u0442\u044b \u043e\u0442 \u0431\u043e\u0442\u043e\u0432. "
+    "\u041f\u043e\u043f\u0440\u043e\u0431\u0443\u0439 "
+    "\u043f\u043e\u0437\u0436\u0435."
 )
 logger = logging.getLogger(__name__)
 
@@ -176,6 +185,12 @@ class SearchBotService:
             )
         except SearchExecutionError:
             raise
+        except AntiBotBlockedError as exc:
+            logger.warning(
+                "Krisha anti-bot block for telegram user %s",
+                telegram_user_id,
+            )
+            raise SearchExecutionError(SEARCH_BLOCKED_MESSAGE) from exc
         except Exception as exc:
             logger.exception(
                 "Search runner failed for telegram user %s",

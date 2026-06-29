@@ -169,7 +169,12 @@ async def test_search_parses_listing_and_detail_pages() -> None:
     assert apartment.floor == "6/9"
     assert apartment.district is not None
     assert apartment.district.endswith("\u0440-\u043d")
-    assert len(apartment.photos) == 2
+    # Two distinct photos (size variants deduped, marketing banner skipped),
+    # each resolved to the preferred 750x470 size.
+    assert apartment.photos == [
+        "https://krisha-photos.kcdn.online/webp/8d/8d9f-uuid/101-750x470.jpg",
+        "https://krisha-photos.kcdn.online/webp/8d/8d9f-uuid/102-750x470.jpg",
+    ]
 
 
 @pytest.mark.asyncio

@@ -5,7 +5,7 @@ Current scope is **Phase 0 + Phase 7 infra baseline**: foundation, parser, LangG
 
 ## Tech Stack
 
-- Python 3.12
+- Python 3.12.
 - Pydantic + pydantic-settings
 - SQLAlchemy 2 (async) + Alembic
 - LangGraph (search graph baseline implemented)

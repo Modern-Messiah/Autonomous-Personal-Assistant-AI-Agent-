@@ -45,7 +45,14 @@ class TwoGISClient:
         return NearbySummary(schools=schools, parks=parks, metro=metro)
 
     async def _geocode(self, *, city: str, address: str) -> tuple[float, float] | None:
-        params = {"q": f"{city}, {address}", "key": self._api_key}
+        # 2GIS omits geometry unless explicitly requested, so without
+        # fields=items.point every geocode result lacks lat/lon and enrichment
+        # silently degrades to zero nearby counts.
+        params = {
+            "q": f"{city}, {address}",
+            "fields": "items.point",
+            "key": self._api_key,
+        }
         try:
             async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
                 response = await client.get(self._geocode_url, params=params)

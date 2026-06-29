@@ -6,6 +6,7 @@ import uuid
 from types import SimpleNamespace
 
 import pytest
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from agent.models.apartment import Apartment
 from agent.models.criteria import SearchCriteria
@@ -25,7 +26,12 @@ from bot.keyboards import (
     build_search_followup_keyboard,
 )
 from bot.monitoring import format_monitor_interval, parse_monitor_interval
-from bot.service import ActiveCriteriaNotFoundError, SearchBotService
+from bot.service import (
+    SEARCH_EXECUTION_ERROR_MESSAGE,
+    ActiveCriteriaNotFoundError,
+    SearchBotService,
+    SearchExecutionError,
+)
 
 
 class FakeSessionFactory:
@@ -255,6 +261,50 @@ async def test_search_bot_service_filters_rejected_apartments(
     assert [item.apartment.external_id for item in result.apartments] == ["900100"]
     assert seen_links == [(123, 2)]
     assert session_factory.session.commit_calls == 2
+
+
+@pytest.mark.asyncio
+async def test_search_bot_service_wraps_search_runner_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_factory = FakeSessionFactory()
+
+    async def failing_runner(
+        criteria: SearchCriteria,
+        *,
+        thread_id: str,
+        checkpoint_ns: str,
+    ) -> list[EnrichedApartment]:
+        del criteria, thread_id, checkpoint_ns
+        raise PlaywrightTimeoutError("listing timeout")
+
+    service = SearchBotService(
+        session_factory=session_factory,
+        search_runner=failing_runner,
+    )
+
+    async def fake_upsert(session, *, telegram_user_id: int, username: str | None):
+        del session, telegram_user_id, username
+        return SimpleNamespace(id=123)
+
+    async def fake_replace(session, *, user_id: int, criteria_payload):
+        del session, criteria_payload
+        assert user_id == 123
+        return SimpleNamespace()
+
+    monkeypatch.setattr("bot.service.upsert_telegram_user", fake_upsert)
+    monkeypatch.setattr("bot.service.replace_active_search_criteria", fake_replace)
+
+    with pytest.raises(SearchExecutionError) as exc_info:
+        await service.run_search(
+            telegram_user_id=77,
+            username="tester",
+            query="2-комнатная квартира в Алматы до 40 млн",
+        )
+
+    assert str(exc_info.value) == SEARCH_EXECUTION_ERROR_MESSAGE
+    assert isinstance(exc_info.value.__cause__, PlaywrightTimeoutError)
+    assert session_factory.session.commit_calls == 1
 
 
 @pytest.mark.asyncio

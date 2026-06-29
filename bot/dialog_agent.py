@@ -11,7 +11,12 @@ from bot.formatters import (
     format_saved_apartments,
     format_start_message,
 )
-from bot.service import ActiveCriteriaNotFoundError, SearchBotService, SearchExecution
+from bot.service import (
+    ActiveCriteriaNotFoundError,
+    SearchBotService,
+    SearchExecution,
+    SearchExecutionError,
+)
 
 DialogIntent = Literal[
     "search",
@@ -178,11 +183,17 @@ class DialogAgent:
         return (await self._handle_help(state))["result"]
 
     async def _handle_search(self, state: DialogTurnState) -> DialogTurnState:
-        execution = await self._service.run_search(
-            telegram_user_id=state["telegram_user_id"],
-            username=state.get("username"),
-            query=state["message"],
-        )
+        try:
+            execution = await self._service.run_search(
+                telegram_user_id=state["telegram_user_id"],
+                username=state.get("username"),
+                query=state["message"],
+            )
+        except SearchExecutionError as exc:
+            return {
+                **state,
+                "result": DialogTurnResult(messages=[exc.user_message]),
+            }
         return {
             **state,
             "result": DialogTurnResult(
@@ -206,6 +217,11 @@ class DialogAgent:
                         "Активные критерии не найдены. Сначала выполни поиск через /search."
                     ]
                 ),
+            }
+        except SearchExecutionError as exc:
+            return {
+                **state,
+                "result": DialogTurnResult(messages=[exc.user_message]),
             }
 
         return {

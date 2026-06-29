@@ -92,6 +92,17 @@ def test_intent_node_parses_rent_message() -> None:
     assert criteria.page_limit == 2
 
 
+def test_intent_node_parses_hyphenated_room_count() -> None:
+    node = IntentNode()
+    criteria = node.parse(
+        user_id=3,
+        message="2-комнатная квартира в Алматы до 45 млн",
+    )
+
+    assert criteria.rooms == [2]
+    assert criteria.max_price_kzt == 45_000_000
+
+
 def test_intent_node_refines_existing_criteria() -> None:
     node = IntentNode()
     base = SearchCriteria(

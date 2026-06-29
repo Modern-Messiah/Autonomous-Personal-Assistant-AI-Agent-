@@ -10,7 +10,7 @@ from agent.models.apartment import Apartment
 from agent.models.criteria import SearchCriteria
 from agent.models.enriched import EnrichedApartment
 from bot.dialog_agent import DialogAgent, DialogIntentNode
-from bot.service import MonitorStatus, SearchExecution
+from bot.service import MonitorStatus, SearchExecution, SearchExecutionError
 
 
 class DummyDialogService:
@@ -201,3 +201,56 @@ async def test_dialog_agent_handles_monitor_requests() -> None:
 
     assert monitor_result.search_execution is None
     assert "Статус мониторинга" in monitor_result.messages[0]
+
+
+@pytest.mark.asyncio
+async def test_dialog_agent_returns_error_message_when_search_fails() -> None:
+    class FailingDialogService(DummyDialogService):
+        async def run_search(
+            self,
+            *,
+            telegram_user_id: int,
+            username: str | None,
+            query: str,
+        ) -> SearchExecution:
+            del telegram_user_id, username, query
+            raise SearchExecutionError("Временная ошибка поиска")
+
+    service = FailingDialogService(active_criteria=None)
+    agent = DialogAgent(service)  # type: ignore[arg-type]
+
+    result = await agent.handle_message(
+        telegram_user_id=77,
+        username="tester",
+        message="Ищу 2-комнатную квартиру в Алматы до 45 млн",
+    )
+
+    assert result.search_execution is None
+    assert result.messages == ["Временная ошибка поиска"]
+
+
+@pytest.mark.asyncio
+async def test_dialog_agent_notifies_search_start_only_for_search() -> None:
+    service = DummyDialogService(active_criteria=None)
+    agent = DialogAgent(service)  # type: ignore[arg-type]
+    calls: list[str] = []
+
+    async def on_start() -> None:
+        calls.append("notified")
+
+    await agent.handle_message(
+        telegram_user_id=77,
+        username="tester",
+        message="Ищу 2-комнатную квартиру в Алматы до 45 млн",
+        on_search_start=on_start,
+    )
+    assert calls == ["notified"]  # search intent notifies
+
+    calls.clear()
+    await agent.handle_message(
+        telegram_user_id=77,
+        username="tester",
+        message="покажи сохраненные квартиры",
+        on_search_start=on_start,
+    )
+    assert calls == []  # non-search intent does not notify

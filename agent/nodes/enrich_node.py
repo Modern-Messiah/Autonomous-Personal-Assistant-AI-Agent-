@@ -3,17 +3,18 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Protocol
+from typing import Protocol, cast
 
 from agent.models.apartment import Apartment
 from agent.models.enriched import EnrichedApartment
 from agent.nodes.search_node import SearchGraphState
+from agent.tools.krisha_parser import build_redis_client
 from agent.tools.mortgage import (
     InterestRateProviderProtocol,
     StaticInterestRateProvider,
     calculate_annuity_payment,
 )
-from agent.tools.two_gis_client import NearbySummary, TwoGISClient
+from agent.tools.two_gis_client import GeocodeCacheProtocol, NearbySummary, TwoGISClient
 from config.settings import get_settings
 
 
@@ -102,5 +103,12 @@ class EnrichNode:
 def create_default_enrich_node() -> EnrichNode:
     """Create enrich node using 2GIS API key from settings."""
     settings = get_settings()
-    area_client = TwoGISClient(api_key=settings.api.two_gis_api_key.get_secret_value())
+    geocode_cache = cast(
+        GeocodeCacheProtocol,
+        build_redis_client(settings.redis.redis_url),
+    )
+    area_client = TwoGISClient(
+        api_key=settings.api.two_gis_api_key.get_secret_value(),
+        cache=geocode_cache,
+    )
     return EnrichNode(area_client=area_client, interest_rate_provider=StaticInterestRateProvider())

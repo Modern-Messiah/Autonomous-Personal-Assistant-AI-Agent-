@@ -186,7 +186,7 @@ async def run_search_graph_from_text(
 ) -> list[EnrichedApartment]:
     """Parse free text into criteria and run the search graph."""
     active_intent_node = intent_node or IntentNode()
-    criteria = active_intent_node.parse(user_id=user_id, message=message)
+    criteria = await active_intent_node.parse(user_id=user_id, message=message)
     return await run_search_graph(
         criteria,
         search_node=search_node,

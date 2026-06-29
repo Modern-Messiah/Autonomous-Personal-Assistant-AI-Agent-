@@ -6,10 +6,13 @@ import uuid
 from types import SimpleNamespace
 
 import pytest
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from agent.models.apartment import Apartment
 from agent.models.criteria import SearchCriteria
 from agent.models.enriched import EnrichedApartment
+from agent.nodes.intent_node import IntentNode
+from agent.tools.krisha_parser import AntiBotBlockedError
 from bot.formatters import (
     format_criteria,
     format_monitor_status,
@@ -25,7 +28,13 @@ from bot.keyboards import (
     build_search_followup_keyboard,
 )
 from bot.monitoring import format_monitor_interval, parse_monitor_interval
-from bot.service import ActiveCriteriaNotFoundError, SearchBotService
+from bot.service import (
+    SEARCH_BLOCKED_MESSAGE,
+    SEARCH_EXECUTION_ERROR_MESSAGE,
+    ActiveCriteriaNotFoundError,
+    SearchBotService,
+    SearchExecutionError,
+)
 
 
 class FakeSessionFactory:
@@ -81,6 +90,7 @@ async def test_search_bot_service_registers_and_runs_search(
     session_factory = FakeSessionFactory()
     service = SearchBotService(
         session_factory=session_factory,
+        intent_node=IntentNode(llm_parser_factory=lambda: None),
         search_runner=fake_search_runner,
     )
 
@@ -208,7 +218,11 @@ async def test_search_bot_service_filters_rejected_apartments(
         assert checkpoint_ns == "telegram-search"
         return [build_apartment("900100"), build_apartment("900101")]
 
-    service = SearchBotService(session_factory=session_factory, search_runner=fake_runner)
+    service = SearchBotService(
+        session_factory=session_factory,
+        intent_node=IntentNode(llm_parser_factory=lambda: None),
+        search_runner=fake_runner,
+    )
 
     async def fake_upsert(session, *, telegram_user_id: int, username: str | None):
         del session, telegram_user_id, username
@@ -258,11 +272,105 @@ async def test_search_bot_service_filters_rejected_apartments(
 
 
 @pytest.mark.asyncio
+async def test_search_bot_service_wraps_search_runner_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_factory = FakeSessionFactory()
+
+    async def failing_runner(
+        criteria: SearchCriteria,
+        *,
+        thread_id: str,
+        checkpoint_ns: str,
+    ) -> list[EnrichedApartment]:
+        del criteria, thread_id, checkpoint_ns
+        raise PlaywrightTimeoutError("listing timeout")
+
+    service = SearchBotService(
+        session_factory=session_factory,
+        intent_node=IntentNode(llm_parser_factory=lambda: None),
+        search_runner=failing_runner,
+    )
+
+    async def fake_upsert(session, *, telegram_user_id: int, username: str | None):
+        del session, telegram_user_id, username
+        return SimpleNamespace(id=123)
+
+    async def fake_replace(session, *, user_id: int, criteria_payload):
+        del session, criteria_payload
+        assert user_id == 123
+        return SimpleNamespace()
+
+    monkeypatch.setattr("bot.service.upsert_telegram_user", fake_upsert)
+    monkeypatch.setattr("bot.service.replace_active_search_criteria", fake_replace)
+
+    with pytest.raises(SearchExecutionError) as exc_info:
+        await service.run_search(
+            telegram_user_id=77,
+            username="tester",
+            query="2-комнатная квартира в Алматы до 40 млн",
+        )
+
+    assert str(exc_info.value) == SEARCH_EXECUTION_ERROR_MESSAGE
+    assert isinstance(exc_info.value.__cause__, PlaywrightTimeoutError)
+    assert session_factory.session.commit_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_search_bot_service_reports_anti_bot_block(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_factory = FakeSessionFactory()
+
+    async def blocked_runner(
+        criteria: SearchCriteria,
+        *,
+        thread_id: str,
+        checkpoint_ns: str,
+    ) -> list[EnrichedApartment]:
+        del criteria, thread_id, checkpoint_ns
+        raise AntiBotBlockedError("blocked")
+
+    service = SearchBotService(
+        session_factory=session_factory,
+        intent_node=IntentNode(llm_parser_factory=lambda: None),
+        search_runner=blocked_runner,
+    )
+
+    async def fake_upsert(session, *, telegram_user_id: int, username: str | None):
+        del session, telegram_user_id, username
+        return SimpleNamespace(id=123)
+
+    async def fake_replace(session, *, user_id: int, criteria_payload):
+        del session, user_id, criteria_payload
+        return SimpleNamespace()
+
+    monkeypatch.setattr("bot.service.upsert_telegram_user", fake_upsert)
+    monkeypatch.setattr("bot.service.replace_active_search_criteria", fake_replace)
+
+    with pytest.raises(SearchExecutionError) as exc_info:
+        await service.run_search(
+            telegram_user_id=77,
+            username="tester",
+            query="2-комнатная квартира в Алматы до 40 млн",
+        )
+
+    # Block must yield the dedicated message, distinct from the generic failure.
+    assert exc_info.value.user_message == SEARCH_BLOCKED_MESSAGE
+    assert SEARCH_BLOCKED_MESSAGE != SEARCH_EXECUTION_ERROR_MESSAGE
+    assert isinstance(exc_info.value.__cause__, AntiBotBlockedError)
+
+
+@pytest.mark.asyncio
 async def test_search_bot_service_records_save_and_reject_feedback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session_factory = FakeSessionFactory()
-    service = SearchBotService(session_factory=session_factory, search_runner=fake_search_runner)
+    service = SearchBotService(
+        session_factory=session_factory,
+        intent_node=IntentNode(llm_parser_factory=lambda: None),
+        search_runner=fake_search_runner,
+    )
 
     async def fake_upsert(session, *, telegram_user_id: int, username: str | None):
         del session
@@ -420,7 +528,11 @@ async def test_search_bot_service_syncs_saved_apartments_to_notion(
 @pytest.mark.asyncio
 async def test_search_bot_service_refines_active_criteria(monkeypatch: pytest.MonkeyPatch) -> None:
     session_factory = FakeSessionFactory()
-    service = SearchBotService(session_factory=session_factory, search_runner=fake_search_runner)
+    service = SearchBotService(
+        session_factory=session_factory,
+        intent_node=IntentNode(llm_parser_factory=lambda: None),
+        search_runner=fake_search_runner,
+    )
 
     async def fake_get_record(session, *, telegram_user_id: int):
         del session
@@ -494,6 +606,7 @@ async def test_search_bot_service_refine_requires_active_criteria(
 ) -> None:
     service = SearchBotService(
         session_factory=FakeSessionFactory(),
+        intent_node=IntentNode(llm_parser_factory=lambda: None),
         search_runner=fake_search_runner,
     )
 

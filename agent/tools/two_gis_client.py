@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Protocol
 
 import httpx
 
@@ -16,6 +17,14 @@ class NearbySummary:
     metro: int
 
 
+class GeocodeCacheProtocol(Protocol):
+    """Minimal async key/value cache used to memoize geocode lookups."""
+
+    async def get(self, name: str) -> str | None: ...
+
+    async def set(self, name: str, value: str, *, ex: int) -> None: ...
+
+
 class TwoGISClient:
     """HTTP client for fetching nearby places from 2GIS APIs."""
 
@@ -25,10 +34,18 @@ class TwoGISClient:
         api_key: str,
         timeout_seconds: float = 10.0,
         radius_meters: int = 2000,
+        cache: GeocodeCacheProtocol | None = None,
+        geocode_ttl_seconds: int = 2_592_000,
+        geocode_miss_ttl_seconds: int = 86_400,
+        transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self._api_key = api_key
         self._timeout_seconds = timeout_seconds
         self._radius_meters = radius_meters
+        self._cache = cache
+        self._geocode_ttl_seconds = geocode_ttl_seconds
+        self._geocode_miss_ttl_seconds = geocode_miss_ttl_seconds
+        self._transport = transport
         self._geocode_url = "https://catalog.api.2gis.com/3.0/items/geocode"
         self._items_url = "https://catalog.api.2gis.com/3.0/items"
 
@@ -45,9 +62,40 @@ class TwoGISClient:
         return NearbySummary(schools=schools, parks=parks, metro=metro)
 
     async def _geocode(self, *, city: str, address: str) -> tuple[float, float] | None:
-        params = {"q": f"{city}, {address}", "key": self._api_key}
+        cache_key = f"2gis:geo:{city.strip().lower()}|{address.strip().lower()}"
+        if self._cache is not None:
+            cached = await self._cache.get(cache_key)
+            if cached is not None:
+                # "" is a cached miss; anything else is "lat,lon".
+                return self._decode_cached_point(cached)
+
+        point = await self._geocode_api(city=city, address=address)
+
+        if self._cache is not None:
+            if point is None:
+                await self._cache.set(cache_key, "", ex=self._geocode_miss_ttl_seconds)
+            else:
+                await self._cache.set(
+                    cache_key,
+                    f"{point[0]},{point[1]}",
+                    ex=self._geocode_ttl_seconds,
+                )
+        return point
+
+    async def _geocode_api(self, *, city: str, address: str) -> tuple[float, float] | None:
+        # 2GIS omits geometry unless explicitly requested, so without
+        # fields=items.point every geocode result lacks lat/lon and enrichment
+        # silently degrades to zero nearby counts.
+        params = {
+            "q": f"{city}, {address}",
+            "fields": "items.point",
+            "key": self._api_key,
+        }
         try:
-            async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
+            async with httpx.AsyncClient(
+                timeout=self._timeout_seconds,
+                transport=self._transport,
+            ) as client:
                 response = await client.get(self._geocode_url, params=params)
                 response.raise_for_status()
         except httpx.HTTPError:
@@ -65,6 +113,16 @@ class TwoGISClient:
             return None
         return float(lat), float(lon)
 
+    @staticmethod
+    def _decode_cached_point(cached: str) -> tuple[float, float] | None:
+        if not cached:
+            return None
+        try:
+            lat_str, lon_str = cached.split(",", 1)
+            return float(lat_str), float(lon_str)
+        except ValueError:
+            return None
+
     async def _count_nearby(self, *, query: str, lat: float, lon: float) -> int:
         params: dict[str, str | int] = {
             "q": query,
@@ -76,7 +134,10 @@ class TwoGISClient:
             "key": self._api_key,
         }
         try:
-            async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
+            async with httpx.AsyncClient(
+                timeout=self._timeout_seconds,
+                transport=self._transport,
+            ) as client:
                 response = await client.get(self._items_url, params=params)
                 response.raise_for_status()
         except httpx.HTTPError:

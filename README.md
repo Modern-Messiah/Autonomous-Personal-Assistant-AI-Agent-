@@ -1,7 +1,7 @@
 # Krisha Agent
 
 Autonomous multi-agent system for apartment discovery in Kazakhstan.  
-Current scope is **Phase 0 + Phase 7 infra baseline**: foundation, parser, LangGraph search pipeline, enrichment, Gemini-backed scoring, checkpoint memory, Telegram bot, persistent monitor settings, ARQ scheduler runtime, Notion export, Podman stack, VPS deploy automation, tests, and CI.
+Current scope is **Phase 0 + Phase 7 infra baseline**: foundation, parser, LangGraph search pipeline, enrichment, DeepSeek-backed scoring, checkpoint memory, Telegram bot, persistent monitor settings, ARQ scheduler runtime, Notion export, Podman stack, VPS deploy automation, tests, and CI.
 
 ## Tech Stack
 
@@ -115,7 +115,7 @@ The project uses nested settings via `pydantic-settings` and `env_nested_delimit
 - `DB__HOST`, `DB__PORT`, `DB__NAME`, `DB__USER`, `DB__PASSWORD`
 - `REDIS__HOST`, `REDIS__PORT`, `REDIS__DB`, `REDIS__PASSWORD`
 - `TELEGRAM__BOT_TOKEN`
-- `API__TWO_GIS_API_KEY`, `API__GEMINI_API_KEY`
+- `API__TWO_GIS_API_KEY`, `API__DEEPSEEK_API_KEY`
 - `API__LANGSMITH_API_KEY`, `API__LANGSMITH_PROJECT`
 - `API__SENTRY_DSN`
 - `NOTION__ENABLED`, `NOTION__API_TOKEN`, `NOTION__DATABASE_ID`, `NOTION__TIMEOUT_SECONDS`
@@ -134,7 +134,7 @@ See `.env.example` for the full contract.
   - `IntentNode` (rule-based text -> `SearchCriteria`) and `run_search_graph_from_text`.
   - `SearchNode` + `run_search_graph` pipeline on LangGraph.
   - `EnrichNode` with mortgage annuity calculation and 2GIS nearby summary client.
-  - `ScoringNode` with Gemini structured JSON scoring and graceful fallback on scorer errors.
+  - `ScoringNode` with DeepSeek JSON scoring and graceful fallback on scorer errors.
   - Optional Postgres-backed LangGraph checkpointing via `thread_id` and official saver integration.
   - Telegram bot baseline on `aiogram` with `/start`, `/search`, `/criteria`, user registration, and active criteria persistence.
 - Supervisor-style dialog agent for free-text turns, refinement routing, and natural-language fallback without explicit commands.

@@ -49,7 +49,11 @@ ROOMS_RANGE_PATTERN = re.compile(
     r"(\d+)\s*(?:-|\u2013)\s*(\d+)\s*(?:\u043a\u043e\u043c\w*|room\w*)",
     re.IGNORECASE,
 )
-ROOMS_SINGLE_PATTERN = re.compile(r"(\d+)\s*(?:\u043a\u043e\u043c\w*|room\w*)", re.IGNORECASE)
+# Allow a hyphen/en-dash before "kom", e.g. the common "2-komnatnaya" spelling.
+ROOMS_SINGLE_PATTERN = re.compile(
+    r"(\d+)[-\u2013\s]*(?:\u043a\u043e\u043c\w*|room\w*)",
+    re.IGNORECASE,
+)
 ROOMS_OR_PATTERN = re.compile(r"(\d+)\s*(?:\u0438\u043b\u0438|or)\s*(\d+)", re.IGNORECASE)
 PAGE_LIMIT_PATTERN = re.compile(
     r"(?:pages?|page_limit|\u0441\u0442\u0440\u0430\u043d\u0438\u0446\w*)\s*(\d+)",

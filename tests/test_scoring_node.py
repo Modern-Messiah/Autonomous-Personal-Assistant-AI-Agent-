@@ -1,4 +1,4 @@
-"""Tests for Gemini scorer and scoring node."""
+"""Tests for DeepSeek scorer and scoring node."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from agent.models.enriched import EnrichedApartment
 from agent.models.score import ApartmentScore
 from agent.nodes.scoring_node import ScoringNode
 from agent.nodes.search_node import SearchNode
-from agent.tools.gemini_scorer import GeminiApartmentScorer
+from agent.tools.deepseek_scorer import DeepSeekApartmentScorer
 
 
 class FakeParser:
@@ -35,16 +35,24 @@ class FakeApartmentScorer:
     def __init__(self, score: ApartmentScore) -> None:
         self._score = score
 
-    async def score_apartment(self, apartment: EnrichedApartment) -> ApartmentScore:
-        del apartment
+    async def score_apartment(
+        self,
+        apartment: EnrichedApartment,
+        criteria: SearchCriteria | None = None,
+    ) -> ApartmentScore:
+        del apartment, criteria
         return self._score
 
 
 class BrokenApartmentScorer:
     """Failing scorer to test fallback behavior."""
 
-    async def score_apartment(self, apartment: EnrichedApartment) -> ApartmentScore:
-        del apartment
+    async def score_apartment(
+        self,
+        apartment: EnrichedApartment,
+        criteria: SearchCriteria | None = None,
+    ) -> ApartmentScore:
+        del apartment, criteria
         raise RuntimeError("scoring failed")
 
 
@@ -104,30 +112,19 @@ def build_score() -> ApartmentScore:
 
 
 @pytest.mark.asyncio
-async def test_gemini_apartment_scorer_parses_structured_response() -> None:
+async def test_deepseek_apartment_scorer_parses_structured_response() -> None:
     expected = build_score()
 
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "POST"
-        assert "generateContent" in str(request.url)
+        assert "deepseek.com" in str(request.url)
+        assert request.headers["authorization"] == "Bearer test-key"
         return httpx.Response(
             status_code=200,
-            json={
-                "candidates": [
-                    {
-                        "content": {
-                            "parts": [
-                                {
-                                    "text": expected.model_dump_json(),
-                                }
-                            ]
-                        }
-                    }
-                ]
-            },
+            json={"choices": [{"message": {"content": expected.model_dump_json()}}]},
         )
 
-    scorer = GeminiApartmentScorer(
+    scorer = DeepSeekApartmentScorer(
         api_key="test-key",
         transport=httpx.MockTransport(handler),
     )
@@ -169,6 +166,54 @@ async def test_scoring_node_falls_back_to_none_on_errors() -> None:
     )
 
     assert result["enriched_apartments"][0].score is None
+
+
+class AreaScorer:
+    """Scores by area so ranking order is deterministic; area 0 fails -> None."""
+
+    async def score_apartment(
+        self,
+        apartment: EnrichedApartment,
+        criteria: SearchCriteria | None = None,
+    ) -> ApartmentScore:
+        del criteria
+        area = apartment.apartment.area_m2 or 0.0
+        if area == 0.0:
+            raise RuntimeError("no area")
+        return ApartmentScore(score=area, reasons=["a", "b"], recommendation="consider")
+
+
+@pytest.mark.asyncio
+async def test_scoring_node_ranks_results_by_score_desc() -> None:
+    def enriched(external_id: str, area: float) -> EnrichedApartment:
+        apartment = build_apartment().model_copy(
+            update={
+                "external_id": external_id,
+                "url": f"https://krisha.kz/a/show/{external_id}",
+                "area_m2": area,
+            }
+        )
+        return EnrichedApartment(apartment=apartment)
+
+    items = [
+        enriched("low", 30.0),
+        enriched("none", 0.0),
+        enriched("high", 90.0),
+        enriched("mid", 60.0),
+    ]
+    node = ScoringNode(scorer=AreaScorer())
+
+    result = await node(
+        {
+            "criteria": build_criteria(),
+            "apartments": [item.apartment for item in items],
+            "enriched_apartments": items,
+        }
+    )
+
+    ranked = result["enriched_apartments"]
+    assert [item.apartment.external_id for item in ranked] == ["high", "mid", "low", "none"]
+    assert ranked[-1].score is None
 
 
 @pytest.mark.asyncio

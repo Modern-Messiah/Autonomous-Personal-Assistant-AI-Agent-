@@ -5,8 +5,6 @@ from __future__ import annotations
 import asyncio
 
 from aiogram import Bot, Dispatcher
-from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
 
 from agent.tools import NotionClient
 from bot.router import create_bot_router
@@ -18,10 +16,7 @@ from db.session import get_session_factory
 def create_bot() -> Bot:
     """Create configured aiogram Bot instance."""
     settings = get_settings()
-    return Bot(
-        token=settings.telegram.bot_token.get_secret_value(),
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-    )
+    return Bot(token=settings.telegram.bot_token.get_secret_value())
 
 
 def create_dispatcher(service: SearchBotService | None = None) -> Dispatcher:

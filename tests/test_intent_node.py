@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 
@@ -33,6 +34,37 @@ class FakeSearchParser:
         return self._apartments
 
 
+class StubLLMIntentParser:
+    """Minimal fake LLM parser that returns canned JSON-like payloads."""
+
+    def __init__(self, payload: dict[str, object]) -> None:
+        self._payload = payload
+        self.calls: list[tuple[str, SearchCriteria | None]] = []
+
+    async def parse_patch(
+        self,
+        *,
+        message: str,
+        existing_criteria: SearchCriteria | None = None,
+    ) -> dict[str, object]:
+        self.calls.append((message, existing_criteria))
+        return dict(self._payload)
+
+
+class BrokenLLMIntentParser:
+    """Fake LLM parser that fails so regex fallback can be exercised."""
+
+    async def parse_patch(
+        self,
+        *,
+        message: str,
+        existing_criteria: SearchCriteria | None = None,
+    ) -> dict[str, object]:
+        del message, existing_criteria
+        msg = "llm unavailable"
+        raise RuntimeError(msg)
+
+
 def make_context_factory(context: object):
     @asynccontextmanager
     async def factory():
@@ -57,9 +89,10 @@ def build_apartment() -> Apartment:
     )
 
 
-def test_intent_node_parses_sale_message() -> None:
-    node = IntentNode()
-    criteria = node.parse(
+@pytest.mark.asyncio
+async def test_intent_node_parses_sale_message() -> None:
+    node = IntentNode(llm_parser_factory=lambda: None)
+    criteria = await node.parse(
         user_id=1,
         message=(
             "Ищу 2-3 комнатную квартиру в Алматы, Бостандыкский район, "
@@ -78,9 +111,10 @@ def test_intent_node_parses_sale_message() -> None:
     assert criteria.districts == ["Bostandyk"]
 
 
-def test_intent_node_parses_rent_message() -> None:
-    node = IntentNode()
-    criteria = node.parse(
+@pytest.mark.asyncio
+async def test_intent_node_parses_rent_message() -> None:
+    node = IntentNode(llm_parser_factory=lambda: None)
+    criteria = await node.parse(
         user_id=2,
         message="Нужна аренда 1 ком в Астане до 300 тыс тг, pages 2",
     )
@@ -92,8 +126,21 @@ def test_intent_node_parses_rent_message() -> None:
     assert criteria.page_limit == 2
 
 
-def test_intent_node_refines_existing_criteria() -> None:
-    node = IntentNode()
+@pytest.mark.asyncio
+async def test_intent_node_parses_hyphenated_room_count() -> None:
+    node = IntentNode(llm_parser_factory=lambda: None)
+    criteria = await node.parse(
+        user_id=3,
+        message="2-комнатная квартира в Алматы до 45 млн",
+    )
+
+    assert criteria.rooms == [2]
+    assert criteria.max_price_kzt == 45_000_000
+
+
+@pytest.mark.asyncio
+async def test_intent_node_refines_existing_criteria() -> None:
+    node = IntentNode(llm_parser_factory=lambda: None)
     base = SearchCriteria(
         user_id=10,
         city="Almaty",
@@ -108,7 +155,7 @@ def test_intent_node_refines_existing_criteria() -> None:
         page_limit=3,
     )
 
-    refined = node.refine(
+    refined = await node.refine(
         criteria=base,
         message="только 3 комнаты, район Медеу и до 35 млн, pages 5",
     )
@@ -124,12 +171,87 @@ def test_intent_node_refines_existing_criteria() -> None:
 
 @pytest.mark.asyncio
 async def test_intent_node_call_updates_state_with_criteria() -> None:
-    node = IntentNode()
+    node = IntentNode(llm_parser_factory=lambda: None)
     result = await node({"user_id": 7, "message": "Куплю квартиру в Алматы"})
 
     assert result["user_id"] == 7
     assert result["criteria"].city == "Almaty"
     assert result["criteria"].deal_type == "sale"
+
+
+@pytest.mark.asyncio
+async def test_intent_node_uses_llm_parser_for_word_forms_and_unknown_city() -> None:
+    llm_parser = StubLLMIntentParser(
+        {
+            "city": "Karaganda",
+            "deal_type": "sale",
+            "max_price_kzt": 30_000_000,
+            "rooms": [2],
+        }
+    )
+    node = IntentNode(llm_parser=llm_parser)
+
+    criteria = await node.parse(
+        user_id=11,
+        message="двухкомнатная в Караганде до 30 млн",
+    )
+
+    assert criteria.city == "Karaganda"
+    assert criteria.deal_type == "sale"
+    assert criteria.max_price_kzt == 30_000_000
+    assert criteria.rooms == [2]
+    assert llm_parser.calls == [("двухкомнатная в Караганде до 30 млн", None)]
+
+
+@pytest.mark.asyncio
+async def test_intent_node_uses_llm_parser_for_complex_room_query() -> None:
+    llm_parser = StubLLMIntentParser(
+        {
+            "city": "Almaty",
+            "deal_type": "sale",
+            "rooms": [2, 3],
+        }
+    )
+    node = IntentNode(llm_parser=llm_parser)
+
+    criteria = await node.parse(
+        user_id=12,
+        message="квартира на Розыбакиева 2-3 комнаты",
+    )
+
+    assert criteria.city == "Almaty"
+    assert criteria.rooms == [2, 3]
+
+
+@pytest.mark.asyncio
+async def test_intent_node_falls_back_to_regex_when_llm_parser_errors() -> None:
+    node = IntentNode(llm_parser=BrokenLLMIntentParser())
+
+    criteria = await node.parse(
+        user_id=13,
+        message="2-комнатная квартира в Алматы до 45 млн",
+    )
+
+    assert criteria.city == "Almaty"
+    assert criteria.max_price_kzt == 45_000_000
+    assert criteria.rooms == [2]
+
+
+@pytest.mark.asyncio
+async def test_intent_node_falls_back_to_regex_when_llm_factory_raises() -> None:
+    def failing_factory() -> Any:
+        msg = "missing key"
+        raise RuntimeError(msg)
+
+    node = IntentNode(llm_parser_factory=failing_factory)
+    criteria = await node.parse(
+        user_id=14,
+        message="2-комнатная квартира в Алматы до 45 млн",
+    )
+
+    assert criteria.city == "Almaty"
+    assert criteria.max_price_kzt == 45_000_000
+    assert criteria.rooms == [2]
 
 
 @pytest.mark.asyncio
@@ -140,7 +262,7 @@ async def test_run_search_graph_from_text_uses_intent_output() -> None:
     result = await run_search_graph_from_text(
         user_id=77,
         message="Нужна аренда 2 комнаты в Астане до 400 тыс тг",
-        intent_node=IntentNode(),
+        intent_node=IntentNode(llm_parser_factory=lambda: None),
         search_node=search_node,
     )
 

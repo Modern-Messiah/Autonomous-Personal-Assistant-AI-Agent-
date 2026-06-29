@@ -31,7 +31,7 @@ def test_settings_load_from_env_file(tmp_path: Path) -> None:
                 "REDIS__PASSWORD=",
                 "TELEGRAM__BOT_TOKEN=telegram_token",
                 "API__TWO_GIS_API_KEY=two_gis_key",
-                "API__GEMINI_API_KEY=gemini_key",
+                "API__DEEPSEEK_API_KEY=deepseek_key",
                 "API__LANGSMITH_API_KEY=langsmith_key",
                 "API__LANGSMITH_PROJECT=krisha-agent-dev",
                 "API__SENTRY_DSN=https://public@sentry.example/1",
@@ -56,6 +56,36 @@ def test_settings_load_from_env_file(tmp_path: Path) -> None:
     assert settings.notion.enabled is False
 
 
+def test_settings_allow_empty_notion_credentials_when_disabled(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "DB__HOST=localhost",
+                "DB__NAME=krisha_agent",
+                "DB__USER=krisha",
+                "DB__PASSWORD=secret_password",
+                "REDIS__HOST=localhost",
+                "TELEGRAM__BOT_TOKEN=telegram_token",
+                "API__TWO_GIS_API_KEY=two_gis_key",
+                "API__DEEPSEEK_API_KEY=deepseek_key",
+                "API__LANGSMITH_API_KEY=langsmith_key",
+                "API__LANGSMITH_PROJECT=krisha-agent-dev",
+                "API__SENTRY_DSN=https://public@sentry.example/1",
+                "NOTION__ENABLED=false",
+                "NOTION__API_TOKEN=",
+                "NOTION__DATABASE_ID=",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    settings = Settings(_env_file=env_file)
+
+    assert settings.notion.api_token is None
+    assert settings.notion.database_id is None
+
+
 def test_settings_require_notion_credentials_when_enabled(tmp_path: Path) -> None:
     env_file = tmp_path / ".env"
     env_file.write_text(
@@ -68,7 +98,7 @@ def test_settings_require_notion_credentials_when_enabled(tmp_path: Path) -> Non
                 "REDIS__HOST=localhost",
                 "TELEGRAM__BOT_TOKEN=telegram_token",
                 "API__TWO_GIS_API_KEY=two_gis_key",
-                "API__GEMINI_API_KEY=gemini_key",
+                "API__DEEPSEEK_API_KEY=deepseek_key",
                 "API__LANGSMITH_API_KEY=langsmith_key",
                 "API__LANGSMITH_PROJECT=krisha-agent-dev",
                 "API__SENTRY_DSN=https://public@sentry.example/1",
@@ -94,7 +124,7 @@ def test_settings_load_enabled_notion_config(tmp_path: Path) -> None:
                 "REDIS__HOST=localhost",
                 "TELEGRAM__BOT_TOKEN=telegram_token",
                 "API__TWO_GIS_API_KEY=two_gis_key",
-                "API__GEMINI_API_KEY=gemini_key",
+                "API__DEEPSEEK_API_KEY=deepseek_key",
                 "API__LANGSMITH_API_KEY=langsmith_key",
                 "API__LANGSMITH_PROJECT=krisha-agent-dev",
                 "API__SENTRY_DSN=https://public@sentry.example/1",

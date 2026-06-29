@@ -4,7 +4,7 @@ from functools import lru_cache
 from typing import Literal
 from urllib.parse import quote_plus
 
-from pydantic import BaseModel, Field, SecretStr, model_validator
+from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -61,7 +61,7 @@ class APISettings(BaseModel):
     """External integrations keys."""
 
     two_gis_api_key: SecretStr
-    gemini_api_key: SecretStr
+    deepseek_api_key: SecretStr
     langsmith_api_key: SecretStr
     langsmith_project: str = Field(min_length=1)
     sentry_dsn: str = Field(min_length=1)
@@ -74,6 +74,11 @@ class ParserSettings(BaseModel):
     max_delay_seconds: float = Field(default=3.0, ge=0, le=30)
     timeout_ms: int = Field(default=30_000, ge=1_000, le=120_000)
     dedup_ttl_seconds: int = Field(default=86_400, ge=60)
+    # Candidate pool fetched in detail, enriched, scored and ranked before the
+    # bot shows its short list. Kept small to stay within 2GIS free-tier limits
+    # and avoid hammering krisha; there is no cheap pre-ranking signal, so
+    # fetching more than we enrich would be pure waste.
+    max_results: int = Field(default=6, ge=1, le=100)
 
     @model_validator(mode="after")
     def validate_delay_range(self) -> "ParserSettings":
@@ -86,7 +91,7 @@ class ParserSettings(BaseModel):
 class ScoringSettings(BaseModel):
     """LLM scoring behavior settings."""
 
-    model: str = Field(default="gemini-2.5-flash", min_length=1)
+    model: str = Field(default="deepseek-chat", min_length=1)
     temperature: float = Field(default=0.2, ge=0, le=1)
     timeout_seconds: float = Field(default=15.0, gt=0, le=120)
 
@@ -114,6 +119,14 @@ class NotionSettings(BaseModel):
     api_token: SecretStr | None = None
     database_id: str | None = Field(default=None, min_length=1)
     timeout_seconds: float = Field(default=15.0, gt=0, le=120)
+
+    @field_validator("api_token", "database_id", mode="before")
+    @classmethod
+    def normalize_empty_credentials(cls, value: object) -> object:
+        """Treat empty optional credentials from environment files as unset."""
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
     @model_validator(mode="after")
     def validate_enabled_contract(self) -> "NotionSettings":

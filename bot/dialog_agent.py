@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Literal, TypedDict
 
@@ -11,7 +12,12 @@ from bot.formatters import (
     format_saved_apartments,
     format_start_message,
 )
-from bot.service import ActiveCriteriaNotFoundError, SearchBotService, SearchExecution
+from bot.service import (
+    ActiveCriteriaNotFoundError,
+    SearchBotService,
+    SearchExecution,
+    SearchExecutionError,
+)
 
 DialogIntent = Literal[
     "search",
@@ -149,8 +155,14 @@ class DialogAgent:
         telegram_user_id: int,
         username: str | None,
         message: str,
+        on_search_start: Callable[[], Awaitable[None]] | None = None,
     ) -> DialogTurnResult:
-        """Handle one free-text user message through the dialog router."""
+        """Handle one free-text user message through the dialog router.
+
+        ``on_search_start`` is awaited right before a search/refine runs so the
+        caller can show a progress notice during the slow lookup, without
+        notifying for non-search intents (help, saved list, etc.).
+        """
         active_criteria = await self._service.get_active_criteria(
             telegram_user_id=telegram_user_id,
         )
@@ -166,8 +178,12 @@ class DialogAgent:
         }
         intent = state["intent"]
         if intent == "search":
+            if on_search_start is not None:
+                await on_search_start()
             return (await self._handle_search(state))["result"]
         if intent == "refine":
+            if on_search_start is not None:
+                await on_search_start()
             return (await self._handle_refine(state))["result"]
         if intent == "show_saved":
             return (await self._handle_show_saved(state))["result"]
@@ -178,11 +194,17 @@ class DialogAgent:
         return (await self._handle_help(state))["result"]
 
     async def _handle_search(self, state: DialogTurnState) -> DialogTurnState:
-        execution = await self._service.run_search(
-            telegram_user_id=state["telegram_user_id"],
-            username=state.get("username"),
-            query=state["message"],
-        )
+        try:
+            execution = await self._service.run_search(
+                telegram_user_id=state["telegram_user_id"],
+                username=state.get("username"),
+                query=state["message"],
+            )
+        except SearchExecutionError as exc:
+            return {
+                **state,
+                "result": DialogTurnResult(messages=[exc.user_message]),
+            }
         return {
             **state,
             "result": DialogTurnResult(
@@ -206,6 +228,11 @@ class DialogAgent:
                         "Активные критерии не найдены. Сначала выполни поиск через /search."
                     ]
                 ),
+            }
+        except SearchExecutionError as exc:
+            return {
+                **state,
+                "result": DialogTurnResult(messages=[exc.user_message]),
             }
 
         return {

@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from aiogram import Dispatcher
+from types import SimpleNamespace
 
-from bot.app import create_dispatcher
+from aiogram import Dispatcher
+from pydantic import SecretStr
+
+from bot.app import create_bot, create_dispatcher
 
 
 class DummyService:
@@ -84,3 +87,16 @@ def test_create_dispatcher_includes_bot_routes() -> None:
     update_types = dispatcher.resolve_used_update_types()
     assert "message" in update_types
     assert "callback_query" in update_types
+
+
+def test_create_bot_does_not_force_html_parse_mode(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "bot.app.get_settings",
+        lambda: SimpleNamespace(
+            telegram=SimpleNamespace(bot_token=SecretStr("123456:ABCDEF"))
+        ),
+    )
+
+    bot = create_bot()
+
+    assert bot.default.parse_mode is None

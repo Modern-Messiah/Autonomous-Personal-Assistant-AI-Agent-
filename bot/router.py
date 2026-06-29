@@ -24,7 +24,12 @@ from bot.keyboards import (
     build_search_followup_keyboard,
 )
 from bot.monitoring import parse_monitor_interval
-from bot.service import ActiveCriteriaNotFoundError, SearchBotService, SearchExecution
+from bot.service import (
+    ActiveCriteriaNotFoundError,
+    SearchBotService,
+    SearchExecution,
+    SearchExecutionError,
+)
 from bot.states import SearchDialogStates
 
 
@@ -107,11 +112,15 @@ def create_bot_router(service: SearchBotService) -> Router:
             return
 
         await message.answer("Ищу варианты по заданным критериям...")
-        result = await service.run_search(
-            telegram_user_id=message.from_user.id,
-            username=message.from_user.username,
-            query=query,
-        )
+        try:
+            result = await service.run_search(
+                telegram_user_id=message.from_user.id,
+                username=message.from_user.username,
+                query=query,
+            )
+        except SearchExecutionError as exc:
+            await message.answer(exc.user_message)
+            return
         await send_search_execution(message, state, result)
 
     @router.message(Command("refine"))
@@ -152,6 +161,9 @@ def create_bot_router(service: SearchBotService) -> Router:
             await message.answer(
                 "Активные критерии не найдены. Сначала выполни поиск через /search."
             )
+            return
+        except SearchExecutionError as exc:
+            await message.answer(exc.user_message)
             return
 
         await state.clear()
@@ -361,6 +373,9 @@ def create_bot_router(service: SearchBotService) -> Router:
                 "Активные критерии не найдены. Сначала выполни поиск через /search."
             )
             return
+        except SearchExecutionError as exc:
+            await message.answer(exc.user_message)
+            return
 
         await state.clear()
         await send_search_execution(message, state, result)
@@ -374,10 +389,14 @@ def create_bot_router(service: SearchBotService) -> Router:
             await message.answer("Напиши новый запрос, уточнение или используй /cancel.")
             return
 
+        async def notify_search_start() -> None:
+            await message.answer("Ищу варианты по заданным критериям...")
+
         result = await create_dialog_agent().handle_message(
             telegram_user_id=message.from_user.id,
             username=message.from_user.username,
             message=text,
+            on_search_start=notify_search_start,
         )
         await send_dialog_turn(message, state, result)
 
@@ -390,10 +409,14 @@ def create_bot_router(service: SearchBotService) -> Router:
             await message.answer("Поддерживаются текстовые команды и обычные текстовые запросы.")
             return
 
+        async def notify_search_start() -> None:
+            await message.answer("Ищу варианты по заданным критериям...")
+
         result = await create_dialog_agent().handle_message(
             telegram_user_id=message.from_user.id,
             username=message.from_user.username,
             message=text,
+            on_search_start=notify_search_start,
         )
         await send_dialog_turn(message, state, result)
 

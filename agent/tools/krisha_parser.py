@@ -13,6 +13,7 @@ from urllib.parse import quote, urlencode, urljoin
 
 from bs4 import BeautifulSoup
 from fake_useragent import UserAgent
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from agent.models.apartment import Apartment
 from agent.models.criteria import SearchCriteria
@@ -24,7 +25,12 @@ BASE_URL = "https://krisha.kz"
 CAPTCHA_MARKERS = ("captcha", "verify you are human", "too many requests", "access denied")
 EXTERNAL_ID_PATTERN = re.compile(r"/a/show/(\d+)")
 PRICE_PATTERN = re.compile(r"(\d[\d\s]{2,}\d)")
-AREA_PATTERN = re.compile(r"(\d+(?:[.,]\d+)?)\s*м")
+# Require a square-meter unit (м²/м2/m²/m2/кв.м) so values like the ceiling
+# height "потолки 2.7м" are not mistaken for the apartment area.
+AREA_PATTERN = re.compile(
+    r"(\d+(?:[.,]\d+)?)\s*(?:кв\.?\s*м|м\s*²|м\s*2|m\s*²|m\s*2)",
+    re.IGNORECASE,
+)
 FLOOR_PATTERN = re.compile(r"(\d+\s*/\s*\d+)")
 ROOMS_PATTERN = re.compile(r"(\d+)\s*[- ]?ком")
 ROOMS_WORD_PATTERN = re.compile(
@@ -91,6 +97,8 @@ class RedisSetProtocol(Protocol):
         nx: bool,
     ) -> bool | None: ...
 
+    async def delete(self, *names: str) -> int: ...
+
 
 class UserAgentProvider:
     """Returns randomized user-agent values."""
@@ -137,9 +145,13 @@ class KrishaParser:
         max_delay_seconds: float = 3.0,
         timeout_ms: int = 30_000,
         dedup_ttl_seconds: int = 86_400,
+        max_results: int = 12,
     ) -> None:
         if min_delay_seconds > max_delay_seconds:
             msg = "min_delay_seconds cannot be greater than max_delay_seconds"
+            raise ValueError(msg)
+        if max_results < 1:
+            msg = "max_results must be at least 1"
             raise ValueError(msg)
         self._redis = redis_client
         self._user_agent_provider = user_agent_provider or UserAgentProvider()
@@ -147,6 +159,7 @@ class KrishaParser:
         self._max_delay_seconds = max_delay_seconds
         self._timeout_ms = timeout_ms
         self._dedup_ttl_seconds = dedup_ttl_seconds
+        self._max_results = max_results
 
     async def create_browser_context(self, browser: Browser) -> BrowserContext:
         """Create Playwright context with randomized user-agent."""
@@ -161,6 +174,7 @@ class KrishaParser:
         """Search Krisha and return structured apartments."""
         listing_urls = self._build_listing_urls(criteria)
         previews: list[ListingPreview] = []
+        last_listing_timeout: PlaywrightTimeoutError | None = None
 
         for listing_url in listing_urls:
             page = await context.new_page()
@@ -169,21 +183,58 @@ class KrishaParser:
                 previews.extend(self.parse_listing_page(html))
             except AntiBotBlockedError:
                 return []
+            except PlaywrightTimeoutError as exc:
+                last_listing_timeout = exc
             finally:
                 await page.close()
             await self._sleep_between_requests()
 
+        if not previews and last_listing_timeout is not None:
+            raise last_listing_timeout
+
         deduped_previews = self._deduplicate_previews(previews)
-        unseen_previews = await self._filter_unseen(deduped_previews)
+        # krisha ignores our listing-page filter params, so apply the criteria
+        # client-side on the parsed previews. This also bounds work: only the
+        # first `max_results` matching listings are fetched in detail, instead of
+        # crawling every listing on every page just to show a short shortlist.
+        matching_previews = [
+            preview
+            for preview in deduped_previews
+            if self._matches_criteria(preview, criteria)
+        ]
 
         apartments: list[Apartment] = []
-        for preview in unseen_previews:
+        for preview in matching_previews:
+            if len(apartments) >= self._max_results:
+                break
+            claimed = await self._claim_preview(
+                user_id=criteria.user_id,
+                external_id=preview.external_id,
+            )
+            if not claimed:
+                continue
             page = await context.new_page()
             try:
                 html = await self._fetch_page_html(page, preview.url)
-                apartments.append(self.parse_detail_page(html, preview=preview, city=criteria.city))
+                apartment = self.parse_detail_page(html, preview=preview, city=criteria.city)
             except AntiBotBlockedError:
-                continue
+                await self._release_preview(
+                    user_id=criteria.user_id,
+                    external_id=preview.external_id,
+                )
+            except PlaywrightTimeoutError:
+                await self._release_preview(
+                    user_id=criteria.user_id,
+                    external_id=preview.external_id,
+                )
+            except Exception:
+                await self._release_preview(
+                    user_id=criteria.user_id,
+                    external_id=preview.external_id,
+                )
+                raise
+            else:
+                apartments.append(apartment)
             finally:
                 await page.close()
             await self._sleep_between_requests()
@@ -240,15 +291,20 @@ class KrishaParser:
                     details_text,
                 ]
             )
+            # Krisha card titles carry clean structured specs, e.g.
+            # "2-комнатная квартира · 58.5 м² · 6/9 этаж". Prefer the title for
+            # rooms/area/floor so noisy details (ceiling height, building number
+            # in the address) are not mistaken for them.
+            spec_text = " ".join(chunk for chunk in [title, params_text] if chunk)
 
             preview = ListingPreview(
                 external_id=external_id,
                 url=self._normalize_url(href_value),
                 title=title,
                 price_kzt=self._extract_price_kzt(price_text),
-                rooms=self._extract_rooms(params_text),
-                area_m2=self._extract_area(params_text),
-                floor=self._extract_floor(params_text),
+                rooms=self._extract_rooms(spec_text),
+                area_m2=self._extract_area(spec_text),
+                floor=self._extract_floor(spec_text),
                 district=(
                     self._extract_district(subtitle_text) or self._extract_district(params_text)
                 ),
@@ -366,14 +422,14 @@ class KrishaParser:
         if delay > 0:
             await asyncio.sleep(delay)
 
-    async def _filter_unseen(self, previews: list[ListingPreview]) -> list[ListingPreview]:
-        unseen: list[ListingPreview] = []
-        for preview in previews:
-            dedup_key = f"krisha:seen:{preview.external_id}"
-            is_new = await self._redis.set(dedup_key, "1", ex=self._dedup_ttl_seconds, nx=True)
-            if is_new:
-                unseen.append(preview)
-        return unseen
+    async def _claim_preview(self, *, user_id: int, external_id: str) -> bool:
+        dedup_key = self._dedup_key(user_id=user_id, external_id=external_id)
+        is_new = await self._redis.set(dedup_key, "1", ex=self._dedup_ttl_seconds, nx=True)
+        return bool(is_new)
+
+    async def _release_preview(self, *, user_id: int, external_id: str) -> None:
+        dedup_key = self._dedup_key(user_id=user_id, external_id=external_id)
+        await self._redis.delete(dedup_key)
 
     def _deduplicate_previews(self, previews: list[ListingPreview]) -> list[ListingPreview]:
         unique: list[ListingPreview] = []
@@ -384,6 +440,35 @@ class KrishaParser:
             unique.append(preview)
             seen_ids.add(preview.external_id)
         return unique
+
+    @staticmethod
+    def _matches_criteria(preview: ListingPreview, criteria: SearchCriteria) -> bool:
+        """Check a listing-card preview against search criteria.
+
+        Unknown preview fields (``None``) are treated as a match so listings with
+        a sparse card are not dropped before the detail page is fetched. Districts
+        are not filtered here: criteria use canonical English names while previews
+        carry Russian district labels, so matching is unreliable.
+        """
+        rooms = preview.rooms
+        if criteria.rooms and rooms is not None and rooms not in criteria.rooms:
+            return False
+
+        price = preview.price_kzt
+        if price is not None:
+            if criteria.min_price_kzt is not None and price < criteria.min_price_kzt:
+                return False
+            if criteria.max_price_kzt is not None and price > criteria.max_price_kzt:
+                return False
+
+        area = preview.area_m2
+        if area is not None:
+            if criteria.min_area_m2 is not None and area < criteria.min_area_m2:
+                return False
+            if criteria.max_area_m2 is not None and area > criteria.max_area_m2:
+                return False
+
+        return True
 
     def _resolve_card_container(self, link: object) -> object:
         node = link
@@ -404,6 +489,10 @@ class KrishaParser:
         return urljoin(BASE_URL, href)
 
     @staticmethod
+    def _dedup_key(*, user_id: int, external_id: str) -> str:
+        return f"krisha:seen:{user_id}:{external_id}"
+
+    @staticmethod
     def _extract_external_id(href: str) -> str | None:
         match = EXTERNAL_ID_PATTERN.search(href)
         if match is None:
@@ -413,7 +502,15 @@ class KrishaParser:
     @staticmethod
     def _is_blocked_page(html: str) -> bool:
         lowered = html.lower()
-        return any(marker in lowered for marker in CAPTCHA_MARKERS)
+        if not any(marker in lowered for marker in CAPTCHA_MARKERS):
+            return False
+        # krisha appends a reCAPTCHA legal footer ("защищён
+        # сервисом reCAPTCHA") to every normal page, so a
+        # bare marker match would flag valid result pages as blocked. A page that still renders
+        # real listing/offer content is therefore never a genuine anti-bot interstitial.
+        has_listings = "/a/show/" in lowered or "a-card" in lowered
+        has_offer = "offer__price" in lowered or "offer__title" in lowered
+        return not (has_listings or has_offer)
 
     @staticmethod
     def _get_selector_text(container: object, selector: str) -> str | None:

@@ -7,7 +7,12 @@ import pytest
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from agent.models.criteria import SearchCriteria
-from agent.tools.krisha_parser import KrishaParser, ListingPreview, ResponseProtocol
+from agent.tools.krisha_parser import (
+    AntiBotBlockedError,
+    KrishaParser,
+    ListingPreview,
+    ResponseProtocol,
+)
 
 
 def make_preview(
@@ -168,7 +173,7 @@ async def test_search_parses_listing_and_detail_pages() -> None:
 
 
 @pytest.mark.asyncio
-async def test_search_returns_empty_on_captcha_page() -> None:
+async def test_search_raises_on_captcha_page() -> None:
     captcha_html = load_fixture("captcha_page.html")
 
     redis = FakeRedis()
@@ -181,9 +186,10 @@ async def test_search_returns_empty_on_captcha_page() -> None:
     listing_url = parser._build_listing_urls(criteria)[0]
     context = FakeBrowserContext({listing_url: (200, captcha_html)})
 
-    apartments = await parser.search(context, criteria)
-
-    assert apartments == []
+    # A blocked listing page must surface as an error, not an empty result, so
+    # callers can distinguish it from "genuinely nothing found".
+    with pytest.raises(AntiBotBlockedError):
+        await parser.search(context, criteria)
 
 
 def test_matches_criteria_filters_rooms_and_price() -> None:

@@ -182,7 +182,10 @@ class KrishaParser:
                 html = await self._fetch_page_html(page, listing_url)
                 previews.extend(self.parse_listing_page(html))
             except AntiBotBlockedError:
-                return []
+                # Propagate so callers can tell "blocked by anti-bot" apart from
+                # "genuinely nothing found" and message the user accordingly
+                # (page is closed by the finally below).
+                raise
             except PlaywrightTimeoutError as exc:
                 last_listing_timeout = exc
             finally:

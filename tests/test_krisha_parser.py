@@ -1,11 +1,32 @@
 """Tests for Krisha parser tool."""
 
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from agent.models.criteria import SearchCriteria
-from agent.tools.krisha_parser import KrishaParser, ResponseProtocol
+from agent.tools.krisha_parser import KrishaParser, ListingPreview, ResponseProtocol
+
+
+def make_preview(
+    *,
+    external_id: str = "1",
+    price_kzt: int | None = None,
+    rooms: int | None = None,
+    area_m2: float | None = None,
+) -> ListingPreview:
+    return ListingPreview(
+        external_id=external_id,
+        url=f"https://krisha.kz/a/show/{external_id}",
+        title=f"Apartment {external_id}",
+        price_kzt=price_kzt,
+        rooms=rooms,
+        area_m2=area_m2,
+        floor=None,
+        district=None,
+    )
 
 
 def load_fixture(name: str) -> str:
@@ -23,7 +44,7 @@ class FakeResponse(ResponseProtocol):
 class FakePage:
     """In-memory page object that returns predefined HTML by URL."""
 
-    def __init__(self, page_map: dict[str, tuple[int, str]]) -> None:
+    def __init__(self, page_map: Mapping[str, tuple[int, str] | Exception]) -> None:
         self._page_map = page_map
         self._current_url: str | None = None
 
@@ -38,15 +59,22 @@ class FakePage:
         if url not in self._page_map:
             msg = f"Unexpected url requested in test: {url}"
             raise AssertionError(msg)
+        current = self._page_map[url]
+        if isinstance(current, Exception):
+            raise current
         self._current_url = url
-        status, _ = self._page_map[url]
+        status, _ = current
         return FakeResponse(status=status)
 
     async def content(self) -> str:
         if self._current_url is None:
             msg = "content() called before goto()"
             raise AssertionError(msg)
-        _, html = self._page_map[self._current_url]
+        current = self._page_map[self._current_url]
+        if isinstance(current, Exception):
+            msg = "content() called for failed page load"
+            raise AssertionError(msg)
+        _, html = current
         return html
 
     async def close(self) -> None:
@@ -56,7 +84,7 @@ class FakePage:
 class FakeBrowserContext:
     """Context that creates fake pages."""
 
-    def __init__(self, page_map: dict[str, tuple[int, str]]) -> None:
+    def __init__(self, page_map: Mapping[str, tuple[int, str] | Exception]) -> None:
         self._page_map = page_map
 
     async def new_page(self) -> FakePage:
@@ -68,6 +96,7 @@ class FakeRedis:
 
     def __init__(self, seen_keys: set[str] | None = None) -> None:
         self._seen_keys = seen_keys or set()
+        self.deleted_keys: list[str] = []
 
     async def set(
         self,
@@ -82,6 +111,15 @@ class FakeRedis:
             return False
         self._seen_keys.add(name)
         return True
+
+    async def delete(self, *names: str) -> int:
+        deleted = 0
+        for name in names:
+            if name in self._seen_keys:
+                self._seen_keys.remove(name)
+                deleted += 1
+            self.deleted_keys.append(name)
+        return deleted
 
 
 def build_criteria(page_limit: int = 1) -> SearchCriteria:
@@ -99,7 +137,7 @@ async def test_search_parses_listing_and_detail_pages() -> None:
     listing_html = load_fixture("listing_page.html")
     detail_html = load_fixture("detail_123456789.html")
 
-    redis = FakeRedis(seen_keys={"krisha:seen:987654321"})
+    redis = FakeRedis(seen_keys={"krisha:seen:1:987654321"})
     parser = KrishaParser(
         redis_client=redis,
         min_delay_seconds=0,
@@ -146,6 +184,171 @@ async def test_search_returns_empty_on_captcha_page() -> None:
     apartments = await parser.search(context, criteria)
 
     assert apartments == []
+
+
+def test_matches_criteria_filters_rooms_and_price() -> None:
+    criteria = SearchCriteria(
+        user_id=1, city="Almaty", deal_type="sale", property_type="apartment",
+        rooms=[2], max_price_kzt=45_000_000,
+    )
+    # matches: 2-room, within budget
+    assert KrishaParser._matches_criteria(
+        make_preview(rooms=2, price_kzt=40_000_000), criteria
+    )
+    # wrong room count
+    assert not KrishaParser._matches_criteria(
+        make_preview(rooms=3, price_kzt=40_000_000), criteria
+    )
+    # over budget
+    assert not KrishaParser._matches_criteria(
+        make_preview(rooms=2, price_kzt=60_000_000), criteria
+    )
+    # unknown fields are kept (resolved on the detail page)
+    assert KrishaParser._matches_criteria(
+        make_preview(rooms=None, price_kzt=None), criteria
+    )
+
+
+@pytest.mark.asyncio
+async def test_search_caps_detail_fetches_to_max_results() -> None:
+    # one listing page advertising three listings, parser capped to 2 results
+    cards = "".join(
+        f'<div class="a-card">'
+        f'<a class="a-card__title" href="/a/show/{i}">2-комнатная квартира · 60 м² · 3/9 этаж</a>'
+        f'<div class="a-card__price">40 000 000 〒</div>'
+        f"</div>"
+        for i in range(1, 4)
+    )
+    listing_html = f"<html><body>{cards}</body></html>"
+    detail_html = load_fixture("detail_123456789.html")
+
+    redis = FakeRedis()
+    parser = KrishaParser(
+        redis_client=redis, min_delay_seconds=0, max_delay_seconds=0, max_results=2,
+    )
+    criteria = build_criteria(page_limit=1)
+    listing_url = parser._build_listing_urls(criteria)[0]
+    page_map = {
+        listing_url: (200, listing_html),
+        "https://krisha.kz/a/show/1": (200, detail_html),
+        "https://krisha.kz/a/show/2": (200, detail_html),
+        "https://krisha.kz/a/show/3": (200, detail_html),
+    }
+
+    apartments = await parser.search(FakeBrowserContext(page_map), criteria)
+
+    assert len(apartments) == 2  # capped, third listing not fetched
+
+
+@pytest.mark.asyncio
+async def test_search_ignores_recaptcha_legal_footer() -> None:
+    # krisha adds this reCAPTCHA legal footer to every normal page; the parser
+    # must not treat a content-rich result page as an anti-bot interstitial.
+    recaptcha_footer = (
+        '<p class="g-recaptcha-policy">'
+        "Этот сайт защищён "
+        "сервисом reCAPTCHA</p>"
+    )
+    listing_html = load_fixture("listing_page.html") + recaptcha_footer
+    detail_html = load_fixture("detail_123456789.html") + recaptcha_footer
+
+    redis = FakeRedis(seen_keys={"krisha:seen:1:987654321"})
+    parser = KrishaParser(
+        redis_client=redis,
+        min_delay_seconds=0,
+        max_delay_seconds=0,
+        timeout_ms=10_000,
+    )
+    criteria = build_criteria(page_limit=1)
+    listing_url = parser._build_listing_urls(criteria)[0]
+
+    page_map = {
+        listing_url: (200, listing_html),
+        "https://krisha.kz/a/show/123456789": (200, detail_html),
+    }
+    context = FakeBrowserContext(page_map)
+
+    apartments = await parser.search(context, criteria)
+
+    assert len(apartments) == 1
+    assert apartments[0].external_id == "123456789"
+
+
+@pytest.mark.asyncio
+async def test_search_releases_seen_reservation_when_detail_page_times_out() -> None:
+    listing_html = load_fixture("listing_page.html")
+    detail_html = load_fixture("detail_123456789.html")
+
+    redis = FakeRedis()
+    parser = KrishaParser(
+        redis_client=redis,
+        min_delay_seconds=0,
+        max_delay_seconds=0,
+        timeout_ms=10_000,
+    )
+    criteria = build_criteria(page_limit=1)
+    listing_url = parser._build_listing_urls(criteria)[0]
+
+    context = FakeBrowserContext(
+        {
+            listing_url: (200, listing_html),
+            "https://krisha.kz/a/show/123456789": PlaywrightTimeoutError("detail timeout"),
+            "https://krisha.kz/a/show/987654321": (200, detail_html),
+        }
+    )
+
+    apartments = await parser.search(context, criteria)
+
+    assert [apartment.external_id for apartment in apartments] == ["987654321"]
+    assert redis.deleted_keys == ["krisha:seen:1:123456789"]
+    assert redis._seen_keys == {"krisha:seen:1:987654321"}
+
+
+@pytest.mark.asyncio
+async def test_search_uses_other_listing_pages_when_one_page_times_out() -> None:
+    listing_html = load_fixture("listing_page.html")
+    detail_html = load_fixture("detail_123456789.html")
+
+    redis = FakeRedis(seen_keys={"krisha:seen:1:987654321"})
+    parser = KrishaParser(
+        redis_client=redis,
+        min_delay_seconds=0,
+        max_delay_seconds=0,
+        timeout_ms=10_000,
+    )
+    criteria = build_criteria(page_limit=2)
+    first_page_url, second_page_url = parser._build_listing_urls(criteria)
+
+    context = FakeBrowserContext(
+        {
+            first_page_url: PlaywrightTimeoutError("listing timeout"),
+            second_page_url: (200, listing_html),
+            "https://krisha.kz/a/show/123456789": (200, detail_html),
+        }
+    )
+
+    apartments = await parser.search(context, criteria)
+
+    assert [apartment.external_id for apartment in apartments] == ["123456789"]
+
+
+@pytest.mark.asyncio
+async def test_search_propagates_listing_timeout_when_no_pages_succeed() -> None:
+    redis = FakeRedis()
+    parser = KrishaParser(
+        redis_client=redis,
+        min_delay_seconds=0,
+        max_delay_seconds=0,
+        timeout_ms=10_000,
+    )
+    criteria = build_criteria(page_limit=1)
+    listing_url = parser._build_listing_urls(criteria)[0]
+    context = FakeBrowserContext(
+        {listing_url: PlaywrightTimeoutError("listing timeout")}
+    )
+
+    with pytest.raises(PlaywrightTimeoutError):
+        await parser.search(context, criteria)
 
 
 def test_parse_listing_page_extracts_previews() -> None:

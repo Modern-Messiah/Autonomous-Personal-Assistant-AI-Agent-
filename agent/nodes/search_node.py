@@ -95,5 +95,6 @@ def create_default_search_node() -> SearchNode:
         max_delay_seconds=settings.parser.max_delay_seconds,
         timeout_ms=settings.parser.timeout_ms,
         dedup_ttl_seconds=settings.parser.dedup_ttl_seconds,
+        max_results=settings.parser.max_results,
     )
     return SearchNode(parser=parser, context_factory=build_playwright_context_factory(parser))

@@ -3,88 +3,275 @@
 from __future__ import annotations
 
 import re
-from typing import Literal, TypedDict
+from collections.abc import Callable
+from typing import Literal, Protocol, TypedDict
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from agent.models.criteria import SearchCriteria
+from agent.tools.llm_intent_parser import LLMIntentParser
+from config.settings import get_settings
 
-PRICE_UNIT_MILLION = (
-    r"(?:\u043c\u043b\u043d|\u043c\u0438\u043b\u043b\u0438\u043e\u043d\w*|m)"
-)
-PRICE_UNIT_THOUSAND = r"(?:\u0442\u044b\u0441\w*|k)"
-PRICE_UNIT_TENGE = r"(?:\u0442\u0433|\u0442\u0435\u043d\u0433\u0435|\u20b8)"
+PRICE_UNIT_MILLION = r"(?:млн|миллион\w*|m)"
+PRICE_UNIT_THOUSAND = r"(?:тыс\w*|k)"
+PRICE_UNIT_TENGE = r"(?:тг|тенге|₸)"
 PRICE_VALUE_PATTERN = re.compile(
     rf"(\d+(?:[.,]\d+)?)\s*({PRICE_UNIT_MILLION}|{PRICE_UNIT_THOUSAND}|{PRICE_UNIT_TENGE})",
     re.IGNORECASE,
 )
 PRICE_RANGE_PATTERN = re.compile(
-    rf"(?:\u043e\u0442\s+)?(\d+(?:[.,]\d+)?)\s*"
+    rf"(?:от\s+)?(\d+(?:[.,]\d+)?)\s*"
     rf"({PRICE_UNIT_MILLION}|{PRICE_UNIT_THOUSAND}|{PRICE_UNIT_TENGE})\s*"
-    rf"(?:-|\u2013|\u0434\u043e|to)\s*"
+    rf"(?:-|\u2013|до|to)\s*"
     rf"(\d+(?:[.,]\d+)?)\s*({PRICE_UNIT_MILLION}|{PRICE_UNIT_THOUSAND}|{PRICE_UNIT_TENGE})",
     re.IGNORECASE,
 )
 PRICE_MIN_PATTERN = re.compile(
-    rf"(?:\u043e\u0442|min|from)\s+(\d+(?:[.,]\d+)?)\s*"
+    rf"(?:от|min|from)\s+(\d+(?:[.,]\d+)?)\s*"
     rf"({PRICE_UNIT_MILLION}|{PRICE_UNIT_THOUSAND}|{PRICE_UNIT_TENGE})",
     re.IGNORECASE,
 )
 PRICE_MAX_PATTERN = re.compile(
-    rf"(?:\u0434\u043e|max|\u043d\u0435\s+\u0434\u043e\u0440\u043e\u0436\u0435)\s+"
-    rf"(\d+(?:[.,]\d+)?)\s*({PRICE_UNIT_MILLION}|{PRICE_UNIT_THOUSAND}|{PRICE_UNIT_TENGE})",
+    rf"(?:до|max|не\s+дороже)\s+(\d+(?:[.,]\d+)?)\s*"
+    rf"({PRICE_UNIT_MILLION}|{PRICE_UNIT_THOUSAND}|{PRICE_UNIT_TENGE})",
     re.IGNORECASE,
 )
 AREA_RANGE_PATTERN = re.compile(
-    r"(\d+(?:[.,]\d+)?)\s*(?:-|\u2013|\u0434\u043e|to)\s*(\d+(?:[.,]\d+)?)\s*(?:\u043c2|\u043c\u00b2|m2)",
+    r"(\d+(?:[.,]\d+)?)\s*(?:-|\u2013|до|to)\s*(\d+(?:[.,]\d+)?)\s*(?:м2|м²|m2)",
     re.IGNORECASE,
 )
 AREA_MIN_PATTERN = re.compile(
-    r"(?:\u043e\u0442|min|from)\s+(\d+(?:[.,]\d+)?)\s*(?:\u043c2|\u043c\u00b2|m2)",
+    r"(?:от|min|from)\s+(\d+(?:[.,]\d+)?)\s*(?:м2|м²|m2)",
     re.IGNORECASE,
 )
 AREA_MAX_PATTERN = re.compile(
-    r"(?:\u0434\u043e|max)\s+(\d+(?:[.,]\d+)?)\s*(?:\u043c2|\u043c\u00b2|m2)",
+    r"(?:до|max)\s+(\d+(?:[.,]\d+)?)\s*(?:м2|м²|m2)",
     re.IGNORECASE,
 )
 ROOMS_RANGE_PATTERN = re.compile(
-    r"(\d+)\s*(?:-|\u2013)\s*(\d+)\s*(?:\u043a\u043e\u043c\w*|room\w*)",
+    r"(\d+)\s*(?:-|\u2013)\s*(\d+)\s*(?:ком\w*|room\w*)",
     re.IGNORECASE,
 )
-# Allow a hyphen/en-dash before "kom", e.g. the common "2-komnatnaya" spelling.
 ROOMS_SINGLE_PATTERN = re.compile(
-    r"(\d+)[-\u2013\s]*(?:\u043a\u043e\u043c\w*|room\w*)",
+    r"(\d+)[-\u2013\s]*(?:ком\w*|room\w*)",
     re.IGNORECASE,
 )
-ROOMS_OR_PATTERN = re.compile(r"(\d+)\s*(?:\u0438\u043b\u0438|or)\s*(\d+)", re.IGNORECASE)
+ROOMS_OR_PATTERN = re.compile(r"(\d+)\s*(?:или|or)\s*(\d+)", re.IGNORECASE)
 PAGE_LIMIT_PATTERN = re.compile(
-    r"(?:pages?|page_limit|\u0441\u0442\u0440\u0430\u043d\u0438\u0446\w*)\s*(\d+)",
+    r"(?:pages?|page_limit|страниц\w*)\s*(\d+)",
     re.IGNORECASE,
 )
 
 CITY_ALIASES = {
     "almaty": "Almaty",
-    "\u0430\u043b\u043c\u0430\u0442": "Almaty",
+    "алмат": "Almaty",
     "astana": "Astana",
-    "\u0430\u0441\u0442\u0430\u043d": "Astana",
-    "\u043d\u0443\u0440-\u0441\u0443\u043b\u0442\u0430\u043d": "Astana",
+    "астан": "Astana",
+    "нур-султан": "Astana",
     "shymkent": "Shymkent",
-    "\u0448\u044b\u043c\u043a\u0435\u043d\u0442": "Shymkent",
+    "шимкент": "Shymkent",
 }
 DISTRICT_ALIASES = {
     "bostandyk": "Bostandyk",
-    "\u0431\u043e\u0441\u0442\u0430\u043d\u0434\u044b\u043a": "Bostandyk",
+    "бостандык": "Bostandyk",
     "medeu": "Medeu",
-    "\u043c\u0435\u0434\u0435\u0443": "Medeu",
+    "медеу": "Medeu",
     "auezov": "Auezov",
-    "\u0430\u0443\u044d\u0437\u043e\u0432": "Auezov",
+    "ауэзов": "Auezov",
     "almaly": "Almaly",
-    "\u0430\u043b\u043c\u0430\u043b": "Almaly",
+    "алмал": "Almaly",
     "nauryzbay": "Nauryzbay",
-    "\u043d\u0430\u0443\u0440\u044b\u0437\u0431\u0430\u0439": "Nauryzbay",
+    "наурызбай": "Nauryzbay",
     "turksib": "Turksib",
-    "\u0442\u0443\u0440\u043a\u0441\u0438\u0431": "Turksib",
+    "турксиб": "Turksib",
     "zhetysu": "Zhetysu",
-    "\u0436\u0435\u0442\u044b\u0441\u0443": "Zhetysu",
+    "жетысу": "Zhetysu",
 }
+
+
+class LLMIntentParserProtocol(Protocol):
+    """Contract for optional LLM-backed criteria extraction."""
+
+    async def parse_patch(
+        self,
+        *,
+        message: str,
+        existing_criteria: SearchCriteria | None = None,
+    ) -> dict[str, object]: ...
+
+
+class IntentCriteriaPatch(BaseModel):
+    """Validated partial criteria extracted by the LLM parser."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    city: str | None = None
+    deal_type: Literal["sale", "rent"] | None = None
+    min_price_kzt: int | None = Field(default=None, ge=0)
+    max_price_kzt: int | None = Field(default=None, ge=0)
+    rooms: list[int] | None = None
+    districts: list[str] | None = None
+    min_area_m2: float | None = Field(default=None, ge=0)
+    max_area_m2: float | None = Field(default=None, ge=0)
+    page_limit: int | None = Field(default=None, ge=1, le=20)
+
+    @field_validator("city", mode="before")
+    @classmethod
+    def normalize_city_input(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("city")
+    @classmethod
+    def canonicalize_city(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        lowered = value.lower()
+        for alias, canonical in CITY_ALIASES.items():
+            if alias in lowered:
+                return canonical
+        if "караганд" in lowered:
+            return "Karaganda"
+        if lowered.isascii():
+            return " ".join(part.capitalize() for part in lowered.split())
+        return value
+
+    @field_validator("deal_type", mode="before")
+    @classmethod
+    def normalize_deal_type(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        lowered = value.strip().lower()
+        if lowered in {"sale", "buy", "покупка", "купить", "продажа"}:
+            return "sale"
+        if lowered in {"rent", "аренда", "снять"}:
+            return "rent"
+        return value
+
+    @field_validator("rooms", mode="before")
+    @classmethod
+    def normalize_rooms(cls, value: object) -> list[int] | None:
+        if value is None or value == "":
+            return None
+
+        candidates: list[int] = []
+        if isinstance(value, int):
+            candidates = [value]
+        elif isinstance(value, float):
+            candidates = [int(value)]
+        elif isinstance(value, str):
+            normalized = value.strip().lower()
+            range_match = re.fullmatch(r"(\d+)\s*(?:-|\u2013|to)\s*(\d+)", normalized)
+            if range_match is not None:
+                start = int(range_match.group(1))
+                end = int(range_match.group(2))
+                if start <= end:
+                    candidates = list(range(start, end + 1))
+            else:
+                candidates = [int(item) for item in re.findall(r"\d+", normalized)]
+        elif isinstance(value, list):
+            for item in value:
+                if isinstance(item, int):
+                    candidates.append(item)
+                elif isinstance(item, float):
+                    candidates.append(int(item))
+                elif isinstance(item, str):
+                    candidates.extend(int(found) for found in re.findall(r"\d+", item))
+
+        cleaned = sorted({room for room in candidates if room > 0})
+        return cleaned or None
+
+    @field_validator("districts", mode="before")
+    @classmethod
+    def normalize_districts_input(cls, value: object) -> list[str] | None:
+        if value is None or value == "":
+            return None
+        if isinstance(value, str):
+            value = [value]
+        if not isinstance(value, list):
+            return None
+
+        cleaned = [str(item).strip() for item in value if str(item).strip()]
+        return cleaned or None
+
+    @field_validator("districts")
+    @classmethod
+    def canonicalize_districts(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+
+        cleaned: list[str] = []
+        seen: set[str] = set()
+        for district in value:
+            lowered = district.lower()
+            canonical = None
+            for alias, alias_value in DISTRICT_ALIASES.items():
+                if alias in lowered:
+                    canonical = alias_value
+                    break
+            if canonical is None:
+                stripped = re.sub(
+                    r"\b(?:district|districts|район|района|\u0440-\u043d|микрорайон)\b",
+                    "",
+                    lowered,
+                ).strip(" -_,.")
+                canonical = " ".join(part.capitalize() for part in stripped.split()) or district
+            if canonical not in seen:
+                cleaned.append(canonical)
+                seen.add(canonical)
+        return cleaned or None
+
+    @field_validator("page_limit", mode="before")
+    @classmethod
+    def normalize_page_limit(cls, value: object) -> object:
+        if isinstance(value, str) and value.strip():
+            return int(float(value.strip()))
+        if isinstance(value, float):
+            return int(value)
+        return value
+
+    @model_validator(mode="after")
+    def validate_ranges(self) -> IntentCriteriaPatch:
+        if (
+            self.min_price_kzt is not None
+            and self.max_price_kzt is not None
+            and self.min_price_kzt > self.max_price_kzt
+        ):
+            self.min_price_kzt, self.max_price_kzt = (
+                self.max_price_kzt,
+                self.min_price_kzt,
+            )
+        if (
+            self.min_area_m2 is not None
+            and self.max_area_m2 is not None
+            and self.min_area_m2 > self.max_area_m2
+        ):
+            self.min_area_m2, self.max_area_m2 = (
+                self.max_area_m2,
+                self.min_area_m2,
+            )
+        if self.page_limit is not None:
+            self.page_limit = min(max(self.page_limit, 1), 20)
+        return self
+
+    def has_values(self) -> bool:
+        """Return True when at least one field is meaningfully set."""
+        return any(
+            getattr(self, field_name) is not None
+            for field_name in (
+                "city",
+                "deal_type",
+                "min_price_kzt",
+                "max_price_kzt",
+                "rooms",
+                "districts",
+                "min_area_m2",
+                "max_area_m2",
+                "page_limit",
+            )
+        )
 
 
 class IntentState(TypedDict, total=False):
@@ -95,8 +282,29 @@ class IntentState(TypedDict, total=False):
     criteria: SearchCriteria
 
 
+def create_default_llm_intent_parser() -> LLMIntentParserProtocol | None:
+    """Create the production LLM parser from settings, or disable it safely."""
+    try:
+        settings = get_settings()
+        api_key = settings.api.deepseek_api_key.get_secret_value()
+    except Exception:
+        return None
+
+    if not api_key:
+        return None
+
+    try:
+        return LLMIntentParser(
+            api_key=api_key,
+            model=settings.scoring.model,
+            timeout_seconds=settings.scoring.timeout_seconds,
+        )
+    except Exception:
+        return None
+
+
 class IntentNode:
-    """Rule-based text parser for search criteria."""
+    """LLM-assisted parser with regex fallback for search criteria extraction."""
 
     def __init__(
         self,
@@ -104,21 +312,121 @@ class IntentNode:
         default_city: str = "Almaty",
         default_deal_type: Literal["sale", "rent"] = "sale",
         default_page_limit: int = 3,
+        llm_parser: LLMIntentParserProtocol | None = None,
+        llm_parser_factory: Callable[[], LLMIntentParserProtocol | None] | None = None,
     ) -> None:
         self._default_city = default_city
         self._default_deal_type = default_deal_type
         self._default_page_limit = default_page_limit
+        self._llm_parser = llm_parser
+        self._llm_parser_factory = llm_parser_factory or create_default_llm_intent_parser
+        self._llm_parser_resolved = llm_parser is not None
 
     async def __call__(self, state: IntentState) -> IntentState:
-        criteria = self.parse(user_id=state["user_id"], message=state["message"])
+        criteria = await self.parse(user_id=state["user_id"], message=state["message"])
         return {
             "user_id": state["user_id"],
             "message": state["message"],
             "criteria": criteria,
         }
 
-    def parse(self, *, user_id: int, message: str) -> SearchCriteria:
+    async def parse(self, *, user_id: int, message: str) -> SearchCriteria:
         """Parse free-form message into SearchCriteria."""
+        patch = await self._parse_with_llm(message=message, existing_criteria=None)
+        if patch is not None:
+            return self._build_search_criteria(user_id=user_id, patch=patch)
+        return self._parse_with_regex(user_id=user_id, message=message)
+
+    async def refine(self, *, criteria: SearchCriteria, message: str) -> SearchCriteria:
+        """Merge free-form refinement text into existing criteria."""
+        patch = await self._parse_with_llm(message=message, existing_criteria=criteria)
+        if patch is not None:
+            return self._build_refined_criteria(criteria=criteria, patch=patch)
+        return self._refine_with_regex(criteria=criteria, message=message)
+
+    async def _parse_with_llm(
+        self,
+        *,
+        message: str,
+        existing_criteria: SearchCriteria | None,
+    ) -> IntentCriteriaPatch | None:
+        parser = self._resolve_llm_parser()
+        if parser is None:
+            return None
+
+        try:
+            raw_patch = await parser.parse_patch(
+                message=message,
+                existing_criteria=existing_criteria,
+            )
+            patch = IntentCriteriaPatch.model_validate(raw_patch)
+        except Exception:
+            return None
+
+        if not patch.has_values():
+            return None
+        return patch
+
+    def _resolve_llm_parser(self) -> LLMIntentParserProtocol | None:
+        if self._llm_parser_resolved:
+            return self._llm_parser
+
+        self._llm_parser_resolved = True
+        try:
+            self._llm_parser = self._llm_parser_factory()
+        except Exception:
+            self._llm_parser = None
+        return self._llm_parser
+
+    def _build_search_criteria(
+        self,
+        *,
+        user_id: int,
+        patch: IntentCriteriaPatch,
+    ) -> SearchCriteria:
+        return SearchCriteria(
+            user_id=user_id,
+            city=patch.city or self._default_city,
+            deal_type=patch.deal_type or self._default_deal_type,
+            property_type="apartment",
+            min_price_kzt=patch.min_price_kzt,
+            max_price_kzt=patch.max_price_kzt,
+            rooms=patch.rooms,
+            districts=patch.districts,
+            min_area_m2=patch.min_area_m2,
+            max_area_m2=patch.max_area_m2,
+            page_limit=patch.page_limit or self._default_page_limit,
+        )
+
+    def _build_refined_criteria(
+        self,
+        *,
+        criteria: SearchCriteria,
+        patch: IntentCriteriaPatch,
+    ) -> SearchCriteria:
+        return SearchCriteria(
+            user_id=criteria.user_id,
+            city=patch.city or criteria.city,
+            deal_type=patch.deal_type or criteria.deal_type,
+            property_type=criteria.property_type,
+            min_price_kzt=(
+                criteria.min_price_kzt
+                if patch.min_price_kzt is None
+                else patch.min_price_kzt
+            ),
+            max_price_kzt=(
+                criteria.max_price_kzt
+                if patch.max_price_kzt is None
+                else patch.max_price_kzt
+            ),
+            rooms=criteria.rooms if patch.rooms is None else patch.rooms,
+            districts=criteria.districts if patch.districts is None else patch.districts,
+            min_area_m2=criteria.min_area_m2 if patch.min_area_m2 is None else patch.min_area_m2,
+            max_area_m2=criteria.max_area_m2 if patch.max_area_m2 is None else patch.max_area_m2,
+            page_limit=criteria.page_limit if patch.page_limit is None else patch.page_limit,
+        )
+
+    def _parse_with_regex(self, *, user_id: int, message: str) -> SearchCriteria:
         normalized = message.strip().lower()
         deal_type = self._parse_deal_type(normalized)
         city = self._parse_city(normalized)
@@ -142,8 +450,7 @@ class IntentNode:
             page_limit=page_limit,
         )
 
-    def refine(self, *, criteria: SearchCriteria, message: str) -> SearchCriteria:
-        """Merge free-form refinement text into existing criteria."""
+    def _refine_with_regex(self, *, criteria: SearchCriteria, message: str) -> SearchCriteria:
         normalized = message.strip().lower()
         deal_type = self._find_deal_type(normalized)
         city = self._find_city(normalized)
@@ -174,19 +481,10 @@ class IntentNode:
         return self._default_deal_type
 
     def _find_deal_type(self, text: str) -> Literal["sale", "rent"] | None:
-        rent_markers = (
-            "\u0430\u0440\u0435\u043d\u0434",
-            "\u0441\u043d\u044f\u0442",
-            "rent",
-        )
+        rent_markers = ("аренд", "снят", "rent")
         if any(marker in text for marker in rent_markers):
             return "rent"
-        sale_markers = (
-            "\u043a\u0443\u043f",
-            "\u043f\u043e\u043a\u0443\u043f",
-            "sale",
-            "buy",
-        )
+        sale_markers = ("куп", "покуп", "sale", "buy")
         if any(marker in text for marker in sale_markers):
             return "sale"
         return None
@@ -315,12 +613,8 @@ class IntentNode:
             return None
 
         lowered_unit = unit_text.lower()
-        if (
-            "\u043c\u043b\u043d" in lowered_unit
-            or "\u043c\u0438\u043b\u043b\u0438\u043e\u043d" in lowered_unit
-            or lowered_unit == "m"
-        ):
+        if "млн" in lowered_unit or "миллион" in lowered_unit or lowered_unit == "m":
             return int(value * 1_000_000)
-        if "\u0442\u044b\u0441" in lowered_unit or lowered_unit == "k":
+        if "тыс" in lowered_unit or lowered_unit == "k":
             return int(value * 1_000)
         return int(value)

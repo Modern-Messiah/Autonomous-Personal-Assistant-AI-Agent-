@@ -124,7 +124,7 @@ class SearchBotService:
         query: str,
     ) -> SearchExecution:
         """Parse criteria, persist them, and run the search graph."""
-        criteria = self._intent_node.parse(user_id=telegram_user_id, message=query)
+        criteria = await self._intent_node.parse(user_id=telegram_user_id, message=query)
         return await self._persist_and_run_search(
             telegram_user_id=telegram_user_id,
             username=username,
@@ -144,7 +144,7 @@ class SearchBotService:
             msg = "active criteria not found"
             raise ActiveCriteriaNotFoundError(msg)
 
-        criteria = self._intent_node.refine(
+        criteria = await self._intent_node.refine(
             criteria=active_criteria,
             message=message,
         )

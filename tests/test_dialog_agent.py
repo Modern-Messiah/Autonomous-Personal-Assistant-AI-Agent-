@@ -227,3 +227,30 @@ async def test_dialog_agent_returns_error_message_when_search_fails() -> None:
 
     assert result.search_execution is None
     assert result.messages == ["Временная ошибка поиска"]
+
+
+@pytest.mark.asyncio
+async def test_dialog_agent_notifies_search_start_only_for_search() -> None:
+    service = DummyDialogService(active_criteria=None)
+    agent = DialogAgent(service)  # type: ignore[arg-type]
+    calls: list[str] = []
+
+    async def on_start() -> None:
+        calls.append("notified")
+
+    await agent.handle_message(
+        telegram_user_id=77,
+        username="tester",
+        message="Ищу 2-комнатную квартиру в Алматы до 45 млн",
+        on_search_start=on_start,
+    )
+    assert calls == ["notified"]  # search intent notifies
+
+    calls.clear()
+    await agent.handle_message(
+        telegram_user_id=77,
+        username="tester",
+        message="покажи сохраненные квартиры",
+        on_search_start=on_start,
+    )
+    assert calls == []  # non-search intent does not notify

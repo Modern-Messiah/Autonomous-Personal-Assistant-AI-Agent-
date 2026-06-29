@@ -389,10 +389,14 @@ def create_bot_router(service: SearchBotService) -> Router:
             await message.answer("Напиши новый запрос, уточнение или используй /cancel.")
             return
 
+        async def notify_search_start() -> None:
+            await message.answer("Ищу варианты по заданным критериям...")
+
         result = await create_dialog_agent().handle_message(
             telegram_user_id=message.from_user.id,
             username=message.from_user.username,
             message=text,
+            on_search_start=notify_search_start,
         )
         await send_dialog_turn(message, state, result)
 
@@ -405,10 +409,14 @@ def create_bot_router(service: SearchBotService) -> Router:
             await message.answer("Поддерживаются текстовые команды и обычные текстовые запросы.")
             return
 
+        async def notify_search_start() -> None:
+            await message.answer("Ищу варианты по заданным критериям...")
+
         result = await create_dialog_agent().handle_message(
             telegram_user_id=message.from_user.id,
             username=message.from_user.username,
             message=text,
+            on_search_start=notify_search_start,
         )
         await send_dialog_turn(message, state, result)
 

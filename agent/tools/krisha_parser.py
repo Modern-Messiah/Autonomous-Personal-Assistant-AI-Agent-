@@ -39,6 +39,16 @@ ROOMS_WORD_PATTERN = re.compile(
 )
 PUBLISHED_PATTERN = re.compile(r"(\d{2}\.\d{2}\.\d{4})")
 
+# Real listing photos live on the krisha CDN under /webp/<hash>/<n>-<size>.jpg in
+# many sizes; marketing banners sit under /content/ and must be skipped.
+LISTING_PHOTO_HOST = "krisha-photos.kcdn.online"
+PHOTO_SIZE_PATTERN = re.compile(
+    r"^(?P<base>.+)-(?:\d+x\d+|full)\.(?:jpg|jpeg|png)$",
+    re.IGNORECASE,
+)
+# krisha CDN serves every size for a photo by suffix; normalize to one good size.
+PHOTO_DISPLAY_SIZE = "750x470"
+
 
 class AntiBotBlockedError(RuntimeError):
     """Raised when target page appears blocked by anti-bot checks."""
@@ -583,22 +593,29 @@ class KrishaParser:
 
     @staticmethod
     def _extract_photo_urls(soup: BeautifulSoup) -> list[str]:
-        photos: list[str] = []
+        """Return real listing photos (one best-size URL per distinct photo).
+
+        Skips marketing banners (/content/) and the dozens of duplicate size
+        variants krisha emits, so the bot does not show logos/thumbnails.
+        """
+        bases: list[str] = []
+        seen: set[str] = set()
         for img in soup.select("img"):
             candidate = img.get("src") or img.get("data-src")
             if not isinstance(candidate, str):
                 continue
-            normalized = urljoin(BASE_URL, candidate)
-            if normalized.startswith("http"):
-                photos.append(normalized)
-        deduped: list[str] = []
-        seen: set[str] = set()
-        for photo in photos:
-            if photo in seen:
+            url = urljoin(BASE_URL, candidate)
+            if LISTING_PHOTO_HOST not in url or "/content/" in url:
                 continue
-            deduped.append(photo)
-            seen.add(photo)
-        return deduped
+            match = PHOTO_SIZE_PATTERN.match(url)
+            if match is None:
+                continue
+            base = match.group("base")
+            if base not in seen:
+                seen.add(base)
+                bases.append(base)
+
+        return [f"{base}-{PHOTO_DISPLAY_SIZE}.jpg" for base in bases]
 
     @staticmethod
     def _extract_published_at(soup: BeautifulSoup) -> datetime | None:

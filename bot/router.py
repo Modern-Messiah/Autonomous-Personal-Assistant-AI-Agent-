@@ -10,6 +10,7 @@ from aiogram.types import CallbackQuery, Message
 from bot.dialog_agent import DialogAgent, DialogTurnResult
 from bot.formatters import (
     DEFAULT_SEARCH_RESULTS_LIMIT,
+    format_apartment_card,
     format_criteria,
     format_monitor_status,
     format_saved_apartments,
@@ -52,11 +53,20 @@ def create_bot_router(service: SearchBotService) -> Router:
             await message.answer(format_search_results([]))
             return
 
+        for index, apartment in enumerate(presented_apartments, start=1):
+            caption = format_apartment_card(apartment, index=index)
+            photo = apartment.apartment.photos[0] if apartment.apartment.photos else None
+            if photo is not None:
+                try:
+                    await message.answer_photo(photo=photo, caption=caption)
+                    continue
+                except Exception:
+                    # Telegram may reject a photo URL; fall back to a text card.
+                    pass
+            await message.answer(caption)
+
         await message.answer(
-            format_search_results(
-                presented_apartments,
-                limit=DEFAULT_SEARCH_RESULTS_LIMIT,
-            ),
+            "Что делаем дальше?",
             reply_markup=build_search_followup_keyboard(),
         )
         await state.update_data(

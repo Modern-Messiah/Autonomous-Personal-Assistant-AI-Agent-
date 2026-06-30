@@ -184,6 +184,7 @@ class KrishaParser:
         timeout_ms: int = 30_000,
         dedup_ttl_seconds: int = 86_400,
         max_results: int = 12,
+        dedup_namespace: str = "search",
     ) -> None:
         if min_delay_seconds > max_delay_seconds:
             msg = "min_delay_seconds cannot be greater than max_delay_seconds"
@@ -198,6 +199,7 @@ class KrishaParser:
         self._timeout_ms = timeout_ms
         self._dedup_ttl_seconds = dedup_ttl_seconds
         self._max_results = max_results
+        self._dedup_namespace = dedup_namespace
 
     async def create_browser_context(self, browser: Browser) -> BrowserContext:
         """Create Playwright context with randomized user-agent."""
@@ -624,9 +626,10 @@ class KrishaParser:
     def _normalize_url(href: str) -> str:
         return urljoin(BASE_URL, href)
 
-    @staticmethod
-    def _dedup_key(*, user_id: int, external_id: str) -> str:
-        return f"krisha:seen:{user_id}:{external_id}"
+    def _dedup_key(self, *, user_id: int, external_id: str) -> str:
+        if self._dedup_namespace == "search":
+            return f"krisha:seen:{user_id}:{external_id}"
+        return f"krisha:seen:{self._dedup_namespace}:{user_id}:{external_id}"
 
     @staticmethod
     def _extract_external_id(href: str) -> str | None:

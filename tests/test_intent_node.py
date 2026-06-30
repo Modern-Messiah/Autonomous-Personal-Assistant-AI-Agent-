@@ -126,6 +126,19 @@ async def test_intent_node_parses_rent_message() -> None:
     assert criteria.page_limit == 2
 
 
+@pytest.mark.asyncio
+async def test_intent_node_reports_when_default_city_is_used() -> None:
+    node = IntentNode(llm_parser_factory=lambda: None)
+
+    parsed = await node.parse_with_metadata(
+        user_id=2,
+        message="Нужна 2-комнатная до 30 млн",
+    )
+
+    assert parsed.criteria.city == "Almaty"
+    assert parsed.defaulted_city is True
+
+
 @pytest.mark.parametrize(
     ("message", "expected_city"),
     [

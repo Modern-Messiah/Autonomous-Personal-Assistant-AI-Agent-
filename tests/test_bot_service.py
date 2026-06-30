@@ -1015,8 +1015,10 @@ async def fake_search_runner(
     *,
     thread_id: str,
     checkpoint_ns: str,
+    dedup_namespace: str = "search",
 ) -> list[EnrichedApartment]:
     assert criteria.city == "Almaty"
     assert thread_id == "telegram-user:77"
     assert checkpoint_ns == "telegram-search"
+    assert dedup_namespace in {"search", "foryou"}
     return [build_apartment()]

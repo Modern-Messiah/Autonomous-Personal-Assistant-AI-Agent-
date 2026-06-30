@@ -85,9 +85,12 @@ async def run_search_graph(
     thread_id: str | None = None,
     checkpoint_ns: str = "",
     checkpoint_id: str | None = None,
+    dedup_namespace: str = "search",
 ) -> list[EnrichedApartment]:
     """Execute search pipeline and map results to enriched apartments."""
-    active_node = search_node or create_default_search_node()
+    active_node = search_node or create_default_search_node(
+        dedup_namespace=dedup_namespace
+    )
     use_default_pipeline = (
         search_node is None
         and enrich_node is None

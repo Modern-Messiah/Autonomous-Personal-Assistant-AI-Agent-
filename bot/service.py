@@ -74,6 +74,7 @@ class SearchExecution:
 
     criteria: SearchCriteria
     apartments: list[EnrichedApartment]
+    notices: tuple[str, ...] = ()
 
 
 @dataclass(slots=True, frozen=True)
@@ -102,6 +103,10 @@ class RecommendationResult:
 
 class ActiveCriteriaNotFoundError(RuntimeError):
     """Raised when a refinement flow requires active criteria but none are stored."""
+
+
+class CriteriaUnchangedError(ValueError):
+    """Raised when refinement text did not change any supported criterion."""
 
 
 class NoPreferencesError(RuntimeError):
@@ -150,11 +155,21 @@ class SearchBotService:
         query: str,
     ) -> SearchExecution:
         """Parse criteria, persist them, and run the search graph."""
-        criteria = await self._intent_node.parse(user_id=telegram_user_id, message=query)
+        parsed = await self._intent_node.parse_with_metadata(
+            user_id=telegram_user_id,
+            message=query,
+        )
+        notices = (
+            (
+                "Город не удалось распознать, поэтому использую Алматы. "
+                "Уточнить город можно через /refine."
+            ),
+        ) if parsed.defaulted_city else ()
         return await self._persist_and_run_search(
             telegram_user_id=telegram_user_id,
             username=username,
-            criteria=criteria,
+            criteria=parsed.criteria,
+            notices=notices,
         )
 
     async def refine_search(
@@ -174,6 +189,9 @@ class SearchBotService:
             criteria=active_criteria,
             message=message,
         )
+        if criteria == active_criteria:
+            msg = "refinement did not change supported criteria"
+            raise CriteriaUnchangedError(msg)
         return await self._persist_and_run_search(
             telegram_user_id=telegram_user_id,
             username=username,
@@ -186,6 +204,7 @@ class SearchBotService:
         telegram_user_id: int,
         username: str | None,
         criteria: SearchCriteria,
+        notices: tuple[str, ...] = (),
     ) -> SearchExecution:
         """Persist active criteria, execute search graph, and store results."""
 
@@ -208,7 +227,11 @@ class SearchBotService:
             user_id=user_id,
             criteria=criteria,
         )
-        return SearchExecution(criteria=criteria, apartments=apartments)
+        return SearchExecution(
+            criteria=criteria,
+            apartments=apartments,
+            notices=notices,
+        )
 
     async def _run_search_graph(
         self,
@@ -216,14 +239,17 @@ class SearchBotService:
         telegram_user_id: int,
         user_id: int,
         criteria: SearchCriteria,
+        dedup_namespace: str = "search",
     ) -> list[EnrichedApartment]:
         """Run the search graph and drop listings the user already decided on."""
         try:
-            apartments = await self._search_runner(
-                criteria,
-                thread_id=f"telegram-user:{telegram_user_id}",
-                checkpoint_ns="telegram-search",
-            )
+            runner_kwargs = {
+                "thread_id": f"telegram-user:{telegram_user_id}",
+                "checkpoint_ns": "telegram-search",
+            }
+            if dedup_namespace != "search":
+                runner_kwargs["dedup_namespace"] = dedup_namespace
+            apartments = await self._search_runner(criteria, **runner_kwargs)
         except SearchExecutionError:
             raise
         except AntiBotBlockedError as exc:
@@ -332,7 +358,10 @@ class SearchBotService:
             raise NoPreferencesError(msg)
 
         candidates = await self._run_search_graph(
-            telegram_user_id=telegram_user_id, user_id=user_id, criteria=criteria
+            telegram_user_id=telegram_user_id,
+            user_id=user_id,
+            criteria=criteria,
+            dedup_namespace="foryou",
         )
         profile = build_preference_profile(saved, rejected)
         ranked = rank_by_preference(candidates, profile)[:limit]

@@ -85,7 +85,7 @@ def build_playwright_context_factory(parser: KrishaParser) -> ContextFactoryProt
     return cast(ContextFactoryProtocol, factory)
 
 
-def create_default_search_node() -> SearchNode:
+def create_default_search_node(*, dedup_namespace: str = "search") -> SearchNode:
     """Create production-ready search node with parser + redis + playwright."""
     settings = get_settings()
     redis_client = build_redis_client(settings.redis.redis_url)
@@ -96,5 +96,6 @@ def create_default_search_node() -> SearchNode:
         timeout_ms=settings.parser.timeout_ms,
         dedup_ttl_seconds=settings.parser.dedup_ttl_seconds,
         max_results=settings.parser.max_results,
+        dedup_namespace=dedup_namespace,
     )
     return SearchNode(parser=parser, context_factory=build_playwright_context_factory(parser))

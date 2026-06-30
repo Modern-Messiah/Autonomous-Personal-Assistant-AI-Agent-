@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Literal, Protocol, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -293,6 +294,14 @@ class IntentState(TypedDict, total=False):
     criteria: SearchCriteria
 
 
+@dataclass(slots=True, frozen=True)
+class ParsedIntent:
+    """Search criteria plus user-visible defaulting metadata."""
+
+    criteria: SearchCriteria
+    defaulted_city: bool = False
+
+
 def create_default_llm_intent_parser() -> LLMIntentParserProtocol | None:
     """Create the production LLM parser from settings, or disable it safely."""
     try:
@@ -343,10 +352,20 @@ class IntentNode:
 
     async def parse(self, *, user_id: int, message: str) -> SearchCriteria:
         """Parse free-form message into SearchCriteria."""
+        return (await self.parse_with_metadata(user_id=user_id, message=message)).criteria
+
+    async def parse_with_metadata(self, *, user_id: int, message: str) -> ParsedIntent:
+        """Parse criteria and report when the configured default city was used."""
         patch = await self._parse_with_llm(message=message, existing_criteria=None)
         if patch is not None:
-            return self._build_search_criteria(user_id=user_id, patch=patch)
-        return self._parse_with_regex(user_id=user_id, message=message)
+            return ParsedIntent(
+                criteria=self._build_search_criteria(user_id=user_id, patch=patch),
+                defaulted_city=patch.city is None,
+            )
+        return ParsedIntent(
+            criteria=self._parse_with_regex(user_id=user_id, message=message),
+            defaulted_city=self._find_city(message.strip().lower()) is None,
+        )
 
     async def refine(self, *, criteria: SearchCriteria, message: str) -> SearchCriteria:
         """Merge free-form refinement text into existing criteria."""

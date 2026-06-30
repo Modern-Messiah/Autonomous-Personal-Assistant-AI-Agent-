@@ -429,3 +429,29 @@ async def fake_scheduler_search_runner(
     assert thread_id == "telegram-monitor:77"
     assert checkpoint_ns == "telegram-monitor"
     return [build_apartment("900100"), build_apartment("900101")]
+
+
+@pytest.mark.asyncio
+async def test_scheduler_purge_stale_delegates_and_commits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_factory = FakeSessionFactory()
+    service = SchedulerService(
+        session_factory=session_factory,
+        notifier=fake_notifier_factory([]),
+    )
+    captured: dict[str, int] = {}
+
+    async def fake_purge(session, *, now, seen_retention_days, apartment_retention_days):
+        del session, now
+        captured["seen"] = seen_retention_days
+        captured["apartment"] = apartment_retention_days
+        return {"inactive_criteria": 3, "old_seen": 5, "old_apartments": 1}
+
+    monkeypatch.setattr("scheduler.service.purge_stale_records", fake_purge)
+
+    result = await service.purge_stale(seen_retention_days=10, apartment_retention_days=20)
+
+    assert result == {"inactive_criteria": 3, "old_seen": 5, "old_apartments": 1}
+    assert captured == {"seen": 10, "apartment": 20}
+    assert session_factory.session.commit_calls == 1

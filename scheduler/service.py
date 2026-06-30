@@ -17,6 +17,7 @@ from db import (
     get_unseen_apartment_records,
     list_due_monitor_targets,
     mark_apartments_seen,
+    purge_stale_records,
     touch_monitor_last_checked_at,
     upsert_apartment_records,
 )
@@ -85,6 +86,23 @@ class SchedulerService:
                 failed_users=summary.failed_users,
             )
         return summary
+
+    async def purge_stale(
+        self,
+        *,
+        seen_retention_days: int = 30,
+        apartment_retention_days: int = 90,
+    ) -> dict[str, int]:
+        """Prune accumulated DB rows (inactive criteria, old seen links, stale apartments)."""
+        async with self._session_factory() as session:
+            result = await purge_stale_records(
+                session,
+                now=self._now_provider(),
+                seen_retention_days=seen_retention_days,
+                apartment_retention_days=apartment_retention_days,
+            )
+            await session.commit()
+            return result
 
     async def get_due_targets(
         self,

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, cast
 
-from sqlalchemy import Select, select, tuple_, update
+from sqlalchemy import Select, delete, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agent.models.apartment import Apartment
@@ -68,14 +68,9 @@ async def replace_active_search_criteria(
     user_id: int,
     criteria_payload: Mapping[str, object],
 ) -> SearchCriteriaRecord:
-    """Deactivate previous active criteria and persist the new active one."""
+    """Keep a single criteria row per user: drop the old one(s), persist the new."""
     await session.execute(
-        update(SearchCriteriaRecord)
-        .where(
-            SearchCriteriaRecord.user_id == user_id,
-            SearchCriteriaRecord.is_active.is_(True),
-        )
-        .values(is_active=False)
+        delete(SearchCriteriaRecord).where(SearchCriteriaRecord.user_id == user_id)
     )
 
     record = SearchCriteriaRecord(
@@ -591,6 +586,40 @@ async def delete_apartment_feedback(
     for record in records:
         await session.delete(record)
     return bool(records)
+
+
+async def purge_stale_records(
+    session: AsyncSession,
+    *,
+    now: datetime | None = None,
+    seen_retention_days: int = 30,
+    apartment_retention_days: int = 90,
+) -> dict[str, int]:
+    """Prune accumulated rows: inactive criteria, old seen links, stale apartments.
+
+    Saved/rejected apartments are preserved (kept out of the apartment purge).
+    """
+    current = now or datetime.now(UTC)
+    seen_cutoff = current - timedelta(days=seen_retention_days)
+    apartment_cutoff = current - timedelta(days=apartment_retention_days)
+
+    inactive_criteria = await session.execute(
+        delete(SearchCriteriaRecord).where(SearchCriteriaRecord.is_active.is_(False))
+    )
+    old_seen = await session.execute(
+        delete(SeenApartment).where(SeenApartment.first_seen_at < seen_cutoff)
+    )
+    old_apartments = await session.execute(
+        delete(ApartmentRecord).where(
+            ApartmentRecord.created_at < apartment_cutoff,
+            ApartmentRecord.id.notin_(select(ApartmentFeedbackRecord.apartment_id)),
+        )
+    )
+    return {
+        "inactive_criteria": int(getattr(inactive_criteria, "rowcount", 0) or 0),
+        "old_seen": int(getattr(old_seen, "rowcount", 0) or 0),
+        "old_apartments": int(getattr(old_apartments, "rowcount", 0) or 0),
+    }
 
 
 def _load_enriched_apartment(payload: Mapping[str, Any]) -> EnrichedApartment:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
@@ -12,6 +13,7 @@ from agent.models.criteria import SearchCriteria
 from agent.models.enriched import EnrichedApartment
 from agent.tools.krisha_parser import ParserHealthReport
 from db.repositories import MonitorTarget
+from scheduler.app import run_scheduler_forever
 from scheduler.canary import deliver_canary_alert
 from scheduler.producer import PROCESS_MONITOR_TARGET_JOB, SchedulerJobProducer
 from scheduler.service import SchedulerService
@@ -41,6 +43,29 @@ class FakeSession:
 
     async def commit(self) -> None:
         self.commit_calls += 1
+
+
+@pytest.mark.asyncio
+async def test_scheduler_loop_does_not_start_after_stop_request(monkeypatch) -> None:
+    calls = 0
+
+    class Service:
+        async def run_pending_monitors(self) -> None:
+            nonlocal calls
+            calls += 1
+
+    monkeypatch.setattr(
+        "scheduler.app.get_settings",
+        lambda: SimpleNamespace(
+            scheduler=SimpleNamespace(runtime="inline", poll_interval_seconds=60)
+        ),
+    )
+    stop_event = asyncio.Event()
+    stop_event.set()
+
+    await run_scheduler_forever(service=Service(), stop_event=stop_event)
+
+    assert calls == 0
 
 
 def build_criteria() -> SearchCriteria:

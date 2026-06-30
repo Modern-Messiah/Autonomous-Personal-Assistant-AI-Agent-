@@ -11,11 +11,11 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from aiogram.utils.chat_action import ChatActionSender
 
+from bot.card_sender import send_apartment_card
 from bot.dialog_agent import DialogAgent, DialogTurnResult
 from bot.formatters import (
     DEFAULT_SEARCH_RESULTS_LIMIT,
     clean_listing_url,
-    format_apartment_card,
     format_criteria,
     format_monitor_status,
     format_search_results,
@@ -77,17 +77,14 @@ def create_bot_router(service: SearchBotService) -> Router:
             return
 
         for index, apartment in enumerate(presented_apartments, start=1):
-            caption = format_apartment_card(apartment, index=index)
             keyboard = build_apartment_actions_keyboard(apartment.apartment.external_id)
-            photo = apartment.apartment.photos[0] if apartment.apartment.photos else None
-            if photo is not None:
-                try:
-                    await message.answer_photo(photo=photo, caption=caption, reply_markup=keyboard)
-                    continue
-                except Exception:
-                    # Telegram may reject a photo URL; fall back to a text card.
-                    pass
-            await message.answer(caption, reply_markup=keyboard)
+            await send_apartment_card(
+                apartment,
+                index=index,
+                reply_markup=keyboard,
+                send_text=message.answer,
+                send_photo=message.answer_photo,
+            )
 
         await message.answer(
             "Что делаем дальше?",
@@ -111,19 +108,17 @@ def create_bot_router(service: SearchBotService) -> Router:
             header = f"💾 Сохранённые квартиры ({total}):"
         await target.answer(header)
         for index, item in enumerate(apartments, start=1):
-            caption = format_apartment_card(item, index=index)
             keyboard = build_saved_item_keyboard(
                 item.apartment.external_id,
                 clean_listing_url(item.apartment.url),
             )
-            photo = item.apartment.photos[0] if item.apartment.photos else None
-            if photo is not None:
-                try:
-                    await target.answer_photo(photo=photo, caption=caption, reply_markup=keyboard)
-                    continue
-                except Exception:
-                    pass
-            await target.answer(caption, reply_markup=keyboard)
+            await send_apartment_card(
+                item,
+                index=index,
+                reply_markup=keyboard,
+                send_text=target.answer,
+                send_photo=target.answer_photo,
+            )
 
     async def send_trash_list(target: Message, telegram_user_id: int) -> None:
         apartments = await service.get_trashed_apartments(telegram_user_id=telegram_user_id)
@@ -137,19 +132,17 @@ def create_bot_router(service: SearchBotService) -> Router:
             f"🗑 Удалённые квартиры ({len(apartments)}) — можно восстановить:"
         )
         for index, item in enumerate(apartments, start=1):
-            caption = format_apartment_card(item, index=index)
             keyboard = build_trashed_item_keyboard(
                 item.apartment.external_id,
                 clean_listing_url(item.apartment.url),
             )
-            photo = item.apartment.photos[0] if item.apartment.photos else None
-            if photo is not None:
-                try:
-                    await target.answer_photo(photo=photo, caption=caption, reply_markup=keyboard)
-                    continue
-                except Exception:
-                    pass
-            await target.answer(caption, reply_markup=keyboard)
+            await send_apartment_card(
+                item,
+                index=index,
+                reply_markup=keyboard,
+                send_text=target.answer,
+                send_photo=target.answer_photo,
+            )
 
     async def send_dialog_turn(
         message: Message,
@@ -310,18 +303,20 @@ def create_bot_router(service: SearchBotService) -> Router:
             f"⭐ Подобрал под ваши предпочтения ({len(result.recommendations)}):"
         )
         for index, rec in enumerate(result.recommendations, start=1):
-            caption = format_apartment_card(rec.apartment, index=index)
-            if rec.reasons:
-                caption = f"{caption}\n\n⭐ Почему вам: {', '.join(rec.reasons)}"
             keyboard = build_apartment_actions_keyboard(rec.apartment.apartment.external_id)
-            photo = rec.apartment.apartment.photos[0] if rec.apartment.apartment.photos else None
-            if photo is not None:
-                try:
-                    await target.answer_photo(photo=photo, caption=caption, reply_markup=keyboard)
-                    continue
-                except Exception:
-                    pass
-            await target.answer(caption, reply_markup=keyboard)
+            suffix = (
+                f"⭐ Почему вам: {', '.join(rec.reasons)}"
+                if rec.reasons
+                else None
+            )
+            await send_apartment_card(
+                rec.apartment,
+                index=index,
+                reply_markup=keyboard,
+                send_text=target.answer,
+                send_photo=target.answer_photo,
+                caption_suffix=suffix,
+            )
 
     @router.message(Command("foryou"))
     async def handle_foryou(message: Message) -> None:

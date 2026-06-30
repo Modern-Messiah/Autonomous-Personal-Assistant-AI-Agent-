@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from functools import partial
+
 from aiogram import Bot
 
 from agent.models.criteria import SearchCriteria
 from agent.models.enriched import EnrichedApartment
-from bot.formatters import format_apartment_card, format_criteria
+from bot.card_sender import send_apartment_card
+from bot.formatters import format_criteria
 from bot.keyboards import build_apartment_actions_keyboard
 
 
@@ -29,18 +32,11 @@ class TelegramMonitorNotifier:
         )
         await self._bot.send_message(telegram_user_id, format_criteria(criteria))
         for index, item in enumerate(apartments, start=1):
-            caption = format_apartment_card(item, index=index)
             keyboard = build_apartment_actions_keyboard(item.apartment.external_id)
-            photo = item.apartment.photos[0] if item.apartment.photos else None
-            if photo is not None:
-                try:
-                    await self._bot.send_photo(
-                        telegram_user_id,
-                        photo=photo,
-                        caption=caption,
-                        reply_markup=keyboard,
-                    )
-                    continue
-                except Exception:
-                    pass
-            await self._bot.send_message(telegram_user_id, caption, reply_markup=keyboard)
+            await send_apartment_card(
+                item,
+                index=index,
+                reply_markup=keyboard,
+                send_text=partial(self._bot.send_message, telegram_user_id),
+                send_photo=partial(self._bot.send_photo, telegram_user_id),
+            )

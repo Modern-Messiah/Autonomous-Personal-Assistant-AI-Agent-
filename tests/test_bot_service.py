@@ -11,9 +11,12 @@ from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from agent.models.apartment import Apartment
 from agent.models.criteria import SearchCriteria
 from agent.models.enriched import EnrichedApartment
+from agent.models.score import ApartmentScore
 from agent.nodes.intent_node import IntentNode
 from agent.tools.krisha_parser import AntiBotBlockedError
 from bot.formatters import (
+    clean_listing_url,
+    format_apartment_card,
     format_criteria,
     format_monitor_status,
     format_saved_apartments,
@@ -743,7 +746,8 @@ def test_formatters_render_expected_content() -> None:
     assert "Алматы" not in text
     assert "Город: Almaty" in text
     assert "40 000 000 KZT" in text
-    assert "Bot test apartment" in results_text
+    assert "krisha.kz/a/show/900100" in results_text  # clean listing link, no tracking query
+    assert "31 000 000 ₸" in results_text
     assert "Сохраненные квартиры" in saved_text
     assert "Статус мониторинга" in monitor_text
     assert "Мониторинг пока не настроен" in empty_monitor_text
@@ -751,6 +755,53 @@ def test_formatters_render_expected_content() -> None:
     assert keyboard.inline_keyboard[0][1].callback_data == REJECT_CALLBACK_DATA
     assert keyboard.inline_keyboard[1][0].callback_data == REFINE_CALLBACK_DATA
     assert keyboard.inline_keyboard[1][1].callback_data == LIST_CALLBACK_DATA
+
+
+def test_clean_listing_url_strips_tracking_query() -> None:
+    assert (
+        clean_listing_url("https://krisha.kz/a/show/1?srchid=abc&srchpos=2#frag")
+        == "https://krisha.kz/a/show/1"
+    )
+
+
+def test_format_apartment_card_is_clean_and_structured() -> None:
+    item = EnrichedApartment(
+        apartment=Apartment(
+            external_id="900100",
+            source="krisha",
+            url="https://krisha.kz/a/show/900100?srchid=abc&srchtype=filter",
+            title="1-комнатная квартира · 40 м²  Тауелсиздик 34/10",
+            price_kzt=31_000_000,
+            city="Almaty",
+            district="Есильский район",
+            rooms=2,
+            area_m2=53.0,
+            floor="5/9",
+            photos=[],
+        ),
+        nearby_schools=5,
+        nearby_parks=3,
+        nearby_metro=1,
+        score=ApartmentScore(
+            score=85.0,
+            reasons=["рядом школы", "хорошая цена"],
+            recommendation="consider",
+        ),
+    )
+
+    card = format_apartment_card(item, index=1)
+
+    assert "2-комнатная · 53 м² · этаж 5/9" in card
+    assert "💰 31 000 000 ₸" in card
+    assert "₸/м²" in card  # price per square meter shown
+    assert "Almaty" in card
+    assert "Есильский" in card
+    assert "85/100" in card
+    assert "школы: 5" in card
+    assert "рядом школы" in card  # score reasons included
+    assert "https://krisha.kz/a/show/900100" in card
+    assert "srchid" not in card  # tracking query stripped
+    assert "<b>" not in card and "href=" not in card  # plain text, renders without parse_mode
 
 
 async def fake_search_runner(

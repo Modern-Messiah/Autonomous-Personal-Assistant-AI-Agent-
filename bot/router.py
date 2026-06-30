@@ -105,6 +105,10 @@ def create_bot_router(service: SearchBotService) -> Router:
         )
         await message.answer(format_start_message())
 
+    @router.message(Command("help"))
+    async def handle_help(message: Message) -> None:
+        await message.answer(format_start_message())
+
     @router.message(Command("search"))
     async def handle_search(
         message: Message,

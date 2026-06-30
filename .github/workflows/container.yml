@@ -8,6 +8,7 @@ on:
       - "podman-compose.yml"
       - ".github/workflows/container.yml"
       - "pyproject.toml"
+      - "uv.lock"
       - "agent/**"
       - "bot/**"
       - "config/**"
@@ -19,7 +20,7 @@ on:
       - main
 
 jobs:
-  build-and-push:
+  build-smoke-push:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -27,6 +28,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Build smoke image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Containerfile
+          load: true
+          tags: krisha-agent:test
+
+      - name: Smoke runtime image
+        run: >-
+          docker run --rm --entrypoint sh krisha-agent:test -c
+          'test "$(id -u)" = 1000 && python -c "import bot.app, scheduler.app"'
 
       - name: Login to GHCR
         if: github.event_name == 'push'
@@ -37,6 +51,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Docker Metadata
+        if: github.event_name == 'push'
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -46,10 +61,11 @@ jobs:
             type=sha
 
       - name: Build and Push
+        if: github.event_name == 'push'
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Containerfile
-          push: ${{ github.event_name == 'push' }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

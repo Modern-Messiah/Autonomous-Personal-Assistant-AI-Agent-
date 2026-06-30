@@ -14,7 +14,11 @@ if [[ -z "${TARGET_USER}" ]]; then
 fi
 
 apt-get update
-apt-get install -y podman podman-compose uidmap slirp4netns fuse-overlayfs
+apt-get install -y podman podman-compose uidmap slirp4netns fuse-overlayfs ufw
+ufw default deny incoming
+ufw default allow outgoing
+ufw allow 22/tcp
+ufw --force enable
 loginctl enable-linger "${TARGET_USER}"
 
 runuser -l "${TARGET_USER}" -c 'systemctl --user daemon-reload'

@@ -8,6 +8,7 @@ Type=simple
 WorkingDirectory=__PROJECT_ROOT__
 Environment=PODMAN_COMPOSE_WARNING_LOGS=false
 ExecStartPre=-/usr/bin/env podman-compose -f __PROJECT_ROOT__/podman-compose.yml up -d postgres redis
+ExecStartPre=/usr/bin/env bash __PROJECT_ROOT__/deploy/systemd/wait_for_datastores.sh __PROJECT_ROOT__/podman-compose.yml
 ExecStartPre=/usr/bin/env podman-compose -f __PROJECT_ROOT__/podman-compose.yml run --rm migrate
 ExecStart=/usr/bin/env podman-compose -f __PROJECT_ROOT__/podman-compose.yml up --remove-orphans
 ExecStop=/usr/bin/env podman-compose -f __PROJECT_ROOT__/podman-compose.yml down

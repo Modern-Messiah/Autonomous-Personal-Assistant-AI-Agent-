@@ -70,6 +70,9 @@ def test_systemd_deploy_files_exist_with_expected_commands() -> None:
     unit_text = unit_template.read_text(encoding="utf-8")
     install_text = install_script.read_text(encoding="utf-8")
     bootstrap_text = bootstrap_script.read_text(encoding="utf-8")
+    wait_script = (
+        project_root / "deploy" / "systemd" / "wait_for_datastores.sh"
+    ).read_text(encoding="utf-8")
 
     assert "ExecStart=/usr/bin/env podman-compose" in unit_text
     assert "ExecStartPre=/usr/bin/env podman-compose" in unit_text
@@ -88,3 +91,5 @@ def test_systemd_deploy_files_exist_with_expected_commands() -> None:
     assert "./deploy/systemd/install_user_service.sh" in bootstrap_text
     assert "ufw default deny incoming" in bootstrap_text
     assert "wait_for_datastores.sh" in unit_text
+    assert '"$POSTGRES_USER"' in wait_script
+    assert '"$REDIS_PASSWORD"' in wait_script

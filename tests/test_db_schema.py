@@ -46,7 +46,8 @@ def test_other_indexes_present() -> None:
     search_index_names = {index.name for index in search_criteria.indexes}
     seen_index_names = {index.name for index in seen_apartments.indexes}
 
-    assert "idx_apartment_feedback_decision_decided_at" in feedback_index_names
+    assert "idx_apartment_feedback_user_decision_deleted_decided" in feedback_index_names
+    assert "idx_apartment_feedback_decision_decided_at" not in feedback_index_names
     assert "idx_monitor_settings_is_enabled" in monitor_index_names
     assert "idx_search_criteria_user_active" in search_index_names
     assert "idx_seen_apartments_first_seen_at" in seen_index_names

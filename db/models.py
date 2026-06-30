@@ -159,7 +159,13 @@ class ApartmentFeedbackRecord(Base):
             "decision IN ('saved', 'rejected')",
             name="ck_apartment_feedback_decision",
         ),
-        Index("idx_apartment_feedback_decision_decided_at", "decision", desc("decided_at")),
+        Index(
+            "idx_apartment_feedback_user_decision_deleted_decided",
+            "user_id",
+            "decision",
+            "deleted_at",
+            desc("decided_at"),
+        ),
     )
 
     user_id: Mapped[int] = mapped_column(

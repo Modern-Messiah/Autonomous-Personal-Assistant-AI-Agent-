@@ -8,7 +8,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, cast
 
-from sqlalchemy import Select, delete, func, select, tuple_
+from sqlalchemy import Select, delete, func, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agent.models.apartment import Apartment
@@ -268,64 +269,33 @@ async def upsert_apartment_records(
     if not apartments:
         return []
 
-    lookup_keys = list(
-        {
-            (item.apartment.source, item.apartment.external_id)
-            for item in apartments
-        }
-    )
-    lookup_urls = list({item.apartment.url for item in apartments})
-
-    existing_by_key: dict[tuple[str, str], ApartmentRecord] = {}
-    if lookup_keys:
-        result = await session.execute(
-            select(ApartmentRecord).where(
-                tuple_(ApartmentRecord.source, ApartmentRecord.external_id).in_(lookup_keys)
-            )
-        )
-        existing_by_key = {
-            (record.source, record.external_id): record
-            for record in result.scalars()
-        }
-
-    existing_by_url: dict[str, ApartmentRecord] = {}
-    if lookup_urls:
-        result = await session.execute(
-            select(ApartmentRecord).where(ApartmentRecord.url.in_(lookup_urls))
-        )
-        existing_by_url = {record.url: record for record in result.scalars()}
-
-    records: list[ApartmentRecord] = []
-    created_records = False
+    values_by_key: dict[tuple[str, str], dict[str, object]] = {}
     for item in apartments:
         apartment = item.apartment
         key = (apartment.source, apartment.external_id)
-        payload = item.model_dump(mode="json")
-        record = existing_by_key.get(key) or existing_by_url.get(apartment.url)
+        values_by_key[key] = {
+            "external_id": apartment.external_id,
+            "source": apartment.source,
+            "url": apartment.url,
+            "payload": item.model_dump(mode="json"),
+        }
 
-        if record is None:
-            record = ApartmentRecord(
-                external_id=apartment.external_id,
-                source=apartment.source,
-                url=apartment.url,
-                payload=payload,
-            )
-            session.add(record)
-            created_records = True
-        else:
-            record.external_id = apartment.external_id
-            record.source = apartment.source
-            record.url = apartment.url
-            record.payload = payload
-
-        existing_by_key[key] = record
-        existing_by_url[apartment.url] = record
-        records.append(record)
-
-    if created_records:
-        await session.flush()
-
-    return records
+    insert_statement = insert(ApartmentRecord).values(list(values_by_key.values()))
+    statement = insert_statement.on_conflict_do_update(
+        index_elements=[ApartmentRecord.source, ApartmentRecord.external_id],
+        set_={
+            "url": insert_statement.excluded.url,
+            "payload": insert_statement.excluded.payload,
+        },
+    ).returning(ApartmentRecord)
+    result = await session.execute(statement)
+    records_by_key = {
+        (record.source, record.external_id): record for record in result.scalars()
+    }
+    return [
+        records_by_key[(item.apartment.source, item.apartment.external_id)]
+        for item in apartments
+    ]
 
 
 async def list_apartment_records_by_urls(
@@ -374,37 +344,34 @@ async def upsert_apartment_feedback(
     if not apartment_ids:
         return []
 
-    result = await session.execute(
-        select(ApartmentFeedbackRecord).where(
-            ApartmentFeedbackRecord.user_id == user_id,
-            ApartmentFeedbackRecord.apartment_id.in_(apartment_ids),
-        )
-    )
-    existing_by_id = {
-        record.apartment_id: record
-        for record in result.scalars()
-    }
     decided_at = datetime.now(UTC)
-
-    feedback_records: list[ApartmentFeedbackRecord] = []
-    for apartment in apartments:
-        feedback = existing_by_id.get(apartment.id)
-        if feedback is None:
-            feedback = ApartmentFeedbackRecord(
-                user_id=user_id,
-                apartment_id=apartment.id,
-                decision=decision,
-                decided_at=decided_at,
-            )
-            session.add(feedback)
-        else:
-            feedback.decision = decision
-            feedback.decided_at = decided_at
-            feedback.deleted_at = None  # re-saving an apartment restores it from trash
-        feedback_records.append(feedback)
-
-    await session.flush()
-    return feedback_records
+    unique_ids = list(dict.fromkeys(apartment_ids))
+    insert_statement = insert(ApartmentFeedbackRecord).values(
+        [
+            {
+                "user_id": user_id,
+                "apartment_id": apartment_id,
+                "decision": decision,
+                "decided_at": decided_at,
+                "deleted_at": None,
+            }
+            for apartment_id in unique_ids
+        ]
+    )
+    statement = insert_statement.on_conflict_do_update(
+        index_elements=[
+            ApartmentFeedbackRecord.user_id,
+            ApartmentFeedbackRecord.apartment_id,
+        ],
+        set_={
+            "decision": insert_statement.excluded.decision,
+            "decided_at": insert_statement.excluded.decided_at,
+            "deleted_at": None,
+        },
+    ).returning(ApartmentFeedbackRecord)
+    result = await session.execute(statement)
+    records_by_id = {record.apartment_id: record for record in result.scalars()}
+    return [records_by_id[apartment.id] for apartment in apartments]
 
 
 async def update_apartment_feedback_notion_sync(
@@ -471,24 +438,30 @@ async def mark_apartments_seen(
     apartments: Sequence[ApartmentRecord],
 ) -> list[ApartmentRecord]:
     """Attach apartment records to a user without duplicating seen rows."""
-    unseen_apartments = await get_unseen_apartment_records(
-        session,
-        user_id=user_id,
-        apartments=apartments,
-    )
-    if not unseen_apartments:
+    if not apartments:
         return []
-
-    for apartment in unseen_apartments:
-        session.add(
-            SeenApartment(
-                user_id=user_id,
-                apartment_id=apartment.id,
-            )
+    records_by_id = {apartment.id: apartment for apartment in apartments}
+    unique_ids = list(records_by_id)
+    statement = (
+        insert(SeenApartment)
+        .values(
+            [
+                {"user_id": user_id, "apartment_id": apartment_id}
+                for apartment_id in unique_ids
+            ]
         )
-
-    await session.flush()
-    return unseen_apartments
+        .on_conflict_do_nothing(
+            index_elements=[SeenApartment.user_id, SeenApartment.apartment_id]
+        )
+        .returning(SeenApartment.apartment_id)
+    )
+    result = await session.execute(statement)
+    inserted_ids = set(result.scalars())
+    return [
+        records_by_id[apartment_id]
+        for apartment_id in unique_ids
+        if apartment_id in inserted_ids
+    ]
 
 
 async def get_unseen_apartment_records(

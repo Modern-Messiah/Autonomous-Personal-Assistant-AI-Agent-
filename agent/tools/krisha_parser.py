@@ -73,6 +73,7 @@ class ListingPreview:
     area_m2: float | None
     floor: str | None
     district: str | None
+    address: str | None = None
 
 
 class ResponseProtocol(Protocol):
@@ -328,6 +329,7 @@ class KrishaParser:
                 district=(
                     self._extract_district(subtitle_text) or self._extract_district(params_text)
                 ),
+                address=subtitle_text,
             )
             previews.append(preview)
             seen_ids.add(external_id)
@@ -372,6 +374,10 @@ class KrishaParser:
             [
                 self._get_selector_text(soup, ".offer__address"),
                 self._get_selector_text(soup, '[data-test="address"]'),
+                # krisha dropped the dedicated address node; the listing-card
+                # subtitle (district + street) is the reliable source and is what
+                # 2GIS needs to geocode for nearby counts.
+                preview.address,
             ]
         )
         detail_text = self._first_non_empty(

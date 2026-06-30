@@ -147,5 +147,7 @@ def _format_specs(apartment: Apartment) -> str:
 
 
 def _format_location(apartment: Apartment) -> str:
-    tail = ", ".join(part for part in (apartment.district, apartment.address) if part)
+    # The address (listing subtitle) usually already includes the district, so
+    # prefer it alone and fall back to the district to avoid duplication.
+    tail = apartment.address or apartment.district
     return f"{apartment.city}, {tail}" if tail else apartment.city

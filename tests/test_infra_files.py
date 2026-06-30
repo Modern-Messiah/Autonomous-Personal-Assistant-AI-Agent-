@@ -11,7 +11,13 @@ def test_containerfile_contains_runtime_basics() -> None:
 
     assert "mcr.microsoft.com/playwright/python:v1.47.0-jammy" in text
     assert "pip install --no-cache-dir uv" in text
-    assert "uv sync --no-dev" in text
+    assert "COPY pyproject.toml uv.lock README.md alembic.ini ./" in text
+    assert "uv sync --no-dev --locked --no-install-project" in text
+    assert "uv sync --no-dev --locked" in text
+    assert "AS builder" in text
+    assert "AS runtime" in text
+    assert "UV_PYTHON_INSTALL_DIR=/opt/uv-python" in text
+    assert "USER pwuser" in text
     assert 'CMD ["python", "-m", "bot"]' in text
 
 
@@ -28,6 +34,11 @@ def test_podman_compose_contains_core_services() -> None:
     assert 'command: ["python", "-m", "bot"]' in text
     assert 'command: ["python", "-m", "scheduler"]' in text
     assert 'command: ["arq", "scheduler.arq_worker.WorkerSettings"]' in text
+    assert '"127.0.0.1:5432:5432"' in text
+    assert '"127.0.0.1:6379:6379"' in text
+    assert "--requirepass" in text
+    assert "condition: service_healthy" in text
+    assert 'max-size: "10mb"' in text
 
 
 def test_container_workflow_builds_containerfile_to_ghcr() -> None:
@@ -42,6 +53,7 @@ def test_container_workflow_builds_containerfile_to_ghcr() -> None:
     assert "docker/build-push-action@v6" in text
     assert "ghcr.io/${{ github.repository_owner }}/krisha-agent" in text
     assert "file: ./Containerfile" in text
+    assert "docker run --rm" in text
 
 
 def test_systemd_deploy_files_exist_with_expected_commands() -> None:
@@ -74,3 +86,5 @@ def test_systemd_deploy_files_exist_with_expected_commands() -> None:
     )
     assert 'loginctl enable-linger "${TARGET_USER}"' in bootstrap_text
     assert "./deploy/systemd/install_user_service.sh" in bootstrap_text
+    assert "ufw default deny incoming" in bootstrap_text
+    assert "wait_for_datastores.sh" in unit_text

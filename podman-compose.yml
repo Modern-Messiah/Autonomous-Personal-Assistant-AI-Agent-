@@ -1,3 +1,14 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10mb"
+
+x-app-dependencies: &app-dependencies
+  postgres:
+    condition: service_healthy
+  redis:
+    condition: service_healthy
+
 services:
   postgres:
     image: docker.io/postgres:16-alpine
@@ -7,7 +18,7 @@ services:
       POSTGRES_USER: ${DB__USER}
       POSTGRES_PASSWORD: ${DB__PASSWORD}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -15,20 +26,27 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    logging: *default-logging
 
   redis:
     image: docker.io/redis:7-alpine
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    environment:
+      REDIS_PASSWORD: ${REDIS__PASSWORD:?REDIS__PASSWORD is required}
+    command:
+      - sh
+      - -c
+      - exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping"]
       interval: 10s
       timeout: 5s
       retries: 5
+    logging: *default-logging
 
   migrate:
     image: localhost/krisha-agent:dev
@@ -38,10 +56,9 @@ services:
     env_file:
       - .env
     command: ["alembic", "upgrade", "head"]
-    depends_on:
-      - postgres
-      - redis
+    depends_on: *app-dependencies
     restart: "no"
+    logging: *default-logging
 
   bot:
     image: localhost/krisha-agent:dev
@@ -51,10 +68,9 @@ services:
     env_file:
       - .env
     command: ["python", "-m", "bot"]
-    depends_on:
-      - postgres
-      - redis
+    depends_on: *app-dependencies
     restart: unless-stopped
+    logging: *default-logging
 
   scheduler-producer:
     image: localhost/krisha-agent:dev
@@ -66,10 +82,10 @@ services:
     environment:
       SCHEDULER__RUNTIME: arq
     command: ["python", "-m", "scheduler"]
-    depends_on:
-      - postgres
-      - redis
+    depends_on: *app-dependencies
     restart: unless-stopped
+    stop_grace_period: 30s
+    logging: *default-logging
 
   scheduler-worker:
     image: localhost/krisha-agent:dev
@@ -79,10 +95,9 @@ services:
     env_file:
       - .env
     command: ["arq", "scheduler.arq_worker.WorkerSettings"]
-    depends_on:
-      - postgres
-      - redis
+    depends_on: *app-dependencies
     restart: unless-stopped
+    logging: *default-logging
 
 volumes:
   postgres_data:

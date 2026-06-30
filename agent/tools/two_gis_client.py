@@ -2,19 +2,22 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Protocol
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True, frozen=True)
 class NearbySummary:
     """Nearby infrastructure counts around listing location."""
 
-    schools: int
-    parks: int
-    metro: int
+    schools: int | None
+    parks: int | None
+    metro: int | None
 
 
 class NearbyCacheProtocol(Protocol):
@@ -125,10 +128,12 @@ class TwoGISClient:
         except ValueError:
             return None
 
-    async def _count_nearby(self, *, query: str, lat: float, lon: float) -> int:
+    async def _count_nearby(
+        self, *, query: str, lat: float, lon: float
+    ) -> int | None:
         # Place counts around a point change slowly, so cache them per
         # query+coordinate (rounded ~11m) to cut repeat 2GIS requests.
-        cache_key = f"2gis:cnt:{query}:{lat:.4f}:{lon:.4f}:{self._radius_meters}"
+        cache_key = f"2gis:cnt:v2:{query}:{lat:.4f}:{lon:.4f}:{self._radius_meters}"
         if self._cache is not None:
             cached = await self._cache.get(cache_key)
             if cached is not None:
@@ -139,11 +144,13 @@ class TwoGISClient:
 
         count = await self._count_nearby_api(query=query, lat=lat, lon=lon)
 
-        if self._cache is not None:
+        if self._cache is not None and count is not None:
             await self._cache.set(cache_key, str(count), ex=self._counts_ttl_seconds)
         return count
 
-    async def _count_nearby_api(self, *, query: str, lat: float, lon: float) -> int:
+    async def _count_nearby_api(
+        self, *, query: str, lat: float, lon: float
+    ) -> int | None:
         params: dict[str, str | int] = {
             "q": query,
             "point": f"{lon},{lat}",
@@ -161,14 +168,16 @@ class TwoGISClient:
                 response = await client.get(self._items_url, params=params)
                 response.raise_for_status()
         except httpx.HTTPError:
-            return 0
+            logger.warning("2GIS nearby count request failed query=%s", query)
+            return None
 
-        data = response.json()
+        try:
+            data = response.json()
+        except ValueError:
+            logger.warning("2GIS nearby count returned invalid JSON query=%s", query)
+            return None
         total = data.get("result", {}).get("total")
-        if isinstance(total, int) and total >= 0:
+        if type(total) is int and total >= 0:
             return total
-
-        items = data.get("result", {}).get("items", [])
-        if isinstance(items, list):
-            return len(items)
-        return 0
+        logger.warning("2GIS nearby count missing valid total query=%s", query)
+        return None

@@ -10,7 +10,9 @@ import pytest
 from agent.models.apartment import Apartment
 from agent.models.criteria import SearchCriteria
 from agent.models.enriched import EnrichedApartment
+from agent.tools.krisha_parser import ParserHealthReport
 from db.repositories import MonitorTarget
+from scheduler.canary import deliver_canary_alert
 from scheduler.producer import PROCESS_MONITOR_TARGET_JOB, SchedulerJobProducer
 from scheduler.service import SchedulerService
 
@@ -429,6 +431,58 @@ async def fake_scheduler_search_runner(
     assert thread_id == "telegram-monitor:77"
     assert checkpoint_ns == "telegram-monitor"
     return [build_apartment("900100"), build_apartment("900101")]
+
+
+class FakeBot:
+    """Captures Telegram messages sent by the canary."""
+
+    def __init__(self) -> None:
+        self.messages: list[tuple[int, str]] = []
+
+    async def send_message(self, chat_id: int, text: str) -> None:
+        self.messages.append((chat_id, text))
+
+
+def build_health_report(*, ok: bool) -> ParserHealthReport:
+    return ParserHealthReport(
+        ok=ok,
+        listing_count=12 if ok else 0,
+        previews_with_price=12 if ok else 0,
+        previews_with_specs=12 if ok else 0,
+        detail_checked=ok,
+        failures=[] if ok else ["no previews parsed from the listing page (selectors changed?)"],
+    )
+
+
+@pytest.mark.asyncio
+async def test_canary_alerts_admin_when_parser_broken() -> None:
+    bot = FakeBot()
+
+    await deliver_canary_alert(bot, 555, build_health_report(ok=False))  # type: ignore[arg-type]
+
+    assert len(bot.messages) == 1
+    chat_id, text = bot.messages[0]
+    assert chat_id == 555
+    assert "krisha" in text
+    assert "selectors changed" in text
+
+
+@pytest.mark.asyncio
+async def test_canary_stays_silent_when_parser_healthy() -> None:
+    bot = FakeBot()
+
+    await deliver_canary_alert(bot, 555, build_health_report(ok=True))  # type: ignore[arg-type]
+
+    assert bot.messages == []
+
+
+@pytest.mark.asyncio
+async def test_canary_skips_alert_without_admin_chat_id() -> None:
+    bot = FakeBot()
+
+    await deliver_canary_alert(bot, None, build_health_report(ok=False))  # type: ignore[arg-type]
+
+    assert bot.messages == []
 
 
 @pytest.mark.asyncio

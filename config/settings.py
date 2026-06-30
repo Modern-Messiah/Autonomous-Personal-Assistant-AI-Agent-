@@ -102,6 +102,11 @@ class SchedulerSettings(BaseModel):
     runtime: Literal["inline", "arq"] = "inline"
     poll_interval_seconds: int = Field(default=60, ge=1, le=3600)
     batch_size: int = Field(default=50, ge=1, le=1000)
+    # Parser canary: periodically scrape a reference page and alert on a break.
+    canary_enabled: bool = False
+    canary_admin_chat_id: int | None = None
+    canary_city: str = Field(default="Almaty", min_length=1)
+    canary_interval_hours: int = Field(default=6, ge=1, le=24)
 
 
 class ArqSettings(BaseModel):

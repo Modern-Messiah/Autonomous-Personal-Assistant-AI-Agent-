@@ -373,3 +373,57 @@ def test_parse_listing_page_extracts_previews() -> None:
     assert previews[0].price_kzt == 35_000_000
     assert previews[1].external_id == "987654321"
     assert previews[1].rooms == 1
+
+
+@pytest.mark.asyncio
+async def test_check_health_passes_on_healthy_pages() -> None:
+    listing_html = load_fixture("listing_page.html")
+    detail_html = load_fixture("detail_123456789.html")
+    parser = KrishaParser(redis_client=FakeRedis(), min_delay_seconds=0, max_delay_seconds=0)
+    criteria = build_criteria(page_limit=1)
+    listing_url = parser._build_listing_urls(criteria)[0]
+    context = FakeBrowserContext(
+        {
+            listing_url: (200, listing_html),
+            "https://krisha.kz/a/show/123456789": (200, detail_html),
+        }
+    )
+
+    report = await parser.check_health(context, criteria=criteria)
+
+    assert report.ok
+    assert report.failures == []
+    assert report.listing_count == 2
+    assert report.previews_with_price >= 1
+    assert report.previews_with_specs >= 1
+    assert report.detail_checked
+
+
+@pytest.mark.asyncio
+async def test_check_health_flags_empty_listing_page() -> None:
+    parser = KrishaParser(redis_client=FakeRedis(), min_delay_seconds=0, max_delay_seconds=0)
+    criteria = build_criteria(page_limit=1)
+    listing_url = parser._build_listing_urls(criteria)[0]
+    # A page with no listing cards (e.g. krisha changed its markup) must surface
+    # as a failure, never as a healthy empty result.
+    context = FakeBrowserContext({listing_url: (200, "<html><body>no cards here</body></html>")})
+
+    report = await parser.check_health(context, criteria=criteria)
+
+    assert not report.ok
+    assert report.listing_count == 0
+    assert not report.detail_checked
+    assert report.failures
+
+
+@pytest.mark.asyncio
+async def test_check_health_raises_on_blocked_page() -> None:
+    captcha_html = load_fixture("captcha_page.html")
+    parser = KrishaParser(redis_client=FakeRedis(), min_delay_seconds=0, max_delay_seconds=0)
+    criteria = build_criteria(page_limit=1)
+    listing_url = parser._build_listing_urls(criteria)[0]
+    context = FakeBrowserContext({listing_url: (200, captcha_html)})
+
+    # A block must propagate so the canary can report it distinctly from a markup change.
+    with pytest.raises(AntiBotBlockedError):
+        await parser.check_health(context, criteria=criteria)

@@ -83,6 +83,18 @@ class ListingPreview:
     address: str | None = None
 
 
+@dataclass(slots=True)
+class ParserHealthReport:
+    """Outcome of a parser canary run against a reference search page."""
+
+    ok: bool
+    listing_count: int
+    previews_with_price: int
+    previews_with_specs: int
+    detail_checked: bool
+    failures: list[str]
+
+
 class ResponseProtocol(Protocol):
     """Minimal response protocol compatible with Playwright response."""
 
@@ -268,6 +280,73 @@ class KrishaParser:
             await self._sleep_between_requests()
 
         return apartments
+
+    async def check_health(
+        self,
+        context: BrowserContextProtocol,
+        *,
+        criteria: SearchCriteria,
+    ) -> ParserHealthReport:
+        """Parse a reference search page and verify key fields still extract.
+
+        This is the canary: it exercises the same parsing code the search uses
+        (listing previews + one detail page) without claiming dedup keys, so it
+        catches a krisha markup change or a block before users hit empty results.
+        Raises AntiBotBlockedError when krisha serves a captcha/anti-bot page, so
+        the caller can report a block distinctly from a markup regression.
+        """
+        listing_url = self._build_listing_urls(criteria)[0]
+        page = await context.new_page()
+        try:
+            html = await self._fetch_page_html(page, listing_url)
+        finally:
+            await page.close()
+
+        previews = self.parse_listing_page(html)
+        failures: list[str] = []
+        if not previews:
+            failures.append("no previews parsed from the listing page (selectors changed?)")
+
+        with_price = sum(1 for preview in previews if preview.price_kzt is not None)
+        with_specs = sum(
+            1
+            for preview in previews
+            if preview.rooms is not None or preview.area_m2 is not None
+        )
+        if previews and with_price == 0:
+            failures.append("no preview carried a price (price parsing broke)")
+        if previews and with_specs == 0:
+            failures.append("no preview carried rooms or area (spec parsing broke)")
+
+        detail_checked = False
+        if previews:
+            first = previews[0]
+            page = await context.new_page()
+            apartment: Apartment | None = None
+            try:
+                detail_html = await self._fetch_page_html(page, first.url)
+                apartment = self.parse_detail_page(
+                    detail_html, preview=first, city=criteria.city
+                )
+            except ValueError as exc:
+                failures.append(f"detail page failed to parse ({exc})")
+            finally:
+                await page.close()
+            detail_checked = True
+            if apartment is not None:
+                if not apartment.photos:
+                    failures.append("detail page yielded no photos (photo extraction broke)")
+                if apartment.address is None:
+                    failures.append("detail page yielded no address (address parsing broke)")
+
+        return ParserHealthReport(
+            ok=not failures,
+            listing_count=len(previews),
+            previews_with_price=with_price,
+            previews_with_specs=with_specs,
+            detail_checked=detail_checked,
+            failures=failures,
+        )
 
     def parse_listing_page(self, html: str) -> list[ListingPreview]:
         """Parse listing page HTML into preview objects."""

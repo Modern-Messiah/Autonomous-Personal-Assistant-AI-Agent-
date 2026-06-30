@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import contextlib
+from collections.abc import AsyncIterator
 
 from aiogram import F, Router
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
+from aiogram.utils.chat_action import ChatActionSender
 
 from bot.dialog_agent import DialogAgent, DialogTurnResult
 from bot.formatters import (
@@ -47,6 +49,15 @@ def create_bot_router(service: SearchBotService) -> Router:
 
     def create_dialog_agent() -> DialogAgent:
         return DialogAgent(service)
+
+    @contextlib.asynccontextmanager
+    async def typing(message: Message) -> AsyncIterator[None]:
+        """Keep a live 'печатает…' indicator alive while a slow handler runs."""
+        if message.bot is None:
+            yield
+            return
+        async with ChatActionSender.typing(bot=message.bot, chat_id=message.chat.id):
+            yield
 
     async def send_search_execution(
         message: Message,
@@ -162,11 +173,12 @@ def create_bot_router(service: SearchBotService) -> Router:
 
         await message.answer("Ищу варианты по заданным критериям...")
         try:
-            result = await service.run_search(
-                telegram_user_id=message.from_user.id,
-                username=message.from_user.username,
-                query=query,
-            )
+            async with typing(message):
+                result = await service.run_search(
+                    telegram_user_id=message.from_user.id,
+                    username=message.from_user.username,
+                    query=query,
+                )
         except SearchExecutionError as exc:
             await message.answer(exc.user_message)
             return
@@ -201,11 +213,12 @@ def create_bot_router(service: SearchBotService) -> Router:
 
         await message.answer("Уточняю критерии и запускаю поиск заново...")
         try:
-            result = await service.refine_search(
-                telegram_user_id=message.from_user.id,
-                username=message.from_user.username,
-                message=query,
-            )
+            async with typing(message):
+                result = await service.refine_search(
+                    telegram_user_id=message.from_user.id,
+                    username=message.from_user.username,
+                    message=query,
+                )
         except ActiveCriteriaNotFoundError:
             await message.answer(
                 "Активные критерии не найдены. Сначала выполни поиск через /search."
@@ -272,16 +285,14 @@ def create_bot_router(service: SearchBotService) -> Router:
         if message.from_user is None:
             return
         # Recommendation runs a live search (~30s); acknowledge immediately and
-        # show a typing indicator so the bot doesn't look frozen.
+        # keep a typing indicator alive so the bot doesn't look frozen.
         await message.answer("⭐ Подбираю под ваш вкус — это займёт около минуты…")
-        if message.bot is not None:
-            with contextlib.suppress(Exception):
-                await message.bot.send_chat_action(message.chat.id, "typing")
         try:
-            result = await service.recommend(
-                telegram_user_id=message.from_user.id,
-                username=message.from_user.username,
-            )
+            async with typing(message):
+                result = await service.recommend(
+                    telegram_user_id=message.from_user.id,
+                    username=message.from_user.username,
+                )
         except ActiveCriteriaNotFoundError:
             await message.answer(
                 "Сначала задайте поиск через /search — потом /foryou подберёт под ваш вкус."
@@ -461,11 +472,12 @@ def create_bot_router(service: SearchBotService) -> Router:
 
         await message.answer("Уточняю критерии и запускаю поиск заново...")
         try:
-            result = await service.refine_search(
-                telegram_user_id=message.from_user.id,
-                username=message.from_user.username,
-                message=text,
-            )
+            async with typing(message):
+                result = await service.refine_search(
+                    telegram_user_id=message.from_user.id,
+                    username=message.from_user.username,
+                    message=text,
+                )
         except ActiveCriteriaNotFoundError:
             await state.clear()
             await message.answer(
@@ -491,12 +503,13 @@ def create_bot_router(service: SearchBotService) -> Router:
         async def notify_search_start() -> None:
             await message.answer("Ищу варианты по заданным критериям...")
 
-        result = await create_dialog_agent().handle_message(
-            telegram_user_id=message.from_user.id,
-            username=message.from_user.username,
-            message=text,
-            on_search_start=notify_search_start,
-        )
+        async with typing(message):
+            result = await create_dialog_agent().handle_message(
+                telegram_user_id=message.from_user.id,
+                username=message.from_user.username,
+                message=text,
+                on_search_start=notify_search_start,
+            )
         await send_dialog_turn(message, state, result)
 
     @router.message()
@@ -511,12 +524,13 @@ def create_bot_router(service: SearchBotService) -> Router:
         async def notify_search_start() -> None:
             await message.answer("Ищу варианты по заданным критериям...")
 
-        result = await create_dialog_agent().handle_message(
-            telegram_user_id=message.from_user.id,
-            username=message.from_user.username,
-            message=text,
-            on_search_start=notify_search_start,
-        )
+        async with typing(message):
+            result = await create_dialog_agent().handle_message(
+                telegram_user_id=message.from_user.id,
+                username=message.from_user.username,
+                message=text,
+                on_search_start=notify_search_start,
+            )
         await send_dialog_turn(message, state, result)
 
     return router

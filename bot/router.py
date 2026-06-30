@@ -271,6 +271,12 @@ def create_bot_router(service: SearchBotService) -> Router:
     async def handle_foryou(message: Message) -> None:
         if message.from_user is None:
             return
+        # Recommendation runs a live search (~30s); acknowledge immediately and
+        # show a typing indicator so the bot doesn't look frozen.
+        await message.answer("⭐ Подбираю под ваш вкус — это займёт около минуты…")
+        if message.bot is not None:
+            with contextlib.suppress(Exception):
+                await message.bot.send_chat_action(message.chat.id, "typing")
         try:
             result = await service.recommend(
                 telegram_user_id=message.from_user.id,

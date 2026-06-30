@@ -24,10 +24,11 @@ from bot.formatters import (
     format_start_message,
 )
 from bot.keyboards import (
+    APT_REJECT_PREFIX,
+    APT_SAVE_PREFIX,
     LIST_CALLBACK_DATA,
     REFINE_CALLBACK_DATA,
-    REJECT_CALLBACK_DATA,
-    SAVE_CALLBACK_DATA,
+    build_apartment_actions_keyboard,
     build_search_followup_keyboard,
 )
 from bot.monitoring import format_monitor_interval, parse_monitor_interval
@@ -751,10 +752,12 @@ def test_formatters_render_expected_content() -> None:
     assert "Сохраненные квартиры" in saved_text
     assert "Статус мониторинга" in monitor_text
     assert "Мониторинг пока не настроен" in empty_monitor_text
-    assert keyboard.inline_keyboard[0][0].callback_data == SAVE_CALLBACK_DATA
-    assert keyboard.inline_keyboard[0][1].callback_data == REJECT_CALLBACK_DATA
-    assert keyboard.inline_keyboard[1][0].callback_data == REFINE_CALLBACK_DATA
-    assert keyboard.inline_keyboard[1][1].callback_data == LIST_CALLBACK_DATA
+    assert keyboard.inline_keyboard[0][0].callback_data == REFINE_CALLBACK_DATA
+    assert keyboard.inline_keyboard[0][1].callback_data == LIST_CALLBACK_DATA
+
+    actions = build_apartment_actions_keyboard("1013149871")
+    assert actions.inline_keyboard[0][0].callback_data == f"{APT_SAVE_PREFIX}1013149871"
+    assert actions.inline_keyboard[0][1].callback_data == f"{APT_REJECT_PREFIX}1013149871"
 
 
 @pytest.mark.asyncio

@@ -19,11 +19,12 @@ from bot.formatters import (
     format_start_message,
 )
 from bot.keyboards import (
+    APT_REJECT_PREFIX,
+    APT_SAVE_PREFIX,
     DELETE_SAVED_PREFIX,
     LIST_CALLBACK_DATA,
     REFINE_CALLBACK_DATA,
-    REJECT_CALLBACK_DATA,
-    SAVE_CALLBACK_DATA,
+    build_apartment_actions_keyboard,
     build_saved_item_keyboard,
     build_search_followup_keyboard,
 )
@@ -58,25 +59,20 @@ def create_bot_router(service: SearchBotService) -> Router:
 
         for index, apartment in enumerate(presented_apartments, start=1):
             caption = format_apartment_card(apartment, index=index)
+            keyboard = build_apartment_actions_keyboard(apartment.apartment.external_id)
             photo = apartment.apartment.photos[0] if apartment.apartment.photos else None
             if photo is not None:
                 try:
-                    await message.answer_photo(photo=photo, caption=caption)
+                    await message.answer_photo(photo=photo, caption=caption, reply_markup=keyboard)
                     continue
                 except Exception:
                     # Telegram may reject a photo URL; fall back to a text card.
                     pass
-            await message.answer(caption)
+            await message.answer(caption, reply_markup=keyboard)
 
         await message.answer(
             "Что делаем дальше?",
             reply_markup=build_search_followup_keyboard(),
-        )
-        await state.update_data(
-            presented_apartment_urls=[
-                apartment.apartment.url
-                for apartment in presented_apartments
-            ]
         )
         await state.set_state(SearchDialogStates.waiting_for_feedback)
 
@@ -321,54 +317,39 @@ def create_bot_router(service: SearchBotService) -> Router:
             )
         await callback.answer()
 
-    @router.callback_query(F.data == SAVE_CALLBACK_DATA)
-    async def handle_save_callback(callback: CallbackQuery, state: FSMContext) -> None:
-        data = await state.get_data()
-        apartment_urls = list(data.get("presented_apartment_urls", []))
-        if callback.from_user is None:
-            await state.clear()
+    @router.callback_query(F.data.startswith(APT_SAVE_PREFIX))
+    async def handle_apartment_save_callback(callback: CallbackQuery) -> None:
+        if callback.from_user is None or callback.data is None:
             await callback.answer()
             return
-
-        saved_count = await service.save_apartments(
+        external_id = callback.data[len(APT_SAVE_PREFIX):]
+        saved = await service.save_apartment(
             telegram_user_id=callback.from_user.id,
             username=callback.from_user.username,
-            apartment_urls=apartment_urls,
+            external_id=external_id,
         )
-        if callback.message is not None:
-            if saved_count == 0:
-                await callback.message.answer("Нет активной подборки для сохранения.")
-            else:
-                await callback.message.answer(
-                    f"Сохранил {saved_count} квартир. Они доступны через /list."
-                )
-        await state.clear()
-        await callback.answer()
+        if saved and isinstance(callback.message, Message):
+            with contextlib.suppress(Exception):
+                await callback.message.edit_reply_markup(reply_markup=None)
+        await callback.answer("💾 Сохранено — доступно в /list" if saved else "Квартира не найдена")
 
-    @router.callback_query(F.data == REJECT_CALLBACK_DATA)
-    async def handle_reject_callback(callback: CallbackQuery, state: FSMContext) -> None:
-        data = await state.get_data()
-        apartment_urls = list(data.get("presented_apartment_urls", []))
-        if callback.from_user is None:
-            await state.clear()
+    @router.callback_query(F.data.startswith(APT_REJECT_PREFIX))
+    async def handle_apartment_reject_callback(callback: CallbackQuery) -> None:
+        if callback.from_user is None or callback.data is None:
             await callback.answer()
             return
-
-        rejected_count = await service.reject_apartments(
+        external_id = callback.data[len(APT_REJECT_PREFIX):]
+        rejected = await service.reject_apartment(
             telegram_user_id=callback.from_user.id,
             username=callback.from_user.username,
-            apartment_urls=apartment_urls,
+            external_id=external_id,
         )
-        if callback.message is not None:
-            if rejected_count == 0:
-                await callback.message.answer("Нет активной подборки для отклонения.")
-            else:
-                await callback.message.answer(
-                    f"Отклонил {rejected_count} квартир. "
-                    "Эти квартиры больше не покажу в следующих ручных подборках."
-                )
-        await state.clear()
-        await callback.answer()
+        if rejected and isinstance(callback.message, Message):
+            with contextlib.suppress(Exception):
+                await callback.message.edit_reply_markup(reply_markup=None)
+        await callback.answer(
+            "🚫 Отклонено — больше не покажу" if rejected else "Квартира не найдена"
+        )
 
     @router.callback_query(F.data == LIST_CALLBACK_DATA)
     async def handle_list_callback(callback: CallbackQuery) -> None:

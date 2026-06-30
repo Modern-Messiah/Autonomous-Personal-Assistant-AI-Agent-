@@ -19,6 +19,7 @@ from agent.tools.krisha_parser import AntiBotBlockedError
 from bot.monitoring import DEFAULT_MONITOR_INTERVAL_MINUTES
 from db import (
     ApartmentDecision,
+    delete_apartment_feedback,
     get_active_search_criteria_record,
     get_apartment_feedback_map,
     get_monitor_settings_record,
@@ -252,6 +253,22 @@ class SearchBotService:
                 decision="saved",
                 limit=limit,
             )
+
+    async def delete_saved_apartment(
+        self,
+        *,
+        telegram_user_id: int,
+        external_id: str,
+    ) -> bool:
+        """Remove one apartment from the user's saved list."""
+        async with self._session_factory() as session:
+            removed = await delete_apartment_feedback(
+                session,
+                telegram_user_id=telegram_user_id,
+                external_id=external_id,
+            )
+            await session.commit()
+            return removed
 
     async def save_apartments(
         self,

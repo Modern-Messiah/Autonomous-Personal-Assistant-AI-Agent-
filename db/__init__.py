@@ -4,6 +4,7 @@ from db.checkpoints import build_checkpoint_config, get_async_postgres_checkpoin
 from db.repositories import (
     ApartmentDecision,
     MonitorTarget,
+    delete_apartment_feedback,
     get_active_search_criteria_record,
     get_apartment_feedback_map,
     get_monitor_settings_record,
@@ -27,6 +28,7 @@ __all__ = [
     "ApartmentDecision",
     "MonitorTarget",
     "build_checkpoint_config",
+    "delete_apartment_feedback",
     "get_active_search_criteria_record",
     "get_apartment_feedback_map",
     "get_async_postgres_checkpointer",

@@ -551,6 +551,31 @@ async def list_feedback_apartments(
     ]
 
 
+async def delete_apartment_feedback(
+    session: AsyncSession,
+    *,
+    telegram_user_id: int,
+    external_id: str,
+    decision: ApartmentDecision = "saved",
+) -> bool:
+    """Remove one persisted feedback decision; returns True if anything was deleted."""
+    statement = (
+        select(ApartmentFeedbackRecord)
+        .join(ApartmentRecord, ApartmentFeedbackRecord.apartment_id == ApartmentRecord.id)
+        .join(User, ApartmentFeedbackRecord.user_id == User.id)
+        .where(
+            User.telegram_user_id == telegram_user_id,
+            ApartmentRecord.external_id == external_id,
+            ApartmentFeedbackRecord.decision == decision,
+        )
+    )
+    result = await session.execute(statement)
+    records = list(result.scalars())
+    for record in records:
+        await session.delete(record)
+    return bool(records)
+
+
 def _load_enriched_apartment(payload: Mapping[str, Any]) -> EnrichedApartment:
     """Convert stored JSON payload into enriched apartment model."""
     if "apartment" in payload:

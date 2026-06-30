@@ -56,8 +56,17 @@ def clean_listing_url(url: str) -> str:
     return url.split("?", 1)[0].split("#", 1)[0]
 
 
-def format_apartment_card(item: EnrichedApartment, *, index: int | None = None) -> str:
-    """Render one apartment as a rich plain-text card (photo caption / list row)."""
+def format_apartment_card(
+    item: EnrichedApartment,
+    *,
+    index: int | None = None,
+    show_score: bool = True,
+) -> str:
+    """Render one apartment as a rich plain-text card (photo caption / list row).
+
+    ``show_score`` is disabled for the saved list, where the stored score is a
+    point-in-time snapshot and not a fresh comparative ranking.
+    """
     apartment = item.apartment
     prefix = f"{index}. " if index is not None else ""
     price = f"{apartment.price_kzt:,}".replace(",", " ")
@@ -84,7 +93,7 @@ def format_apartment_card(item: EnrichedApartment, *, index: int | None = None) 
             f"🌳 парки: {item.nearby_parks or 0} · "
             f"🚇 метро: {item.nearby_metro or 0}"
         )
-    if item.score is not None:
+    if show_score and item.score is not None:
         label = RECOMMENDATION_LABELS.get(
             item.score.recommendation, item.score.recommendation
         )
@@ -114,7 +123,7 @@ def format_saved_apartments(apartments: list[EnrichedApartment], *, limit: int =
     if not apartments:
         return "Сохраненных квартир пока нет."
     cards = [
-        format_apartment_card(item, index=index)
+        format_apartment_card(item, index=index, show_score=False)
         for index, item in enumerate(apartments[:limit], start=1)
     ]
     return "Сохраненные квартиры:\n\n" + "\n\n".join(cards)

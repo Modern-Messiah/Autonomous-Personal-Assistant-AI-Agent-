@@ -39,9 +39,16 @@ ROOMS_WORD_PATTERN = re.compile(
 )
 PUBLISHED_PATTERN = re.compile(r"(\d{2}\.\d{2}\.\d{4})")
 
-# Real listing photos live on the krisha CDN under /webp/<hash>/<n>-<size>.jpg in
-# many sizes; marketing banners sit under /content/ and must be skipped.
-LISTING_PHOTO_HOST = "krisha-photos.kcdn.online"
+# Real listing photos live on krisha's CDN under /webp/<hash>/<n>-<size>.jpg in
+# many sizes; marketing banners sit under /content/ and must be skipped. krisha
+# serves them from several kcdn hosts (krisha-photos.kcdn.online,
+# alaps-photos-kr.kcdn.kz, ...), so match any of them. We read straight off the
+# raw HTML (script/srcset/data-*), because the JS-hydrated <img src> attributes
+# are not reliably populated when the page is read.
+PHOTO_URL_PATTERN = re.compile(
+    r"https://[\w.-]*kcdn\.[a-z]+/webp/[^\s\"'<>\\]+?-(?:\d+x\d+|full)\.(?:jpg|jpeg|png)",
+    re.IGNORECASE,
+)
 PHOTO_SIZE_PATTERN = re.compile(
     r"^(?P<base>.+)-(?:\d+x\d+|full)\.(?:jpg|jpeg|png)$",
     re.IGNORECASE,
@@ -379,7 +386,7 @@ class KrishaParser:
         area_m2 = self._extract_area(detail_text) if preview.area_m2 is None else preview.area_m2
         floor = self._extract_floor(detail_text) if preview.floor is None else preview.floor
 
-        photo_urls = self._extract_photo_urls(soup)
+        photo_urls = self._extract_photo_urls(html)
         published_at = self._extract_published_at(soup)
 
         return Apartment(
@@ -592,21 +599,17 @@ class KrishaParser:
         return None
 
     @staticmethod
-    def _extract_photo_urls(soup: BeautifulSoup) -> list[str]:
+    def _extract_photo_urls(html: str) -> list[str]:
         """Return real listing photos (one best-size URL per distinct photo).
 
-        Skips marketing banners (/content/) and the dozens of duplicate size
-        variants krisha emits, so the bot does not show logos/thumbnails.
+        Matches CDN photo URLs straight from the raw HTML so it does not depend on
+        JS-hydrated ``<img src>`` (which is often empty when the page is read).
+        Skips marketing banners (under /content/) and collapses the many size
+        variants krisha emits down to one normalized display size per photo.
         """
         bases: list[str] = []
         seen: set[str] = set()
-        for img in soup.select("img"):
-            candidate = img.get("src") or img.get("data-src")
-            if not isinstance(candidate, str):
-                continue
-            url = urljoin(BASE_URL, candidate)
-            if LISTING_PHOTO_HOST not in url or "/content/" in url:
-                continue
+        for url in PHOTO_URL_PATTERN.findall(html):
             match = PHOTO_SIZE_PATTERN.match(url)
             if match is None:
                 continue

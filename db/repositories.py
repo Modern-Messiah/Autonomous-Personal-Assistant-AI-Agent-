@@ -280,6 +280,16 @@ async def upsert_apartment_records(
             "payload": item.model_dump(mode="json"),
         }
 
+    # The table has two independent unique constraints. PostgreSQL can check
+    # UNIQUE(url) before the (source, external_id) conflict arbiter, so two
+    # identical speculative inserts may otherwise race on the secondary key.
+    # Transaction-scoped locks serialize only the same authoritative identity.
+    for source, external_id in sorted(values_by_key):
+        lock_key = f"apartment:{source}:{external_id}"
+        await session.execute(
+            select(func.pg_advisory_xact_lock(func.hashtextextended(lock_key, 0)))
+        )
+
     insert_statement = insert(ApartmentRecord).values(list(values_by_key.values()))
     statement = insert_statement.on_conflict_do_update(
         index_elements=[ApartmentRecord.source, ApartmentRecord.external_id],

@@ -63,14 +63,39 @@ PAGE_LIMIT_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+# Maps a city name (RU / KZ-RU / EN / common alt) to the canonical name whose
+# lowercase form is krisha's URL slug (verified live against krisha). Matched as a
+# substring, so stems cover declensions. Unmapped ASCII names pass through the
+# validator (best-effort slug); unmapped Cyrillic names fall back to the default.
 CITY_ALIASES = {
-    "almaty": "Almaty",
-    "алмат": "Almaty",
-    "astana": "Astana",
-    "астан": "Astana",
-    "нур-султан": "Astana",
-    "shymkent": "Shymkent",
-    "шимкент": "Shymkent",
+    # republican cities
+    "almaty": "Almaty", "алматы": "Almaty", "алмат": "Almaty",
+    "astana": "Astana", "астана": "Astana", "астан": "Astana",
+    "нур-султан": "Astana", "нурсултан": "Astana",
+    "shymkent": "Shymkent", "шымкент": "Shymkent", "шимкент": "Shymkent",
+    "чимкент": "Shymkent",
+    # regional centers / major cities
+    "karaganda": "Karaganda", "караганд": "Karaganda",
+    "aktobe": "Aktobe", "актобе": "Aktobe", "актюбинск": "Aktobe",
+    "aktau": "Aktau", "актау": "Aktau",
+    "atyrau": "Atyrau", "атырау": "Atyrau",
+    "kokshetau": "Kokshetau", "кокшетау": "Kokshetau",
+    "kostanay": "Kostanay", "костана": "Kostanay", "кустана": "Kostanay",
+    "kyzylorda": "Kyzylorda", "кызылорд": "Kyzylorda",
+    "uralsk": "Uralsk", "уральск": "Uralsk", "орал": "Uralsk", "oral": "Uralsk",
+    "ust-kamenogorsk": "Ust-Kamenogorsk", "усть-каменогорск": "Ust-Kamenogorsk",
+    "оскемен": "Ust-Kamenogorsk", "oskemen": "Ust-Kamenogorsk",
+    "pavlodar": "Pavlodar", "павлодар": "Pavlodar",
+    "petropavlovsk": "Petropavlovsk", "петропавловск": "Petropavlovsk",
+    "петропавл": "Petropavlovsk", "petropavl": "Petropavlovsk",
+    "semei": "Semei", "semey": "Semei", "семей": "Semei", "семипалатинск": "Semei",
+    "taldykorgan": "Taldykorgan", "талдыкорган": "Taldykorgan",
+    "taraz": "Taraz", "тараз": "Taraz", "джамбул": "Taraz", "жамбыл": "Taraz",
+    "turkestan": "Turkestan", "туркестан": "Turkestan",
+    "zhezkazgan": "Zhezkazgan", "жезказган": "Zhezkazgan",
+    "temirtau": "Temirtau", "темиртау": "Temirtau",
+    "ekibastuz": "Ekibastuz", "экибастуз": "Ekibastuz",
+    "kentau": "Kentau", "кентау": "Kentau",
 }
 # City-agnostic union for free-text normalization; the authoritative,
 # city-scoped match happens later in the parser via canonical_district.
@@ -120,8 +145,6 @@ class IntentCriteriaPatch(BaseModel):
         for alias, canonical in CITY_ALIASES.items():
             if alias in lowered:
                 return canonical
-        if "караганд" in lowered:
-            return "Karaganda"
         if lowered.isascii():
             return " ".join(part.capitalize() for part in lowered.split())
         return value

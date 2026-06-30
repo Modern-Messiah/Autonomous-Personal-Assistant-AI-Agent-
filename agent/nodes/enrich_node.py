@@ -14,7 +14,7 @@ from agent.tools.mortgage import (
     StaticInterestRateProvider,
     calculate_annuity_payment,
 )
-from agent.tools.two_gis_client import GeocodeCacheProtocol, NearbySummary, TwoGISClient
+from agent.tools.two_gis_client import NearbyCacheProtocol, NearbySummary, TwoGISClient
 from config.settings import get_settings
 
 
@@ -72,6 +72,7 @@ class EnrichNode:
             nearby_schools=None if nearby is None else nearby.schools,
             nearby_parks=None if nearby is None else nearby.parks,
             nearby_metro=None if nearby is None else nearby.metro,
+            nearby_hospitals=None if nearby is None else nearby.hospitals,
             mortgage_monthly_payment_kzt=monthly_payment,
             mortgage_total_overpayment_kzt=overpayment,
         )
@@ -104,7 +105,7 @@ def create_default_enrich_node() -> EnrichNode:
     """Create enrich node using 2GIS API key from settings."""
     settings = get_settings()
     geocode_cache = cast(
-        GeocodeCacheProtocol,
+        NearbyCacheProtocol,
         build_redis_client(settings.redis.redis_url),
     )
     area_client = TwoGISClient(

@@ -118,7 +118,7 @@ class DeepSeekApartmentScorer:
             f"floor={apartment.floor or 'unknown'}, "
             f"district={apartment.district or 'unknown'}, "
             f"schools={enriched.nearby_schools or 0}, parks={enriched.nearby_parks or 0}, "
-            f"metro={enriched.nearby_metro or 0}, "
+            f"metro={enriched.nearby_metro or 0}, hospitals={enriched.nearby_hospitals or 0}, "
             f"mortgage_monthly_kzt={enriched.mortgage_monthly_payment_kzt or 'unknown'}"
         )
 

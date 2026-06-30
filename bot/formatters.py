@@ -78,11 +78,13 @@ def format_apartment_card(item: EnrichedApartment, *, index: int | None = None) 
         item.nearby_schools is not None
         or item.nearby_parks is not None
         or item.nearby_metro is not None
+        or item.nearby_hospitals is not None
     ):
         lines.append(
             f"🏫 школы: {item.nearby_schools or 0} · "
             f"🌳 парки: {item.nearby_parks or 0} · "
-            f"🚇 метро: {item.nearby_metro or 0}"
+            f"🚇 метро: {item.nearby_metro or 0} · "
+            f"🏥 больницы: {item.nearby_hospitals or 0}"
         )
     if item.score is not None:
         label = RECOMMENDATION_LABELS.get(

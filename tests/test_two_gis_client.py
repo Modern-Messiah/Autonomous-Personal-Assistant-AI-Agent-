@@ -9,7 +9,7 @@ from agent.tools.two_gis_client import NearbySummary, TwoGISClient
 
 
 class FakeCache:
-    """In-memory async cache implementing GeocodeCacheProtocol."""
+    """In-memory async cache implementing NearbyCacheProtocol."""
 
     def __init__(self) -> None:
         self.store: dict[str, str] = {}
@@ -44,10 +44,33 @@ async def test_geocode_is_cached_across_calls() -> None:
     first = await client.get_nearby_summary(city="Almaty", address="Абая 10")
     second = await client.get_nearby_summary(city="Almaty", address="Абая 10")
 
-    assert first == NearbySummary(schools=5, parks=5, metro=5)
+    assert first == NearbySummary(schools=5, parks=5, metro=5, hospitals=5)
     assert second == first
     assert calls["geocode"] == 1  # second lookup served from cache
     assert cache.store  # point was stored
+
+
+@pytest.mark.asyncio
+async def test_place_counts_are_cached_across_calls() -> None:
+    counts = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "geocode" in str(request.url):
+            return httpx.Response(
+                200,
+                json={"result": {"items": [{"point": {"lat": 43.24, "lon": 76.95}}]}},
+            )
+        counts["n"] += 1
+        return httpx.Response(200, json={"result": {"total": 7}})
+
+    cache = FakeCache()
+    client = TwoGISClient(api_key="k", cache=cache, transport=httpx.MockTransport(handler))
+
+    await client.get_nearby_summary(city="Almaty", address="Абая 10")
+    await client.get_nearby_summary(city="Almaty", address="Абая 10")
+
+    # 4 categories counted once on the first call; the second call is fully cached.
+    assert counts["n"] == 4
 
 
 @pytest.mark.asyncio

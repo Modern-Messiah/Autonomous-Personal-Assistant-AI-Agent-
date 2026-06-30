@@ -15,10 +15,11 @@ class NearbySummary:
     schools: int
     parks: int
     metro: int
+    hospitals: int
 
 
-class GeocodeCacheProtocol(Protocol):
-    """Minimal async key/value cache used to memoize geocode lookups."""
+class NearbyCacheProtocol(Protocol):
+    """Minimal async key/value cache for geocode results and place counts."""
 
     async def get(self, name: str) -> str | None: ...
 
@@ -34,9 +35,10 @@ class TwoGISClient:
         api_key: str,
         timeout_seconds: float = 10.0,
         radius_meters: int = 2000,
-        cache: GeocodeCacheProtocol | None = None,
+        cache: NearbyCacheProtocol | None = None,
         geocode_ttl_seconds: int = 2_592_000,
         geocode_miss_ttl_seconds: int = 86_400,
+        counts_ttl_seconds: int = 604_800,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self._api_key = api_key
@@ -45,6 +47,7 @@ class TwoGISClient:
         self._cache = cache
         self._geocode_ttl_seconds = geocode_ttl_seconds
         self._geocode_miss_ttl_seconds = geocode_miss_ttl_seconds
+        self._counts_ttl_seconds = counts_ttl_seconds
         self._transport = transport
         self._geocode_url = "https://catalog.api.2gis.com/3.0/items/geocode"
         self._items_url = "https://catalog.api.2gis.com/3.0/items"
@@ -59,7 +62,8 @@ class TwoGISClient:
         schools = await self._count_nearby(query="school", lat=lat, lon=lon)
         parks = await self._count_nearby(query="park", lat=lat, lon=lon)
         metro = await self._count_nearby(query="metro station", lat=lat, lon=lon)
-        return NearbySummary(schools=schools, parks=parks, metro=metro)
+        hospitals = await self._count_nearby(query="больница", lat=lat, lon=lon)
+        return NearbySummary(schools=schools, parks=parks, metro=metro, hospitals=hospitals)
 
     async def _geocode(self, *, city: str, address: str) -> tuple[float, float] | None:
         cache_key = f"2gis:geo:{city.strip().lower()}|{address.strip().lower()}"
@@ -124,6 +128,24 @@ class TwoGISClient:
             return None
 
     async def _count_nearby(self, *, query: str, lat: float, lon: float) -> int:
+        # Place counts around a point change slowly, so cache them per
+        # query+coordinate (rounded ~11m) to cut repeat 2GIS requests.
+        cache_key = f"2gis:cnt:{query}:{lat:.4f}:{lon:.4f}:{self._radius_meters}"
+        if self._cache is not None:
+            cached = await self._cache.get(cache_key)
+            if cached is not None:
+                try:
+                    return int(cached)
+                except ValueError:
+                    pass
+
+        count = await self._count_nearby_api(query=query, lat=lat, lon=lon)
+
+        if self._cache is not None:
+            await self._cache.set(cache_key, str(count), ex=self._counts_ttl_seconds)
+        return count
+
+    async def _count_nearby_api(self, *, query: str, lat: float, lon: float) -> int:
         params: dict[str, str | int] = {
             "q": query,
             "point": f"{lon},{lat}",

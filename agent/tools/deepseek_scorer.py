@@ -76,6 +76,7 @@ class DeepSeekApartmentScorer:
             'JSON schema: {"score": number 0-100, '
             '"reasons": array of 2 to 4 short strings, '
             '"recommendation": one of "strong_buy", "consider", "skip"}.',
+            "Write each reason in Russian, short and concrete.",
             "Judge fit against the criteria below, not in the abstract: a listing "
             "that matches the budget, rooms and area well should score high even "
             "if nearby-infrastructure counts are 0 (they may just be unavailable).",

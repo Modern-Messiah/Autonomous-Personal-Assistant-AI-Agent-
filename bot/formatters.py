@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import html
-
 from agent.models.apartment import Apartment
 from agent.models.criteria import SearchCriteria
 from agent.models.enriched import EnrichedApartment
@@ -59,32 +57,40 @@ def clean_listing_url(url: str) -> str:
 
 
 def format_apartment_card(item: EnrichedApartment, *, index: int | None = None) -> str:
-    """Render one apartment as a compact HTML card (used as photo caption / row)."""
+    """Render one apartment as a rich plain-text card (photo caption / list row)."""
     apartment = item.apartment
     prefix = f"{index}. " if index is not None else ""
     price = f"{apartment.price_kzt:,}".replace(",", " ")
 
-    lines = [
-        f"🏠 <b>{prefix}{html.escape(_format_specs(apartment))}</b>",
-        f"💰 {price} ₸",
-        f"📍 {html.escape(_format_location(apartment))}",
-    ]
-    if item.score is not None:
-        label = RECOMMENDATION_LABELS.get(
-            item.score.recommendation, item.score.recommendation
-        )
-        lines.append(f"{label} · {item.score.score:.0f}/100")
+    lines = [f"🏠 {prefix}{_format_specs(apartment)}"]
+    if apartment.area_m2 and apartment.area_m2 > 0:
+        per_m2 = f"{round(apartment.price_kzt / apartment.area_m2):,}".replace(",", " ")
+        lines.append(f"💰 {price} ₸  (≈ {per_m2} ₸/м²)")
+    else:
+        lines.append(f"💰 {price} ₸")
+    lines.append(f"📍 {_format_location(apartment)}")
+    if apartment.published_at is not None:
+        lines.append(f"📅 Опубликовано: {apartment.published_at:%d.%m.%Y}")
+    if item.mortgage_monthly_payment_kzt:
+        payment = f"{item.mortgage_monthly_payment_kzt:,}".replace(",", " ")
+        lines.append(f"🏦 Ипотека: ~{payment} ₸/мес")
     if (
         item.nearby_schools is not None
         or item.nearby_parks is not None
         or item.nearby_metro is not None
     ):
         lines.append(
-            f"🏫 {item.nearby_schools or 0} · "
-            f"🌳 {item.nearby_parks or 0} · "
-            f"🚇 {item.nearby_metro or 0}"
+            f"🏫 школы: {item.nearby_schools or 0} · "
+            f"🌳 парки: {item.nearby_parks or 0} · "
+            f"🚇 метро: {item.nearby_metro or 0}"
         )
-    lines.append(f'🔗 <a href="{clean_listing_url(apartment.url)}">Подробнее</a>')
+    if item.score is not None:
+        label = RECOMMENDATION_LABELS.get(
+            item.score.recommendation, item.score.recommendation
+        )
+        lines.append(f"{label} · {item.score.score:.0f}/100")
+        lines.extend(f"   • {reason}" for reason in item.score.reasons[:3])
+    lines.append(f"🔗 {clean_listing_url(apartment.url)}")
     return "\n".join(lines)
 
 
@@ -132,11 +138,11 @@ def format_monitor_status(status: MonitorStatus | None) -> str:
 
 
 def _format_specs(apartment: Apartment) -> str:
-    parts = [f"{apartment.rooms}-комн" if apartment.rooms else "Квартира"]
+    parts = [f"{apartment.rooms}-комнатная" if apartment.rooms else "Квартира"]
     if apartment.area_m2 is not None:
         parts.append(f"{apartment.area_m2:g} м²")
     if apartment.floor:
-        parts.append(f"{apartment.floor} этаж")
+        parts.append(f"этаж {apartment.floor}")
     return " · ".join(parts)
 
 

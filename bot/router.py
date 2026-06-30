@@ -32,6 +32,8 @@ from bot.keyboards import (
 from bot.monitoring import parse_monitor_interval
 from bot.service import (
     ActiveCriteriaNotFoundError,
+    NoPreferencesError,
+    RecommendationResult,
     SearchBotService,
     SearchExecution,
     SearchExecutionError,
@@ -240,6 +242,55 @@ def create_bot_router(service: SearchBotService) -> Router:
         if message.from_user is None:
             return
         await send_saved_list(message, message.from_user.id)
+
+    async def send_recommendations(target: Message, result: RecommendationResult) -> None:
+        if not result.recommendations:
+            await target.answer(
+                "Сейчас нет свежих вариантов под ваш вкус. "
+                "Загляните позже или уточните поиск через /search."
+            )
+            return
+        await target.answer(
+            f"⭐ Подобрал под ваши предпочтения ({len(result.recommendations)}):"
+        )
+        for index, rec in enumerate(result.recommendations, start=1):
+            caption = format_apartment_card(rec.apartment, index=index)
+            if rec.reasons:
+                caption = f"{caption}\n\n⭐ Почему вам: {', '.join(rec.reasons)}"
+            keyboard = build_apartment_actions_keyboard(rec.apartment.apartment.external_id)
+            photo = rec.apartment.apartment.photos[0] if rec.apartment.apartment.photos else None
+            if photo is not None:
+                try:
+                    await target.answer_photo(photo=photo, caption=caption, reply_markup=keyboard)
+                    continue
+                except Exception:
+                    pass
+            await target.answer(caption, reply_markup=keyboard)
+
+    @router.message(Command("foryou"))
+    async def handle_foryou(message: Message) -> None:
+        if message.from_user is None:
+            return
+        try:
+            result = await service.recommend(
+                telegram_user_id=message.from_user.id,
+                username=message.from_user.username,
+            )
+        except ActiveCriteriaNotFoundError:
+            await message.answer(
+                "Сначала задайте поиск через /search — потом /foryou подберёт под ваш вкус."
+            )
+            return
+        except NoPreferencesError:
+            await message.answer(
+                "Пока нечему учиться. Сохраните несколько квартир кнопкой 💾 на карточке, "
+                "и /foryou начнёт подбирать похожие."
+            )
+            return
+        except SearchExecutionError as exc:
+            await message.answer(exc.user_message)
+            return
+        await send_recommendations(message, result)
 
     @router.message(Command("monitor"))
     async def handle_monitor(message: Message, command: CommandObject) -> None:

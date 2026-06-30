@@ -17,6 +17,7 @@ BOT_COMMANDS = [
     BotCommand(command="search", description="Поиск квартир"),
     BotCommand(command="criteria", description="Текущие критерии"),
     BotCommand(command="list", description="Сохранённые квартиры"),
+    BotCommand(command="foryou", description="Подборка под ваш вкус"),
     BotCommand(command="refine", description="Уточнить критерии"),
     BotCommand(command="cancel", description="Отменить уточнение"),
     BotCommand(command="monitor", description="Мониторинг новых объявлений"),

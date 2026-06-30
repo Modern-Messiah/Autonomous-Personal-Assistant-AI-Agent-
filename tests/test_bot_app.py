@@ -91,7 +91,9 @@ def test_create_dispatcher_includes_bot_routes() -> None:
 
 def test_bot_commands_cover_user_facing_commands() -> None:
     names = {command.command for command in BOT_COMMANDS}
-    assert {"start", "search", "criteria", "list", "refine", "cancel", "monitor", "help"} <= names
+    assert {
+        "start", "search", "criteria", "list", "foryou", "refine", "cancel", "monitor", "help"
+    } <= names
     assert all(command.description for command in BOT_COMMANDS)
 
 

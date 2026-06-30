@@ -9,6 +9,7 @@ from typing import Literal, Protocol, TypedDict
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from agent.models.criteria import SearchCriteria
+from agent.tools.districts import flat_district_aliases
 from agent.tools.llm_intent_parser import LLMIntentParser
 from config.settings import get_settings
 
@@ -71,22 +72,9 @@ CITY_ALIASES = {
     "shymkent": "Shymkent",
     "шимкент": "Shymkent",
 }
-DISTRICT_ALIASES = {
-    "bostandyk": "Bostandyk",
-    "бостандык": "Bostandyk",
-    "medeu": "Medeu",
-    "медеу": "Medeu",
-    "auezov": "Auezov",
-    "ауэзов": "Auezov",
-    "almaly": "Almaly",
-    "алмал": "Almaly",
-    "nauryzbay": "Nauryzbay",
-    "наурызбай": "Nauryzbay",
-    "turksib": "Turksib",
-    "турксиб": "Turksib",
-    "zhetysu": "Zhetysu",
-    "жетысу": "Zhetysu",
-}
+# City-agnostic union for free-text normalization; the authoritative,
+# city-scoped match happens later in the parser via canonical_district.
+DISTRICT_ALIASES = flat_district_aliases()
 
 
 class LLMIntentParserProtocol(Protocol):

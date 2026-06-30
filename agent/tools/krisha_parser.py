@@ -17,6 +17,7 @@ from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from agent.models.apartment import Apartment
 from agent.models.criteria import SearchCriteria
+from agent.tools.districts import canonical_district
 
 if TYPE_CHECKING:
     from playwright.async_api import Browser, BrowserContext
@@ -560,12 +561,25 @@ class KrishaParser:
 
         Unknown preview fields (``None``) are treated as a match so listings with
         a sparse card are not dropped before the detail page is fetched. Districts
-        are not filtered here: criteria use canonical English names while previews
-        carry Russian district labels, so matching is unreliable.
+        are resolved to a city-scoped canonical name on both sides (requested vs the
+        card's Russian label); a listing is dropped only when its district is known
+        and not among the requested ones. If the requested districts can't be
+        resolved for the city (unmapped city/district), district filtering is
+        skipped, so "city without a district" returns the whole city.
         """
         rooms = preview.rooms
         if criteria.rooms and rooms is not None and rooms not in criteria.rooms:
             return False
+
+        if criteria.districts:
+            wanted = {canonical_district(name, criteria.city) for name in criteria.districts}
+            wanted.discard(None)
+            if wanted:
+                found = canonical_district(
+                    preview.district, criteria.city
+                ) or canonical_district(preview.address, criteria.city)
+                if found is not None and found not in wanted:
+                    return False
 
         price = preview.price_kzt
         if price is not None:
@@ -585,7 +599,8 @@ class KrishaParser:
 
     def _resolve_card_container(self, link: object) -> object:
         node = link
-        for _ in range(5):
+        fallback = link
+        for _ in range(6):
             parent = getattr(node, "parent", None)
             if parent is None:
                 break
@@ -593,9 +608,17 @@ class KrishaParser:
             if isinstance(class_values, list):
                 classes = " ".join(str(value) for value in class_values).lower()
                 if "a-card" in classes or "offer" in classes:
-                    return parent
+                    # The single card root holds exactly one subtitle; inner
+                    # wrappers (entered via the image anchor) hold none and the
+                    # results list holds many. Prefer the one-subtitle root so
+                    # subtitle/district/address resolve regardless of which nested
+                    # anchor we matched first.
+                    select = getattr(parent, "select", None)
+                    if callable(select) and len(select(".a-card__subtitle")) == 1:
+                        return parent
+                    fallback = parent
             node = parent
-        return link
+        return fallback
 
     @staticmethod
     def _normalize_url(href: str) -> str:

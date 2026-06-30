@@ -38,6 +38,30 @@ ROOMS_WORD_PATTERN = re.compile(
     re.IGNORECASE,
 )
 PUBLISHED_PATTERN = re.compile(r"(\d{2}\.\d{2}\.\d{4})")
+# The page <title> ("... №<id>: <address> — за <price> — Крыша") is server-side
+# rendered and always present, so it is the reliable source for the address that
+# 2GIS geocodes (the in-page address node is JS-hydrated and often missing).
+TITLE_ADDRESS_PATTERN = re.compile(
+    r"№\d+:\s*(?P<addr>.+?)\s*[\u2014\u2013-]\s*за\s",
+    re.IGNORECASE,
+)
+
+# Real listing photos live on krisha's CDN under /webp/<hash>/<n>-<size>.jpg in
+# many sizes; marketing banners sit under /content/ and must be skipped. krisha
+# serves them from several kcdn hosts (krisha-photos.kcdn.online,
+# alaps-photos-kr.kcdn.kz, ...), so match any of them. We read straight off the
+# raw HTML (script/srcset/data-*), because the JS-hydrated <img src> attributes
+# are not reliably populated when the page is read.
+PHOTO_URL_PATTERN = re.compile(
+    r"https://[\w.-]*kcdn\.[a-z]+/webp/[^\s\"'<>\\]+?-(?:\d+x\d+|full)\.(?:jpg|jpeg|png)",
+    re.IGNORECASE,
+)
+PHOTO_SIZE_PATTERN = re.compile(
+    r"^(?P<base>.+)-(?:\d+x\d+|full)\.(?:jpg|jpeg|png)$",
+    re.IGNORECASE,
+)
+# krisha CDN serves every size for a photo by suffix; normalize to one good size.
+PHOTO_DISPLAY_SIZE = "750x470"
 
 
 class AntiBotBlockedError(RuntimeError):
@@ -56,6 +80,7 @@ class ListingPreview:
     area_m2: float | None
     floor: str | None
     district: str | None
+    address: str | None = None
 
 
 class ResponseProtocol(Protocol):
@@ -311,6 +336,7 @@ class KrishaParser:
                 district=(
                     self._extract_district(subtitle_text) or self._extract_district(params_text)
                 ),
+                address=subtitle_text,
             )
             previews.append(preview)
             seen_ids.add(external_id)
@@ -355,6 +381,11 @@ class KrishaParser:
             [
                 self._get_selector_text(soup, ".offer__address"),
                 self._get_selector_text(soup, '[data-test="address"]'),
+                # krisha dropped the dedicated address node and the listing-card
+                # subtitle is JS-hydrated (flaky), so prefer the SSR page <title>,
+                # then fall back to the subtitle carried from the preview.
+                self._extract_address_from_title(soup),
+                preview.address,
             ]
         )
         detail_text = self._first_non_empty(
@@ -369,7 +400,7 @@ class KrishaParser:
         area_m2 = self._extract_area(detail_text) if preview.area_m2 is None else preview.area_m2
         floor = self._extract_floor(detail_text) if preview.floor is None else preview.floor
 
-        photo_urls = self._extract_photo_urls(soup)
+        photo_urls = self._extract_photo_urls(html)
         published_at = self._extract_published_at(soup)
 
         return Apartment(
@@ -582,23 +613,37 @@ class KrishaParser:
         return None
 
     @staticmethod
-    def _extract_photo_urls(soup: BeautifulSoup) -> list[str]:
-        photos: list[str] = []
-        for img in soup.select("img"):
-            candidate = img.get("src") or img.get("data-src")
-            if not isinstance(candidate, str):
-                continue
-            normalized = urljoin(BASE_URL, candidate)
-            if normalized.startswith("http"):
-                photos.append(normalized)
-        deduped: list[str] = []
+    def _extract_address_from_title(soup: BeautifulSoup) -> str | None:
+        node = soup.find("title")
+        if node is None:
+            return None
+        match = TITLE_ADDRESS_PATTERN.search(node.get_text(" ", strip=True))
+        if match is None:
+            return None
+        address = match.group("addr").strip()
+        return address or None
+
+    @staticmethod
+    def _extract_photo_urls(html: str) -> list[str]:
+        """Return real listing photos (one best-size URL per distinct photo).
+
+        Matches CDN photo URLs straight from the raw HTML so it does not depend on
+        JS-hydrated ``<img src>`` (which is often empty when the page is read).
+        Skips marketing banners (under /content/) and collapses the many size
+        variants krisha emits down to one normalized display size per photo.
+        """
+        bases: list[str] = []
         seen: set[str] = set()
-        for photo in photos:
-            if photo in seen:
+        for url in PHOTO_URL_PATTERN.findall(html):
+            match = PHOTO_SIZE_PATTERN.match(url)
+            if match is None:
                 continue
-            deduped.append(photo)
-            seen.add(photo)
-        return deduped
+            base = match.group("base")
+            if base not in seen:
+                seen.add(base)
+                bases.append(base)
+
+        return [f"{base}-{PHOTO_DISPLAY_SIZE}.jpg" for base in bases]
 
     @staticmethod
     def _extract_published_at(soup: BeautifulSoup) -> datetime | None:

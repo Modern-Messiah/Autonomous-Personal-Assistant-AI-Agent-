@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from typing import Protocol
 
 from agent.models.criteria import SearchCriteria
@@ -16,11 +15,11 @@ from config.settings import get_settings
 class ApartmentScorerProtocol(Protocol):
     """Contract required by scoring node."""
 
-    async def score_apartment(
+    async def score_apartments(
         self,
-        apartment: EnrichedApartment,
+        apartments: list[EnrichedApartment],
         criteria: SearchCriteria | None = None,
-    ) -> ApartmentScore: ...
+    ) -> list[ApartmentScore | None]: ...
 
 
 class ScoringNode:
@@ -45,26 +44,23 @@ class ScoringNode:
             }
 
         criteria = state["criteria"]
-        scored = await asyncio.gather(
-            *(self._score_item(item, criteria) for item in source_items)
-        )
+        try:
+            scores = await self._scorer.score_apartments(source_items, criteria)
+        except Exception:
+            scores = [None] * len(source_items)
+        if len(scores) != len(source_items):
+            scores = [None] * len(source_items)
+
+        scored = [
+            item.model_copy(update={"score": score})
+            for item, score in zip(source_items, scores, strict=True)
+        ]
         ranked = sorted(scored, key=self._rank_key, reverse=True)
         return {
             "criteria": criteria,
             "apartments": state.get("apartments", []),
             "enriched_apartments": ranked,
         }
-
-    async def _score_item(
-        self,
-        item: EnrichedApartment,
-        criteria: SearchCriteria,
-    ) -> EnrichedApartment:
-        try:
-            score = await self._scorer.score_apartment(item, criteria)
-        except Exception:
-            score = None
-        return item.model_copy(update={"score": score})
 
     @staticmethod
     def _rank_key(item: EnrichedApartment) -> tuple[int, float]:

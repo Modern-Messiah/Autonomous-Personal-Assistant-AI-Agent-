@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
@@ -35,24 +36,24 @@ class FakeApartmentScorer:
     def __init__(self, score: ApartmentScore) -> None:
         self._score = score
 
-    async def score_apartment(
+    async def score_apartments(
         self,
-        apartment: EnrichedApartment,
+        apartments: list[EnrichedApartment],
         criteria: SearchCriteria | None = None,
-    ) -> ApartmentScore:
-        del apartment, criteria
-        return self._score
+    ) -> list[ApartmentScore | None]:
+        del criteria
+        return [self._score for _ in apartments]
 
 
 class BrokenApartmentScorer:
     """Failing scorer to test fallback behavior."""
 
-    async def score_apartment(
+    async def score_apartments(
         self,
-        apartment: EnrichedApartment,
+        apartments: list[EnrichedApartment],
         criteria: SearchCriteria | None = None,
-    ) -> ApartmentScore:
-        del apartment, criteria
+    ) -> list[ApartmentScore | None]:
+        del apartments, criteria
         raise RuntimeError("scoring failed")
 
 
@@ -114,6 +115,16 @@ def build_score() -> ApartmentScore:
 @pytest.mark.asyncio
 async def test_deepseek_apartment_scorer_parses_structured_response() -> None:
     expected = build_score()
+    batch = {
+        "items": [
+            {
+                "index": 1,
+                "score": expected.score,
+                "recommendation": expected.recommendation,
+                "reasons": expected.reasons,
+            }
+        ]
+    }
 
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "POST"
@@ -121,7 +132,7 @@ async def test_deepseek_apartment_scorer_parses_structured_response() -> None:
         assert request.headers["authorization"] == "Bearer test-key"
         return httpx.Response(
             status_code=200,
-            json={"choices": [{"message": {"content": expected.model_dump_json()}}]},
+            json={"choices": [{"message": {"content": json.dumps(batch)}}]},
         )
 
     scorer = DeepSeekApartmentScorer(
@@ -129,9 +140,9 @@ async def test_deepseek_apartment_scorer_parses_structured_response() -> None:
         transport=httpx.MockTransport(handler),
     )
 
-    result = await scorer.score_apartment(build_enriched_apartment())
+    result = await scorer.score_apartments([build_enriched_apartment()])
 
-    assert result == expected
+    assert result == [expected]
 
 
 @pytest.mark.asyncio
@@ -169,18 +180,24 @@ async def test_scoring_node_falls_back_to_none_on_errors() -> None:
 
 
 class AreaScorer:
-    """Scores by area so ranking order is deterministic; area 0 fails -> None."""
+    """Scores by area so ranking order is deterministic; area 0 -> None."""
 
-    async def score_apartment(
+    async def score_apartments(
         self,
-        apartment: EnrichedApartment,
+        apartments: list[EnrichedApartment],
         criteria: SearchCriteria | None = None,
-    ) -> ApartmentScore:
+    ) -> list[ApartmentScore | None]:
         del criteria
-        area = apartment.apartment.area_m2 or 0.0
-        if area == 0.0:
-            raise RuntimeError("no area")
-        return ApartmentScore(score=area, reasons=["a", "b"], recommendation="consider")
+        scores: list[ApartmentScore | None] = []
+        for item in apartments:
+            area = item.apartment.area_m2 or 0.0
+            if area == 0.0:
+                scores.append(None)
+            else:
+                scores.append(
+                    ApartmentScore(score=area, reasons=["a", "b"], recommendation="consider")
+                )
+        return scores
 
 
 @pytest.mark.asyncio

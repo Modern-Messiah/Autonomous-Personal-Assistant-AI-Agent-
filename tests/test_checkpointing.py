@@ -34,9 +34,9 @@ class FakeApartmentScorer:
     def __init__(self, score: ApartmentScore) -> None:
         self._score = score
 
-    async def score_apartment(self, apartment, criteria=None) -> ApartmentScore:
-        del apartment, criteria
-        return self._score
+    async def score_apartments(self, apartments, criteria=None) -> list[ApartmentScore | None]:
+        del criteria
+        return [self._score for _ in apartments]
 
 
 def make_context_factory(context: object):

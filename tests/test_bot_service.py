@@ -206,6 +206,22 @@ async def test_search_bot_service_loads_saved_apartments(monkeypatch: pytest.Mon
 
 
 @pytest.mark.asyncio
+async def test_search_bot_service_counts_saved_apartments(monkeypatch: pytest.MonkeyPatch) -> None:
+    session_factory = FakeSessionFactory()
+    service = SearchBotService(session_factory=session_factory, search_runner=fake_search_runner)
+
+    async def fake_count(session, *, telegram_user_id: int, decision: str):
+        del session
+        assert telegram_user_id == 77
+        assert decision == "saved"
+        return 12
+
+    monkeypatch.setattr("bot.service.count_feedback_apartments", fake_count)
+
+    assert await service.count_saved_apartments(telegram_user_id=77) == 12
+
+
+@pytest.mark.asyncio
 async def test_search_bot_service_hides_saved_and_rejected_apartments(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -836,6 +852,20 @@ def test_format_apartment_card_is_clean_and_structured() -> None:
     assert "https://krisha.kz/a/show/900100" in card
     assert "srchid" not in card  # tracking query stripped
     assert "<b>" not in card and "href=" not in card  # plain text, renders without parse_mode
+
+
+def test_build_saved_item_keyboard_includes_open_link() -> None:
+    from bot.keyboards import build_saved_item_keyboard
+
+    with_url = build_saved_item_keyboard("900100", "https://krisha.kz/a/show/900100")
+    buttons = [button for row in with_url.inline_keyboard for button in row]
+    assert any(button.url == "https://krisha.kz/a/show/900100" for button in buttons)
+    assert any(button.callback_data == "saved:del:900100" for button in buttons)
+
+    # No URL -> only the delete button (e.g. a listing without a stored link).
+    flat = [button for row in build_saved_item_keyboard("900100").inline_keyboard for button in row]
+    assert len(flat) == 1
+    assert flat[0].url is None
 
 
 async def fake_search_runner(

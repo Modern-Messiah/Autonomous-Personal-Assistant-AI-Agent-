@@ -12,6 +12,7 @@ from aiogram.types import CallbackQuery, Message
 from bot.dialog_agent import DialogAgent, DialogTurnResult
 from bot.formatters import (
     DEFAULT_SEARCH_RESULTS_LIMIT,
+    clean_listing_url,
     format_apartment_card,
     format_criteria,
     format_monitor_status,
@@ -79,12 +80,24 @@ def create_bot_router(service: SearchBotService) -> Router:
     async def send_saved_list(target: Message, telegram_user_id: int) -> None:
         apartments = await service.get_saved_apartments(telegram_user_id=telegram_user_id)
         if not apartments:
-            await target.answer("Сохраненных квартир пока нет.")
+            await target.answer(
+                "💾 Сохранённых квартир пока нет.\n"
+                "Запустите поиск через /search и нажмите «💾 Сохранить» на карточке."
+            )
             return
-        await target.answer("Сохраненные квартиры:")
+        total = await service.count_saved_apartments(telegram_user_id=telegram_user_id)
+        shown = len(apartments)
+        if total > shown:
+            header = f"💾 Сохранённые квартиры: показаны последние {shown} из {total}"
+        else:
+            header = f"💾 Сохранённые квартиры ({total}):"
+        await target.answer(header)
         for index, item in enumerate(apartments, start=1):
             caption = format_apartment_card(item, index=index)
-            keyboard = build_saved_item_keyboard(item.apartment.external_id)
+            keyboard = build_saved_item_keyboard(
+                item.apartment.external_id,
+                clean_listing_url(item.apartment.url),
+            )
             photo = item.apartment.photos[0] if item.apartment.photos else None
             if photo is not None:
                 try:

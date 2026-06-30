@@ -27,18 +27,22 @@ def build_apartment_actions_keyboard(external_id: str) -> InlineKeyboardMarkup:
     )
 
 
-def build_saved_item_keyboard(external_id: str) -> InlineKeyboardMarkup:
-    """Return a one-button keyboard to delete a saved apartment."""
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="🗑 Удалить",
-                    callback_data=f"{DELETE_SAVED_PREFIX}{external_id}",
-                ),
-            ]
+def build_saved_item_keyboard(
+    external_id: str, url: str | None = None
+) -> InlineKeyboardMarkup:
+    """Keyboard for a saved apartment: open it on Krisha (if known) + delete."""
+    rows: list[list[InlineKeyboardButton]] = []
+    if url:
+        rows.append([InlineKeyboardButton(text="🌐 Открыть на Krisha", url=url)])
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="🗑 Удалить",
+                callback_data=f"{DELETE_SAVED_PREFIX}{external_id}",
+            ),
         ]
     )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def build_search_followup_keyboard() -> InlineKeyboardMarkup:

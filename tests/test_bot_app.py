@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from aiogram import Dispatcher
 from pydantic import SecretStr
 
-from bot.app import create_bot, create_dispatcher
+from bot.app import BOT_COMMANDS, create_bot, create_dispatcher
 
 
 class DummyService:
@@ -87,6 +87,12 @@ def test_create_dispatcher_includes_bot_routes() -> None:
     update_types = dispatcher.resolve_used_update_types()
     assert "message" in update_types
     assert "callback_query" in update_types
+
+
+def test_bot_commands_cover_user_facing_commands() -> None:
+    names = {command.command for command in BOT_COMMANDS}
+    assert {"start", "search", "criteria", "list", "refine", "cancel", "monitor", "help"} <= names
+    assert all(command.description for command in BOT_COMMANDS)
 
 
 def test_create_bot_does_not_force_html_parse_mode(monkeypatch) -> None:

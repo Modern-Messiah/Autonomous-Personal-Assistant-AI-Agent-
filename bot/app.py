@@ -5,12 +5,24 @@ from __future__ import annotations
 import asyncio
 
 from aiogram import Bot, Dispatcher
+from aiogram.types import BotCommand
 
 from agent.tools import NotionClient
 from bot.router import create_bot_router
 from bot.service import SearchBotService
 from config.settings import get_settings
 from db.session import get_session_factory
+
+BOT_COMMANDS = [
+    BotCommand(command="search", description="Поиск квартир"),
+    BotCommand(command="criteria", description="Текущие критерии"),
+    BotCommand(command="list", description="Сохранённые квартиры"),
+    BotCommand(command="refine", description="Уточнить критерии"),
+    BotCommand(command="cancel", description="Отменить уточнение"),
+    BotCommand(command="monitor", description="Мониторинг новых объявлений"),
+    BotCommand(command="help", description="Помощь по командам"),
+    BotCommand(command="start", description="Запуск и помощь"),
+]
 
 
 def create_bot() -> Bot:
@@ -52,6 +64,8 @@ async def run_polling() -> None:
     """Start Telegram long polling."""
     bot = create_bot()
     dispatcher = create_dispatcher()
+    # Register the command menu so commands autocomplete under "/" in Telegram.
+    await bot.set_my_commands(BOT_COMMANDS)
     await dispatcher.start_polling(bot)
 
 

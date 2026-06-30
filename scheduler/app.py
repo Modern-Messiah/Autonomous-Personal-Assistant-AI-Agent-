@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import signal
 from datetime import UTC, datetime, timedelta
 from importlib import import_module
 from typing import Any
@@ -118,24 +119,47 @@ async def run_scheduler_once(service: SchedulerService | None = None) -> Schedul
         await bot.session.close()
 
 
-async def run_scheduler_forever(service: SchedulerService | None = None) -> None:
+async def _wait_for_stop(stop_event: asyncio.Event, interval_seconds: float) -> None:
+    """Wait until shutdown is requested or the next polling interval starts."""
+    try:
+        await asyncio.wait_for(stop_event.wait(), timeout=interval_seconds)
+    except TimeoutError:
+        return
+
+
+async def run_scheduler_forever(
+    service: SchedulerService | None = None,
+    *,
+    stop_event: asyncio.Event | None = None,
+) -> None:
     """Run scheduler loop with configured polling interval."""
     settings = get_settings()
+    active_stop_event = stop_event or asyncio.Event()
     if settings.scheduler.runtime == "arq":
-        await run_scheduler_enqueue_forever(service=service)
+        await run_scheduler_enqueue_forever(
+            service=service,
+            stop_event=active_stop_event,
+        )
         return
 
     if service is not None:
-        while True:
+        while not active_stop_event.is_set():
             await service.run_pending_monitors()
-            await asyncio.sleep(settings.scheduler.poll_interval_seconds)
+            await _wait_for_stop(
+                active_stop_event,
+                settings.scheduler.poll_interval_seconds,
+            )
+        return
 
     bot = create_bot()
     try:
         active_service = create_scheduler_service(bot)
-        while True:
+        while not active_stop_event.is_set():
             await active_service.run_pending_monitors()
-            await asyncio.sleep(settings.scheduler.poll_interval_seconds)
+            await _wait_for_stop(
+                active_stop_event,
+                settings.scheduler.poll_interval_seconds,
+            )
     finally:
         await bot.session.close()
 
@@ -143,16 +167,19 @@ async def run_scheduler_forever(service: SchedulerService | None = None) -> None
 async def run_scheduler_enqueue_forever(
     service: SchedulerService | None = None,
     queue: Any | None = None,
+    *,
+    stop_event: asyncio.Event | None = None,
 ) -> None:
     """Run ARQ producer loop with configured polling interval."""
     settings = get_settings()
     active_service = service or create_scheduler_service()
     owned_queue = queue is None
     active_queue = queue or await create_arq_pool()
+    active_stop_event = stop_event or asyncio.Event()
 
     last_purge: datetime | None = None
     try:
-        while True:
+        while not active_stop_event.is_set():
             producer = SchedulerJobProducer(
                 service=active_service,
                 queue=active_queue,
@@ -168,13 +195,40 @@ async def run_scheduler_enqueue_forever(
                     logger.exception("scheduler purge failed")
                 last_purge = now
 
-            await asyncio.sleep(settings.scheduler.poll_interval_seconds)
+            await _wait_for_stop(
+                active_stop_event,
+                settings.scheduler.poll_interval_seconds,
+            )
     finally:
         if owned_queue:
             await close_arq_pool(active_queue)
 
 
+async def run_scheduler_with_signals() -> None:
+    """Run scheduler and translate SIGTERM/SIGINT into a graceful stop request."""
+    stop_event = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    installed: list[signal.Signals] = []
+
+    def request_stop() -> None:
+        logger.info("scheduler shutdown requested")
+        stop_event.set()
+
+    for signum in (signal.SIGTERM, signal.SIGINT):
+        try:
+            loop.add_signal_handler(signum, request_stop)
+        except NotImplementedError:
+            continue
+        installed.append(signum)
+    try:
+        await run_scheduler_forever(stop_event=stop_event)
+    finally:
+        for signum in installed:
+            loop.remove_signal_handler(signum)
+        logger.info("scheduler shutdown complete")
+
+
 def main() -> None:
     """CLI entrypoint for `python -m scheduler`."""
     configure_observability()
-    asyncio.run(run_scheduler_forever())
+    asyncio.run(run_scheduler_with_signals())

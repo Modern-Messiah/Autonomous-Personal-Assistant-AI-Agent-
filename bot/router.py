@@ -36,6 +36,7 @@ from bot.keyboards import (
 from bot.monitoring import parse_monitor_interval
 from bot.service import (
     ActiveCriteriaNotFoundError,
+    CriteriaUnchangedError,
     NoPreferencesError,
     RecommendationResult,
     SearchBotService,
@@ -67,6 +68,8 @@ def create_bot_router(service: SearchBotService) -> Router:
         result: SearchExecution,
     ) -> None:
         presented_apartments = result.apartments[:DEFAULT_SEARCH_RESULTS_LIMIT]
+        for notice in result.notices:
+            await message.answer(notice)
         await message.answer(format_criteria(result.criteria))
         if not presented_apartments:
             await state.clear()
@@ -250,6 +253,12 @@ def create_bot_router(service: SearchBotService) -> Router:
         except ActiveCriteriaNotFoundError:
             await message.answer(
                 "Активные критерии не найдены. Сначала выполни поиск через /search."
+            )
+            return
+        except CriteriaUnchangedError:
+            await message.answer(
+                "Не удалось распознать изменение критериев. "  # noqa: RUF001
+                "Напиши, например: «только 3 комнаты и до 35 млн»."
             )
             return
         except SearchExecutionError as exc:
@@ -535,6 +544,12 @@ def create_bot_router(service: SearchBotService) -> Router:
             await state.clear()
             await message.answer(
                 "Активные критерии не найдены. Сначала выполни поиск через /search."
+            )
+            return
+        except CriteriaUnchangedError:
+            await message.answer(
+                "Не удалось распознать изменение критериев. "  # noqa: RUF001
+                "Попробуй указать комнаты, бюджет, район, площадь или город."
             )
             return
         except SearchExecutionError as exc:

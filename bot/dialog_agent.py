@@ -13,6 +13,7 @@ from bot.formatters import (
 )
 from bot.service import (
     ActiveCriteriaNotFoundError,
+    CriteriaUnchangedError,
     SearchBotService,
     SearchExecution,
     SearchExecutionError,
@@ -227,6 +228,17 @@ class DialogAgent:
                     messages=[
                         "Активные критерии не найдены. Сначала выполни поиск через /search."
                     ]
+                ),
+            }
+        except CriteriaUnchangedError:
+            return {
+                **state,
+                "result": DialogTurnResult(
+                    messages=[
+                        "Не удалось распознать изменение критериев. "  # noqa: RUF001
+                        "Укажи комнаты, бюджет, район, площадь или город."
+                    ],
+                    next_state="waiting_for_feedback",
                 ),
             }
         except SearchExecutionError as exc:

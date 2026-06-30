@@ -10,6 +10,7 @@ from aiogram.types import BotCommand
 from agent.tools import NotionClient
 from bot.router import create_bot_router
 from bot.service import SearchBotService
+from config.observability import configure_observability
 from config.settings import get_settings
 from db.session import get_session_factory
 
@@ -73,4 +74,5 @@ async def run_polling() -> None:
 
 def main() -> None:
     """CLI entrypoint for running the bot."""
+    configure_observability()
     asyncio.run(run_polling())

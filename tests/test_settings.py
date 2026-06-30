@@ -140,3 +140,56 @@ def test_settings_load_enabled_notion_config(tmp_path: Path) -> None:
 
     assert settings.notion.enabled is True
     assert settings.notion.database_id == "database-123"
+
+
+def test_observability_integrations_are_optional(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "DB__HOST=localhost",
+                "DB__NAME=krisha_agent",
+                "DB__USER=krisha",
+                "DB__PASSWORD=secret_password",
+                "REDIS__HOST=localhost",
+                "TELEGRAM__BOT_TOKEN=telegram_token",
+                "API__TWO_GIS_API_KEY=two_gis_key",
+                "API__DEEPSEEK_API_KEY=deepseek_key",
+                "API__LANGSMITH_API_KEY=",
+                "API__LANGSMITH_PROJECT=",
+                "API__SENTRY_DSN=",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    settings = Settings(_env_file=env_file)
+
+    assert settings.api.langsmith_api_key is None
+    assert settings.api.langsmith_project is None
+    assert settings.api.sentry_dsn is None
+
+
+def test_log_level_is_normalized_and_validated(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "APP__LOG_LEVEL=debug",
+                "DB__HOST=localhost",
+                "DB__NAME=krisha_agent",
+                "DB__USER=krisha",
+                "DB__PASSWORD=secret_password",
+                "REDIS__HOST=localhost",
+                "TELEGRAM__BOT_TOKEN=telegram_token",
+                "API__TWO_GIS_API_KEY=two_gis_key",
+                "API__DEEPSEEK_API_KEY=deepseek_key",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    assert Settings(_env_file=env_file).app.log_level == "DEBUG"
+
+    env_file.write_text(env_file.read_text().replace("debug", "verbose"), encoding="utf-8")
+    with pytest.raises(ValidationError):
+        Settings(_env_file=env_file)

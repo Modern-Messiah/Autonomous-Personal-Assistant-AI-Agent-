@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -24,6 +25,7 @@ from db import (
 
 MonitorSearchRunner = Callable[..., Awaitable[list[EnrichedApartment]]]
 MonitorNotifier = Callable[[int, SearchCriteria, list[EnrichedApartment]], Awaitable[None]]
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True, frozen=True)
@@ -71,6 +73,11 @@ class SchedulerService:
                     checked_at=now,
                 )
             except Exception:
+                logger.exception(
+                    "monitor job failed user=%s telegram_user=%s",
+                    target.user_id,
+                    target.telegram_user_id,
+                )
                 summary = SchedulerRunSummary(
                     processed_users=summary.processed_users + 1,
                     notified_users=summary.notified_users,
@@ -153,6 +160,11 @@ class SchedulerService:
                 checked_at=active_checked_at,
             )
         except Exception:
+            logger.exception(
+                "monitor job failed user=%s telegram_user=%s",
+                target.user_id,
+                target.telegram_user_id,
+            )
             return SchedulerRunSummary(processed_users=1, failed_users=1)
 
         return SchedulerRunSummary(

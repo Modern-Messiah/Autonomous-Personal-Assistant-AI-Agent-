@@ -13,6 +13,7 @@ from aiogram import Bot
 from agent.models.criteria import SearchCriteria
 from agent.models.enriched import EnrichedApartment
 from bot.app import create_bot
+from config.observability import configure_observability
 from config.settings import ArqSettings, get_settings
 from db.session import get_session_factory
 from scheduler.notifier import TelegramMonitorNotifier
@@ -175,4 +176,5 @@ async def run_scheduler_enqueue_forever(
 
 def main() -> None:
     """CLI entrypoint for `python -m scheduler`."""
+    configure_observability()
     asyncio.run(run_scheduler_forever())

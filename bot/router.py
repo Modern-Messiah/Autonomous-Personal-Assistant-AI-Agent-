@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
+
 from aiogram import F, Router
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.fsm.context import FSMContext
@@ -85,10 +87,16 @@ def create_bot_router(service: SearchBotService) -> Router:
             return
         await target.answer("Сохраненные квартиры:")
         for index, item in enumerate(apartments, start=1):
-            await target.answer(
-                format_apartment_card(item, index=index, show_score=False),
-                reply_markup=build_saved_item_keyboard(item.apartment.external_id),
-            )
+            caption = format_apartment_card(item, index=index)
+            keyboard = build_saved_item_keyboard(item.apartment.external_id)
+            photo = item.apartment.photos[0] if item.apartment.photos else None
+            if photo is not None:
+                try:
+                    await target.answer_photo(photo=photo, caption=caption, reply_markup=keyboard)
+                    continue
+                except Exception:
+                    pass
+            await target.answer(caption, reply_markup=keyboard)
 
     async def send_dialog_turn(
         message: Message,
@@ -380,12 +388,12 @@ def create_bot_router(service: SearchBotService) -> Router:
             telegram_user_id=callback.from_user.id,
             external_id=external_id,
         )
-        if isinstance(callback.message, Message):
-            if removed:
-                await callback.message.edit_text("🗑 Удалено из сохранённых.")
-            else:
-                await callback.message.answer("Уже удалено или не найдено.")
-        await callback.answer("Удалено" if removed else "Уже удалено")
+        # Remove the card (works for both photo and text messages, unlike
+        # edit_text which fails on a photo message).
+        if removed and isinstance(callback.message, Message):
+            with contextlib.suppress(Exception):
+                await callback.message.delete()
+        await callback.answer("🗑 Удалено из сохранённых" if removed else "Уже удалено")
 
     @router.message(SearchDialogStates.waiting_for_refinement)
     async def handle_refinement_message(message: Message, state: FSMContext) -> None:

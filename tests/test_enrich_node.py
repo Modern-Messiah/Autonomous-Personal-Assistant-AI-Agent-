@@ -112,7 +112,7 @@ def test_calculate_annuity_payment() -> None:
 async def test_enrich_node_adds_area_and_mortgage_data() -> None:
     apartment = build_apartment(with_address=True)
     node = EnrichNode(
-        area_client=FakeAreaClient(NearbySummary(schools=8, parks=5, metro=2)),
+        area_client=FakeAreaClient(NearbySummary(schools=8, parks=5, metro=2, hospitals=6)),
         interest_rate_provider=FakeRateProvider(annual_rate=15.0),
     )
 
@@ -122,6 +122,7 @@ async def test_enrich_node_adds_area_and_mortgage_data() -> None:
     assert enriched.nearby_schools == 8
     assert enriched.nearby_parks == 5
     assert enriched.nearby_metro == 2
+    assert enriched.nearby_hospitals == 6
     assert enriched.mortgage_monthly_payment_kzt is not None
     assert enriched.mortgage_monthly_payment_kzt > 0
     assert enriched.mortgage_total_overpayment_kzt is not None
@@ -154,7 +155,7 @@ async def test_run_search_graph_uses_enrich_node_when_provided() -> None:
         context_factory=make_context_factory(object()),
     )
     enrich_node = EnrichNode(
-        area_client=FakeAreaClient(NearbySummary(schools=4, parks=3, metro=1)),
+        area_client=FakeAreaClient(NearbySummary(schools=4, parks=3, metro=1, hospitals=2)),
         interest_rate_provider=FakeRateProvider(annual_rate=14.0),
     )
 

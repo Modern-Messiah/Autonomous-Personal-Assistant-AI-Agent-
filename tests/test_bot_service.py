@@ -206,7 +206,7 @@ async def test_search_bot_service_loads_saved_apartments(monkeypatch: pytest.Mon
 
 
 @pytest.mark.asyncio
-async def test_search_bot_service_filters_rejected_apartments(
+async def test_search_bot_service_hides_saved_and_rejected_apartments(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session_factory = FakeSessionFactory()
@@ -220,7 +220,11 @@ async def test_search_bot_service_filters_rejected_apartments(
         assert criteria.city == "Almaty"
         assert thread_id == "telegram-user:77"
         assert checkpoint_ns == "telegram-search"
-        return [build_apartment("900100"), build_apartment("900101")]
+        return [
+            build_apartment("900100"),
+            build_apartment("900101"),
+            build_apartment("900102"),
+        ]
 
     service = SearchBotService(
         session_factory=session_factory,
@@ -241,11 +245,16 @@ async def test_search_bot_service_filters_rejected_apartments(
     stored_records = [
         SimpleNamespace(id="record-1"),
         SimpleNamespace(id="record-2"),
+        SimpleNamespace(id="record-3"),
     ]
 
     async def fake_upsert_apartments(session, *, apartments: list[EnrichedApartment]):
         del session
-        assert [item.apartment.external_id for item in apartments] == ["900100", "900101"]
+        assert [item.apartment.external_id for item in apartments] == [
+            "900100",
+            "900101",
+            "900102",
+        ]
         return stored_records
 
     async def fake_mark_seen(session, *, user_id: int, apartments: list[SimpleNamespace]):
@@ -256,7 +265,8 @@ async def test_search_bot_service_filters_rejected_apartments(
         del session
         assert user_id == 123
         assert apartments == stored_records
-        return {"record-2": "rejected"}
+        # record-1 has no feedback (kept); saved and rejected are both hidden.
+        return {"record-2": "saved", "record-3": "rejected"}
 
     monkeypatch.setattr("bot.service.upsert_telegram_user", fake_upsert)
     monkeypatch.setattr("bot.service.replace_active_search_criteria", fake_replace)
@@ -271,7 +281,7 @@ async def test_search_bot_service_filters_rejected_apartments(
     )
 
     assert [item.apartment.external_id for item in result.apartments] == ["900100"]
-    assert seen_links == [(123, 2)]
+    assert seen_links == [(123, 3)]
     assert session_factory.session.commit_calls == 2
 
 

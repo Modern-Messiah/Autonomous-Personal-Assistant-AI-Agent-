@@ -217,10 +217,12 @@ class SearchBotService:
                 )
                 await session.commit()
 
+            # Hide anything the user already decided on (saved or rejected) so the
+            # same listings don't resurface in later manual searches.
             apartments = [
                 apartment
                 for apartment, record in zip(apartments, records, strict=True)
-                if feedback_map.get(record.id) != "rejected"
+                if feedback_map.get(record.id) is None
             ]
 
         return SearchExecution(criteria=criteria, apartments=apartments)

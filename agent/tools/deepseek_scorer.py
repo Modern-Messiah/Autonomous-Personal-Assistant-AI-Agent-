@@ -15,7 +15,7 @@ DEEPSEEK_ENDPOINT = "https://api.deepseek.com/chat/completions"
 
 
 class DeepSeekApartmentScorer:
-    """Scores apartments via DeepSeek JSON output over the OpenAI-compatible API."""
+    """Scores a whole shortlist in one call so scores are comparative, not uniform."""
 
     def __init__(
         self,
@@ -36,16 +36,18 @@ class DeepSeekApartmentScorer:
         self._endpoint = endpoint
         self._transport = transport
 
-    async def score_apartment(
+    async def score_apartments(
         self,
-        apartment: EnrichedApartment,
+        apartments: list[EnrichedApartment],
         criteria: SearchCriteria | None = None,
-    ) -> ApartmentScore:
-        """Return a structured recommendation for one apartment."""
-        payload = self._build_payload(apartment, criteria)
+    ) -> list[ApartmentScore | None]:
+        """Score all apartments together; returns one score per item (None on failure)."""
+        if not apartments:
+            return []
+
+        payload = self._build_payload(apartments, criteria)
         headers = {"Authorization": f"Bearer {self._api_key}"}
 
-        last_error: Exception | None = None
         async with httpx.AsyncClient(
             timeout=self._timeout_seconds,
             transport=self._transport,
@@ -55,58 +57,42 @@ class DeepSeekApartmentScorer:
                     response = await client.post(self._endpoint, headers=headers, json=payload)
                     response.raise_for_status()
                     content = self._extract_content(response.json())
-                    return ApartmentScore.model_validate(json.loads(content))
-                except (httpx.HTTPError, json.JSONDecodeError, ValueError) as exc:
-                    last_error = exc
+                    return self._parse_scores(content, count=len(apartments))
+                except (httpx.HTTPError, json.JSONDecodeError, ValueError):
+                    continue
 
-        # DeepSeek has no strict JSON schema (only json_object), so retries above
-        # absorb the occasional malformed payload before giving up.
-        assert last_error is not None
-        raise last_error
+        # DeepSeek has no strict JSON schema, so on persistent failure degrade
+        # gracefully: the pipeline keeps the listings, just without scores.
+        return [None] * len(apartments)
 
     def _build_payload(
         self,
-        enriched: EnrichedApartment,
-        criteria: SearchCriteria | None = None,
+        apartments: list[EnrichedApartment],
+        criteria: SearchCriteria | None,
     ) -> dict[str, Any]:
-        apartment = enriched.apartment
         lines = [
-            "Evaluate how well this apartment fits the buyer's search criteria.",
-            "Respond with a single JSON object and nothing else.",
-            'JSON schema: {"score": number 0-100, '
-            '"reasons": array of 2 to 4 short strings, '
-            '"recommendation": one of "strong_buy", "consider", "skip"}.',
-            "Write each reason in Russian, short and concrete.",
-            "Judge fit against the criteria below, not in the abstract: a listing "
-            "that matches the budget, rooms and area well should score high even "
-            "if nearby-infrastructure counts are 0 (they may just be unavailable).",
+            "You rank apartments that ALL already match the buyer's hard filters "
+            "(budget, rooms, area). Compare them against each other.",
+            "Score each on overall value/quality from 0 to 100 and DIFFERENTIATE: "
+            "use the full range, the best clearly higher than the weakest, and do "
+            "not give several listings the same score.",
+            "Reward lower price per m², a mid floor (not 1st or last), more nearby "
+            "schools/parks/metro, more area for the price, a better district.",
+            "Penalize 1st or last floor, high price per m², no metro/parks nearby, "
+            "a cramped area.",
+            "recommendation must be one of strong_buy, consider, skip and stay "
+            "consistent with the score.",
+            "Write 2-4 short reasons per listing in Russian, naming the concrete "
+            "differentiators (e.g. cheaper per m², top floor, many schools).",
+            'Respond with one JSON object: {"items": [{"index": <listing number>, '
+            '"score": <0-100>, "recommendation": "strong_buy"|"consider"|"skip", '
+            '"reasons": ["..."]}]}. Include every listing exactly once.',
         ]
         lines.extend(self._criteria_lines(criteria))
-        lines.append("--- listing ---")
-        lines.extend(
-            [
-                f"title: {apartment.title}",
-                f"price_kzt: {apartment.price_kzt}",
-                f"city: {apartment.city}",
-                f"district: {apartment.district or 'unknown'}",
-                f"address: {apartment.address or 'unknown'}",
-                f"area_m2: {apartment.area_m2 or 'unknown'}",
-                f"floor: {apartment.floor or 'unknown'}",
-                f"rooms: {apartment.rooms or 'unknown'}",
-                f"nearby_schools: {enriched.nearby_schools or 0}",
-                f"nearby_parks: {enriched.nearby_parks or 0}",
-                f"nearby_metro: {enriched.nearby_metro or 0}",
-                (
-                    "mortgage_monthly_payment_kzt: "
-                    f"{enriched.mortgage_monthly_payment_kzt or 'unknown'}"
-                ),
-                (
-                    "mortgage_total_overpayment_kzt: "
-                    f"{enriched.mortgage_total_overpayment_kzt or 'unknown'}"
-                ),
-            ]
-        )
-        user_prompt = "\n".join(lines)
+        lines.append("--- listings ---")
+        for index, enriched in enumerate(apartments, start=1):
+            lines.append(self._listing_line(index, enriched))
+
         return {
             "model": self._model,
             "messages": [
@@ -114,11 +100,27 @@ class DeepSeekApartmentScorer:
                     "role": "system",
                     "content": "You are a real-estate scoring assistant. Output strict JSON only.",
                 },
-                {"role": "user", "content": user_prompt},
+                {"role": "user", "content": "\n".join(lines)},
             ],
             "temperature": self._temperature,
             "response_format": {"type": "json_object"},
         }
+
+    @staticmethod
+    def _listing_line(index: int, enriched: EnrichedApartment) -> str:
+        apartment = enriched.apartment
+        price_per_m2 = "unknown"
+        if apartment.area_m2 and apartment.area_m2 > 0:
+            price_per_m2 = str(round(apartment.price_kzt / apartment.area_m2))
+        return (
+            f"[{index}] price_kzt={apartment.price_kzt}, price_per_m2={price_per_m2}, "
+            f"rooms={apartment.rooms or 'unknown'}, area_m2={apartment.area_m2 or 'unknown'}, "
+            f"floor={apartment.floor or 'unknown'}, "
+            f"district={apartment.district or 'unknown'}, "
+            f"schools={enriched.nearby_schools or 0}, parks={enriched.nearby_parks or 0}, "
+            f"metro={enriched.nearby_metro or 0}, "
+            f"mortgage_monthly_kzt={enriched.mortgage_monthly_payment_kzt or 'unknown'}"
+        )
 
     @staticmethod
     def _criteria_lines(criteria: SearchCriteria | None) -> list[str]:
@@ -141,6 +143,33 @@ class DeepSeekApartmentScorer:
             f"districts: {districts}",
             f"area_m2: {area}",
         ]
+
+    @staticmethod
+    def _parse_scores(content: str, *, count: int) -> list[ApartmentScore | None]:
+        data = json.loads(content)
+        items = data.get("items") if isinstance(data, dict) else None
+        if not isinstance(items, list):
+            msg = "DeepSeek batch response did not contain an items list"
+            raise ValueError(msg)
+
+        scores: list[ApartmentScore | None] = [None] * count
+        for entry in items:
+            if not isinstance(entry, dict):
+                continue
+            index = entry.get("index")
+            if not isinstance(index, int) or not (1 <= index <= count):
+                continue
+            try:
+                scores[index - 1] = ApartmentScore.model_validate(
+                    {
+                        "score": entry.get("score"),
+                        "reasons": entry.get("reasons"),
+                        "recommendation": entry.get("recommendation"),
+                    }
+                )
+            except Exception:
+                continue
+        return scores
 
     @staticmethod
     def _extract_content(response_data: dict[str, Any]) -> str:

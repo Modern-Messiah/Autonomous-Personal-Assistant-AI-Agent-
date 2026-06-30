@@ -38,6 +38,13 @@ ROOMS_WORD_PATTERN = re.compile(
     re.IGNORECASE,
 )
 PUBLISHED_PATTERN = re.compile(r"(\d{2}\.\d{2}\.\d{4})")
+# The page <title> ("... №<id>: <address> — за <price> — Крыша") is server-side
+# rendered and always present, so it is the reliable source for the address that
+# 2GIS geocodes (the in-page address node is JS-hydrated and often missing).
+TITLE_ADDRESS_PATTERN = re.compile(
+    r"№\d+:\s*(?P<addr>.+?)\s*[\u2014\u2013-]\s*за\s",
+    re.IGNORECASE,
+)
 
 # Real listing photos live on krisha's CDN under /webp/<hash>/<n>-<size>.jpg in
 # many sizes; marketing banners sit under /content/ and must be skipped. krisha
@@ -374,9 +381,10 @@ class KrishaParser:
             [
                 self._get_selector_text(soup, ".offer__address"),
                 self._get_selector_text(soup, '[data-test="address"]'),
-                # krisha dropped the dedicated address node; the listing-card
-                # subtitle (district + street) is the reliable source and is what
-                # 2GIS needs to geocode for nearby counts.
+                # krisha dropped the dedicated address node and the listing-card
+                # subtitle is JS-hydrated (flaky), so prefer the SSR page <title>,
+                # then fall back to the subtitle carried from the preview.
+                self._extract_address_from_title(soup),
                 preview.address,
             ]
         )
@@ -603,6 +611,17 @@ class KrishaParser:
             if "\u0440-\u043d" in lowered or "\u0440\u0430\u0439\u043e\u043d" in lowered:
                 return part
         return None
+
+    @staticmethod
+    def _extract_address_from_title(soup: BeautifulSoup) -> str | None:
+        node = soup.find("title")
+        if node is None:
+            return None
+        match = TITLE_ADDRESS_PATTERN.search(node.get_text(" ", strip=True))
+        if match is None:
+            return None
+        address = match.group("addr").strip()
+        return address or None
 
     @staticmethod
     def _extract_photo_urls(html: str) -> list[str]:

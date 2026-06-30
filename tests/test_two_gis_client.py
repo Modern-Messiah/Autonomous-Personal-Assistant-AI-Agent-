@@ -92,3 +92,58 @@ async def test_geocode_miss_is_cached_to_avoid_refetch() -> None:
     assert await client.get_nearby_summary(city="Almaty", address="nowhere") is None
     assert await client.get_nearby_summary(city="Almaty", address="nowhere") is None
     assert calls["n"] == 1  # miss cached, no second geocode request
+
+
+@pytest.mark.asyncio
+async def test_failed_place_counts_are_unknown_and_not_cached() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "geocode" in str(request.url):
+            return httpx.Response(
+                200,
+                json={"result": {"items": [{"point": {"lat": 43.24, "lon": 76.95}}]}},
+            )
+        return httpx.Response(503)
+
+    cache = FakeCache()
+    client = TwoGISClient(api_key="k", cache=cache, transport=httpx.MockTransport(handler))
+
+    summary = await client.get_nearby_summary(city="Almaty", address="Абая 10")
+
+    assert summary == NearbySummary(schools=None, parks=None, metro=None)
+    assert not any(key.startswith("2gis:cnt:") for key in cache.store)
+
+
+@pytest.mark.asyncio
+async def test_valid_zero_is_cached_in_versioned_namespace() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "geocode" in str(request.url):
+            return httpx.Response(
+                200,
+                json={"result": {"items": [{"point": {"lat": 43.24, "lon": 76.95}}]}},
+            )
+        return httpx.Response(200, json={"result": {"total": 0}})
+
+    cache = FakeCache()
+    client = TwoGISClient(api_key="k", cache=cache, transport=httpx.MockTransport(handler))
+
+    summary = await client.get_nearby_summary(city="Almaty", address="Абая 10")
+
+    assert summary == NearbySummary(schools=0, parks=0, metro=0)
+    assert len([key for key in cache.store if key.startswith("2gis:cnt:v2:")]) == 3
+
+
+@pytest.mark.asyncio
+async def test_missing_total_is_unknown_instead_of_page_length() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "geocode" in str(request.url):
+            return httpx.Response(
+                200,
+                json={"result": {"items": [{"point": {"lat": 43.24, "lon": 76.95}}]}},
+            )
+        return httpx.Response(200, json={"result": {"items": [{"id": "one"}]}})
+
+    client = TwoGISClient(api_key="k", transport=httpx.MockTransport(handler))
+
+    assert await client.get_nearby_summary(
+        city="Almaty", address="Абая 10"
+    ) == NearbySummary(schools=None, parks=None, metro=None)

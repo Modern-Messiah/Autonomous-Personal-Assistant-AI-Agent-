@@ -44,7 +44,7 @@ async def test_geocode_is_cached_across_calls() -> None:
     first = await client.get_nearby_summary(city="Almaty", address="Абая 10")
     second = await client.get_nearby_summary(city="Almaty", address="Абая 10")
 
-    assert first == NearbySummary(schools=5, parks=5, metro=5, hospitals=5)
+    assert first == NearbySummary(schools=5, parks=5, metro=5)
     assert second == first
     assert calls["geocode"] == 1  # second lookup served from cache
     assert cache.store  # point was stored
@@ -69,8 +69,8 @@ async def test_place_counts_are_cached_across_calls() -> None:
     await client.get_nearby_summary(city="Almaty", address="Абая 10")
     await client.get_nearby_summary(city="Almaty", address="Абая 10")
 
-    # 4 categories counted once on the first call; the second call is fully cached.
-    assert counts["n"] == 4
+    # 3 categories counted once on the first call; the second call is fully cached.
+    assert counts["n"] == 3
 
 
 @pytest.mark.asyncio

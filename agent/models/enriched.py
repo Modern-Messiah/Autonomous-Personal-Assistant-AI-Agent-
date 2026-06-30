@@ -14,7 +14,6 @@ class EnrichedApartment(BaseModel):
     nearby_schools: int | None = Field(default=None, ge=0)
     nearby_parks: int | None = Field(default=None, ge=0)
     nearby_metro: int | None = Field(default=None, ge=0)
-    nearby_hospitals: int | None = Field(default=None, ge=0)
     mortgage_monthly_payment_kzt: int | None = Field(default=None, ge=0)
     mortgage_total_overpayment_kzt: int | None = Field(default=None, ge=0)
 

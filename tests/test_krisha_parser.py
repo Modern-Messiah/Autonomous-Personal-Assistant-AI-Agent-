@@ -21,6 +21,8 @@ def make_preview(
     price_kzt: int | None = None,
     rooms: int | None = None,
     area_m2: float | None = None,
+    district: str | None = None,
+    address: str | None = None,
 ) -> ListingPreview:
     return ListingPreview(
         external_id=external_id,
@@ -30,7 +32,8 @@ def make_preview(
         rooms=rooms,
         area_m2=area_m2,
         floor=None,
-        district=None,
+        district=district,
+        address=address,
     )
 
 
@@ -214,6 +217,51 @@ def test_matches_criteria_filters_rooms_and_price() -> None:
     assert not KrishaParser._matches_criteria(
         make_preview(rooms=2, price_kzt=60_000_000), criteria
     )
+
+
+def test_matches_criteria_filters_by_district() -> None:
+    criteria = SearchCriteria(
+        user_id=1, city="Almaty", deal_type="sale", property_type="apartment",
+        districts=["Bostandyk"],
+    )
+    # the card's Russian label resolves to the requested district -> match
+    assert KrishaParser._matches_criteria(make_preview(district="Бостандыкский район"), criteria)
+    # a different district -> filtered out
+    assert not KrishaParser._matches_criteria(make_preview(district="Медеуский район"), criteria)
+    # district unknown on the card (and no address) -> kept, not dropped by mistake
+    assert KrishaParser._matches_criteria(make_preview(district=None), criteria)
+
+
+def test_matches_criteria_district_uses_address_fallback() -> None:
+    criteria = SearchCriteria(
+        user_id=1, city="Almaty", deal_type="sale", property_type="apartment",
+        districts=["Medeu"],
+    )
+    assert KrishaParser._matches_criteria(
+        make_preview(district=None, address="Алматы, Медеуский район, проспект Достык 1"),
+        criteria,
+    )
+    assert not KrishaParser._matches_criteria(
+        make_preview(district="Ауэзовский район"), criteria
+    )
+
+
+def test_matches_criteria_district_is_city_scoped() -> None:
+    astana = SearchCriteria(
+        user_id=1, city="Astana", deal_type="sale", property_type="apartment",
+        districts=["Yesil"],
+    )
+    assert KrishaParser._matches_criteria(make_preview(district="Есильский район"), astana)
+    assert not KrishaParser._matches_criteria(make_preview(district="Сарыаркинский район"), astana)
+
+
+def test_matches_criteria_unmapped_city_keeps_whole_city() -> None:
+    # A city we don't map -> requested district can't resolve -> no district filter.
+    criteria = SearchCriteria(
+        user_id=1, city="Taraz", deal_type="sale", property_type="apartment",
+        districts=["Center"],
+    )
+    assert KrishaParser._matches_criteria(make_preview(district="Центральный район"), criteria)
     # unknown fields are kept (resolved on the detail page)
     assert KrishaParser._matches_criteria(
         make_preview(rooms=None, price_kzt=None), criteria

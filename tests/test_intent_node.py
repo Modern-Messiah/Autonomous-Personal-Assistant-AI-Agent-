@@ -126,6 +126,27 @@ async def test_intent_node_parses_rent_message() -> None:
     assert criteria.page_limit == 2
 
 
+@pytest.mark.parametrize(
+    ("message", "expected_city"),
+    [
+        ("куплю 2 ком в Павлодаре до 20 млн", "Pavlodar"),
+        ("квартира в Уральске", "Uralsk"),
+        ("аренда в Усть-Каменогорске", "Ust-Kamenogorsk"),
+        ("ищу 3 ком в Костанае", "Kostanay"),
+        ("квартира в Кызылорде", "Kyzylorda"),
+        ("Актобе 1 комнатную", "Aktobe"),
+        ("куплю в Таразе", "Taraz"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_intent_node_recognizes_kazakhstan_cities(
+    message: str, expected_city: str
+) -> None:
+    node = IntentNode(llm_parser_factory=lambda: None)
+    criteria = await node.parse(user_id=1, message=message)
+    assert criteria.city == expected_city
+
+
 @pytest.mark.asyncio
 async def test_intent_node_parses_hyphenated_room_count() -> None:
     node = IntentNode(llm_parser_factory=lambda: None)

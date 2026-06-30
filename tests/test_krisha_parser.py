@@ -219,6 +219,21 @@ def test_matches_criteria_filters_rooms_and_price() -> None:
     )
 
 
+def test_build_listing_urls_uses_city_slug() -> None:
+    parser = KrishaParser(redis_client=FakeRedis(), min_delay_seconds=0, max_delay_seconds=0)
+    for city, slug in [
+        ("Almaty", "almaty"),
+        ("Pavlodar", "pavlodar"),
+        ("Ust-Kamenogorsk", "ust-kamenogorsk"),
+        ("Semei", "semei"),
+    ]:
+        crit = SearchCriteria(
+            user_id=1, city=city, deal_type="sale", property_type="apartment", page_limit=1
+        )
+        url = parser._build_listing_urls(crit)[0]
+        assert f"/kvartiry/{slug}/" in url
+
+
 def test_matches_criteria_filters_by_district() -> None:
     criteria = SearchCriteria(
         user_id=1, city="Almaty", deal_type="sale", property_type="apartment",

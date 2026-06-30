@@ -8,6 +8,7 @@ import pytest
 from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.base import BaseSession
+from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.methods import SendMessage
 from aiogram.types import Message, Update
 
@@ -155,7 +156,10 @@ def build_command_update(*, text: str) -> Update:
 
 @pytest.mark.asyncio
 async def test_search_command_replies_with_user_facing_error_when_search_fails() -> None:
-    dispatcher = create_dispatcher(service=FailingSearchService())  # type: ignore[arg-type]
+    dispatcher = create_dispatcher(  # type: ignore[arg-type]
+        service=FailingSearchService(),
+        storage=MemoryStorage(),
+    )
     session = CapturingSession()
     bot = Bot(token="123456:ABCDEF", session=session, default=DefaultBotProperties())
 

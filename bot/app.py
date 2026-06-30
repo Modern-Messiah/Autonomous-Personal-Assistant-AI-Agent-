@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 
 from aiogram import Bot, Dispatcher
+from aiogram.fsm.storage.base import BaseStorage
+from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.types import BotCommand
 
 from agent.tools import NotionClient
@@ -34,9 +36,18 @@ def create_bot() -> Bot:
     return Bot(token=settings.telegram.bot_token.get_secret_value())
 
 
-def create_dispatcher(service: SearchBotService | None = None) -> Dispatcher:
+def create_fsm_storage() -> RedisStorage:
+    """Create durable FSM storage using the shared authenticated Redis."""
+    return RedisStorage.from_url(get_settings().redis.redis_url)
+
+
+def create_dispatcher(
+    service: SearchBotService | None = None,
+    *,
+    storage: BaseStorage | None = None,
+) -> Dispatcher:
     """Create dispatcher with project routes."""
-    dispatcher = Dispatcher()
+    dispatcher = Dispatcher(storage=storage if storage is not None else create_fsm_storage())
     active_service = service or create_search_service()
     dispatcher.include_router(create_bot_router(active_service))
     return dispatcher

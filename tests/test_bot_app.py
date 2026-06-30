@@ -5,6 +5,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from aiogram import Dispatcher
+from aiogram.fsm.storage.memory import MemoryStorage
 from pydantic import SecretStr
 
 from bot.app import BOT_COMMANDS, create_bot, create_dispatcher
@@ -81,9 +82,14 @@ class DummyService:
 
 
 def test_create_dispatcher_includes_bot_routes() -> None:
-    dispatcher = create_dispatcher(service=DummyService())  # type: ignore[arg-type]
+    storage = MemoryStorage()
+    dispatcher = create_dispatcher(  # type: ignore[arg-type]
+        service=DummyService(),
+        storage=storage,
+    )
 
     assert isinstance(dispatcher, Dispatcher)
+    assert dispatcher.fsm.storage is storage
     update_types = dispatcher.resolve_used_update_types()
     assert "message" in update_types
     assert "callback_query" in update_types

@@ -348,8 +348,7 @@ class NotionClient:
                 "Рядом: "
                 f"школы={item.nearby_schools or 0}, "
                 f"парки={item.nearby_parks or 0}, "
-                f"метро={item.nearby_metro or 0}, "
-                f"больницы={item.nearby_hospitals or 0}"
+                f"метро={item.nearby_metro or 0}"
             )
 
         return [

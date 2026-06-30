@@ -15,7 +15,6 @@ class NearbySummary:
     schools: int
     parks: int
     metro: int
-    hospitals: int
 
 
 class NearbyCacheProtocol(Protocol):
@@ -62,8 +61,7 @@ class TwoGISClient:
         schools = await self._count_nearby(query="school", lat=lat, lon=lon)
         parks = await self._count_nearby(query="park", lat=lat, lon=lon)
         metro = await self._count_nearby(query="metro station", lat=lat, lon=lon)
-        hospitals = await self._count_nearby(query="больница", lat=lat, lon=lon)
-        return NearbySummary(schools=schools, parks=parks, metro=metro, hospitals=hospitals)
+        return NearbySummary(schools=schools, parks=parks, metro=metro)
 
     async def _geocode(self, *, city: str, address: str) -> tuple[float, float] | None:
         cache_key = f"2gis:geo:{city.strip().lower()}|{address.strip().lower()}"

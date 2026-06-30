@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+from datetime import UTC, datetime, timedelta
 from importlib import import_module
 from typing import Any
 
@@ -16,6 +18,9 @@ from db.session import get_session_factory
 from scheduler.notifier import TelegramMonitorNotifier
 from scheduler.producer import SchedulerEnqueueSummary, SchedulerJobProducer
 from scheduler.service import SchedulerRunSummary, SchedulerService
+
+logger = logging.getLogger(__name__)
+PURGE_INTERVAL = timedelta(hours=24)
 
 
 async def noop_monitor_notifier(
@@ -144,6 +149,7 @@ async def run_scheduler_enqueue_forever(
     owned_queue = queue is None
     active_queue = queue or await create_arq_pool()
 
+    last_purge: datetime | None = None
     try:
         while True:
             producer = SchedulerJobProducer(
@@ -152,6 +158,15 @@ async def run_scheduler_enqueue_forever(
                 queue_name=settings.arq.queue_name,
             )
             await producer.enqueue_due_monitor_jobs()
+
+            now = datetime.now(UTC)
+            if last_purge is None or now - last_purge >= PURGE_INTERVAL:
+                try:
+                    logger.info("scheduler purge: %s", await active_service.purge_stale())
+                except Exception:
+                    logger.exception("scheduler purge failed")
+                last_purge = now
+
             await asyncio.sleep(settings.scheduler.poll_interval_seconds)
     finally:
         if owned_queue:

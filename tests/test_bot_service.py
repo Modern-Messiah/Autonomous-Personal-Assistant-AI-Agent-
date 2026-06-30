@@ -791,15 +791,17 @@ def test_format_apartment_card_is_clean_and_structured() -> None:
 
     card = format_apartment_card(item, index=1)
 
-    assert "2-комн · 53 м² · 5/9 этаж" in card
+    assert "2-комнатная · 53 м² · этаж 5/9" in card
     assert "💰 31 000 000 ₸" in card
+    assert "₸/м²" in card  # price per square meter shown
     assert "Almaty" in card
     assert "Есильский" in card
     assert "85/100" in card
-    assert "🏫 5 · 🌳 3 · 🚇 1" in card
-    assert 'href="https://krisha.kz/a/show/900100"' in card
+    assert "школы: 5" in card
+    assert "рядом школы" in card  # score reasons included
+    assert "https://krisha.kz/a/show/900100" in card
     assert "srchid" not in card  # tracking query stripped
-    assert "40" not in card  # messy title area not duplicated
+    assert "<b>" not in card and "href=" not in card  # plain text, renders without parse_mode
 
 
 async def fake_search_runner(

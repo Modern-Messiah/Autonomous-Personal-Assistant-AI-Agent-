@@ -757,6 +757,27 @@ def test_formatters_render_expected_content() -> None:
     assert keyboard.inline_keyboard[1][1].callback_data == LIST_CALLBACK_DATA
 
 
+@pytest.mark.asyncio
+async def test_search_bot_service_deletes_saved_apartment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_factory = FakeSessionFactory()
+    service = SearchBotService(session_factory=session_factory, search_runner=fake_search_runner)
+    seen: list[tuple[int, str]] = []
+
+    async def fake_delete(session, *, telegram_user_id: int, external_id: str, decision="saved"):
+        del session, decision
+        seen.append((telegram_user_id, external_id))
+        return external_id == "900100"
+
+    monkeypatch.setattr("bot.service.delete_apartment_feedback", fake_delete)
+
+    assert await service.delete_saved_apartment(telegram_user_id=77, external_id="900100") is True
+    assert await service.delete_saved_apartment(telegram_user_id=77, external_id="000") is False
+    assert seen == [(77, "900100"), (77, "000")]
+    assert session_factory.session.commit_calls == 2
+
+
 def test_clean_listing_url_strips_tracking_query() -> None:
     assert (
         clean_listing_url("https://krisha.kz/a/show/1?srchid=abc&srchpos=2#frag")

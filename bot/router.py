@@ -13,15 +13,16 @@ from bot.formatters import (
     format_apartment_card,
     format_criteria,
     format_monitor_status,
-    format_saved_apartments,
     format_search_results,
     format_start_message,
 )
 from bot.keyboards import (
+    DELETE_SAVED_PREFIX,
     LIST_CALLBACK_DATA,
     REFINE_CALLBACK_DATA,
     REJECT_CALLBACK_DATA,
     SAVE_CALLBACK_DATA,
+    build_saved_item_keyboard,
     build_search_followup_keyboard,
 )
 from bot.monitoring import parse_monitor_interval
@@ -76,6 +77,18 @@ def create_bot_router(service: SearchBotService) -> Router:
             ]
         )
         await state.set_state(SearchDialogStates.waiting_for_feedback)
+
+    async def send_saved_list(target: Message, telegram_user_id: int) -> None:
+        apartments = await service.get_saved_apartments(telegram_user_id=telegram_user_id)
+        if not apartments:
+            await target.answer("Сохраненных квартир пока нет.")
+            return
+        await target.answer("Сохраненные квартиры:")
+        for index, item in enumerate(apartments, start=1):
+            await target.answer(
+                format_apartment_card(item, index=index, show_score=False),
+                reply_markup=build_saved_item_keyboard(item.apartment.external_id),
+            )
 
     async def send_dialog_turn(
         message: Message,
@@ -206,10 +219,7 @@ def create_bot_router(service: SearchBotService) -> Router:
     async def handle_list(message: Message) -> None:
         if message.from_user is None:
             return
-        apartments = await service.get_saved_apartments(
-            telegram_user_id=message.from_user.id,
-        )
-        await message.answer(format_saved_apartments(apartments))
+        await send_saved_list(message, message.from_user.id)
 
     @router.message(Command("monitor"))
     async def handle_monitor(message: Message, command: CommandObject) -> None:
@@ -354,15 +364,28 @@ def create_bot_router(service: SearchBotService) -> Router:
 
     @router.callback_query(F.data == LIST_CALLBACK_DATA)
     async def handle_list_callback(callback: CallbackQuery) -> None:
-        if callback.from_user is None:
+        if callback.from_user is None or not isinstance(callback.message, Message):
             await callback.answer()
             return
-        apartments = await service.get_saved_apartments(
-            telegram_user_id=callback.from_user.id,
-        )
-        if callback.message is not None:
-            await callback.message.answer(format_saved_apartments(apartments))
+        await send_saved_list(callback.message, callback.from_user.id)
         await callback.answer()
+
+    @router.callback_query(F.data.startswith(DELETE_SAVED_PREFIX))
+    async def handle_delete_saved_callback(callback: CallbackQuery) -> None:
+        if callback.from_user is None or callback.data is None:
+            await callback.answer()
+            return
+        external_id = callback.data[len(DELETE_SAVED_PREFIX):]
+        removed = await service.delete_saved_apartment(
+            telegram_user_id=callback.from_user.id,
+            external_id=external_id,
+        )
+        if isinstance(callback.message, Message):
+            if removed:
+                await callback.message.edit_text("🗑 Удалено из сохранённых.")
+            else:
+                await callback.message.answer("Уже удалено или не найдено.")
+        await callback.answer("Удалено" if removed else "Уже удалено")
 
     @router.message(SearchDialogStates.waiting_for_refinement)
     async def handle_refinement_message(message: Message, state: FSMContext) -> None:

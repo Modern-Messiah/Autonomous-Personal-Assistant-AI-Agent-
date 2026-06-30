@@ -17,6 +17,7 @@ from agent.models.enriched import EnrichedApartment
 from agent.nodes.intent_node import IntentNode
 from agent.tools.krisha_parser import AntiBotBlockedError
 from bot.monitoring import DEFAULT_MONITOR_INTERVAL_MINUTES
+from bot.preferences import build_preference_profile, rank_by_preference
 from db import (
     ApartmentDecision,
     count_feedback_apartments,
@@ -81,8 +82,28 @@ class MonitorStatus:
     interval_minutes: int
 
 
+@dataclass(slots=True, frozen=True)
+class Recommendation:
+    """One preference-ranked apartment plus the reasons it fits the user."""
+
+    apartment: EnrichedApartment
+    reasons: list[str]
+
+
+@dataclass(slots=True, frozen=True)
+class RecommendationResult:
+    """Result of /foryou: candidates ordered by the user's saved/rejected taste."""
+
+    criteria: SearchCriteria
+    recommendations: list[Recommendation]
+
+
 class ActiveCriteriaNotFoundError(RuntimeError):
     """Raised when a refinement flow requires active criteria but none are stored."""
+
+
+class NoPreferencesError(RuntimeError):
+    """Raised when /foryou has no saved apartments to learn the user's taste from."""
 
 
 class SearchExecutionError(RuntimeError):
@@ -180,6 +201,21 @@ class SearchBotService:
             )
             await session.commit()
 
+        apartments = await self._run_search_graph(
+            telegram_user_id=telegram_user_id,
+            user_id=user_id,
+            criteria=criteria,
+        )
+        return SearchExecution(criteria=criteria, apartments=apartments)
+
+    async def _run_search_graph(
+        self,
+        *,
+        telegram_user_id: int,
+        user_id: int,
+        criteria: SearchCriteria,
+    ) -> list[EnrichedApartment]:
+        """Run the search graph and drop listings the user already decided on."""
         try:
             apartments = await self._search_runner(
                 criteria,
@@ -200,33 +236,25 @@ class SearchBotService:
                 telegram_user_id,
             )
             raise SearchExecutionError() from exc
-        if apartments:
-            async with self._session_factory() as session:
-                records = await upsert_apartment_records(
-                    session,
-                    apartments=apartments,
-                )
-                feedback_map = await get_apartment_feedback_map(
-                    session,
-                    user_id=user_id,
-                    apartments=records,
-                )
-                await mark_apartments_seen(
-                    session,
-                    user_id=user_id,
-                    apartments=records,
-                )
-                await session.commit()
+        if not apartments:
+            return apartments
+        async with self._session_factory() as session:
+            records = await upsert_apartment_records(session, apartments=apartments)
+            feedback_map = await get_apartment_feedback_map(
+                session,
+                user_id=user_id,
+                apartments=records,
+            )
+            await mark_apartments_seen(session, user_id=user_id, apartments=records)
+            await session.commit()
 
-            # Hide anything the user already decided on (saved or rejected) so the
-            # same listings don't resurface in later manual searches.
-            apartments = [
-                apartment
-                for apartment, record in zip(apartments, records, strict=True)
-                if feedback_map.get(record.id) is None
-            ]
-
-        return SearchExecution(criteria=criteria, apartments=apartments)
+        # Hide anything the user already decided on (saved or rejected) so the
+        # same listings don't resurface in later manual searches.
+        return [
+            apartment
+            for apartment, record in zip(apartments, records, strict=True)
+            if feedback_map.get(record.id) is None
+        ]
 
     async def get_active_criteria(
         self,
@@ -266,6 +294,52 @@ class SearchBotService:
                 telegram_user_id=telegram_user_id,
                 decision="saved",
             )
+
+    async def recommend(
+        self,
+        *,
+        telegram_user_id: int,
+        username: str | None,
+        limit: int = 5,
+    ) -> RecommendationResult:
+        """Recommend fresh listings ranked by the user's saved/rejected taste.
+
+        Runs the user's active-criteria search (without touching active criteria),
+        then orders candidates by how well they match what the user saved.
+        """
+        criteria = await self.get_active_criteria(telegram_user_id=telegram_user_id)
+        if criteria is None:
+            msg = "active criteria not found"
+            raise ActiveCriteriaNotFoundError(msg)
+
+        async with self._session_factory() as session:
+            saved = await list_feedback_apartments(
+                session, telegram_user_id=telegram_user_id, decision="saved", limit=100
+            )
+            rejected = await list_feedback_apartments(
+                session, telegram_user_id=telegram_user_id, decision="rejected", limit=100
+            )
+            user = await upsert_telegram_user(
+                session, telegram_user_id=telegram_user_id, username=username
+            )
+            user_id = user.id
+            await session.commit()
+
+        if not saved:
+            msg = "no saved apartments to learn from"
+            raise NoPreferencesError(msg)
+
+        candidates = await self._run_search_graph(
+            telegram_user_id=telegram_user_id, user_id=user_id, criteria=criteria
+        )
+        profile = build_preference_profile(saved, rejected)
+        ranked = rank_by_preference(candidates, profile)[:limit]
+        return RecommendationResult(
+            criteria=criteria,
+            recommendations=[
+                Recommendation(apartment=item, reasons=reasons) for item, reasons in ranked
+            ],
+        )
 
     async def delete_saved_apartment(
         self,

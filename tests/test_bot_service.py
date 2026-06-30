@@ -36,6 +36,7 @@ from bot.service import (
     SEARCH_BLOCKED_MESSAGE,
     SEARCH_EXECUTION_ERROR_MESSAGE,
     ActiveCriteriaNotFoundError,
+    NoPreferencesError,
     SearchBotService,
     SearchExecutionError,
 )
@@ -219,6 +220,103 @@ async def test_search_bot_service_counts_saved_apartments(monkeypatch: pytest.Mo
     monkeypatch.setattr("bot.service.count_feedback_apartments", fake_count)
 
     assert await service.count_saved_apartments(telegram_user_id=77) == 12
+
+
+def _active_criteria_record() -> SimpleNamespace:
+    return SimpleNamespace(
+        criteria={
+            "user_id": 77,
+            "city": "Almaty",
+            "deal_type": "sale",
+            "property_type": "apartment",
+        }
+    )
+
+
+@pytest.mark.asyncio
+async def test_recommend_requires_active_criteria(monkeypatch: pytest.MonkeyPatch) -> None:
+    service = SearchBotService(
+        session_factory=FakeSessionFactory(), search_runner=fake_search_runner
+    )
+
+    async def no_record(session, *, telegram_user_id: int):
+        del session, telegram_user_id
+        return None
+
+    monkeypatch.setattr("bot.service.get_active_search_criteria_record", no_record)
+
+    with pytest.raises(ActiveCriteriaNotFoundError):
+        await service.recommend(telegram_user_id=77, username="tester")
+
+
+@pytest.mark.asyncio
+async def test_recommend_requires_saved_apartments(monkeypatch: pytest.MonkeyPatch) -> None:
+    service = SearchBotService(
+        session_factory=FakeSessionFactory(), search_runner=fake_search_runner
+    )
+
+    async def record(session, *, telegram_user_id: int):
+        del session, telegram_user_id
+        return _active_criteria_record()
+
+    async def no_feedback(session, *, telegram_user_id: int, decision: str, limit: int):
+        del session, telegram_user_id, decision, limit
+        return []
+
+    async def upsert(session, *, telegram_user_id: int, username: str | None):
+        del session, telegram_user_id, username
+        return SimpleNamespace(id=123)
+
+    monkeypatch.setattr("bot.service.get_active_search_criteria_record", record)
+    monkeypatch.setattr("bot.service.list_feedback_apartments", no_feedback)
+    monkeypatch.setattr("bot.service.upsert_telegram_user", upsert)
+
+    with pytest.raises(NoPreferencesError):
+        await service.recommend(telegram_user_id=77, username="tester")
+
+
+@pytest.mark.asyncio
+async def test_recommend_ranks_candidates_by_preference(monkeypatch: pytest.MonkeyPatch) -> None:
+    service = SearchBotService(
+        session_factory=FakeSessionFactory(), search_runner=fake_search_runner
+    )
+
+    async def record(session, *, telegram_user_id: int):
+        del session, telegram_user_id
+        return _active_criteria_record()
+
+    async def feedback(session, *, telegram_user_id: int, decision: str, limit: int):
+        del session, telegram_user_id, limit
+        return [build_apartment()] if decision == "saved" else []
+
+    async def upsert(session, *, telegram_user_id: int, username: str | None):
+        del session, telegram_user_id, username
+        return SimpleNamespace(id=123)
+
+    async def upsert_apts(session, *, apartments):
+        del session
+        return [SimpleNamespace(id="apt-1")]
+
+    async def feedback_map(session, *, user_id: int, apartments):
+        del session, user_id, apartments
+        return {}
+
+    async def mark_seen(session, *, user_id: int, apartments):
+        del session, user_id, apartments
+
+    monkeypatch.setattr("bot.service.get_active_search_criteria_record", record)
+    monkeypatch.setattr("bot.service.list_feedback_apartments", feedback)
+    monkeypatch.setattr("bot.service.upsert_telegram_user", upsert)
+    monkeypatch.setattr("bot.service.upsert_apartment_records", upsert_apts)
+    monkeypatch.setattr("bot.service.get_apartment_feedback_map", feedback_map)
+    monkeypatch.setattr("bot.service.mark_apartments_seen", mark_seen)
+
+    result = await service.recommend(telegram_user_id=77, username="tester")
+
+    assert len(result.recommendations) == 1
+    rec = result.recommendations[0]
+    assert rec.apartment.apartment.external_id == "900100"
+    assert rec.reasons  # candidate matches the saved budget / rooms / area
 
 
 @pytest.mark.asyncio

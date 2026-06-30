@@ -28,8 +28,10 @@ from db import (
     list_apartment_records_by_external_ids,
     list_apartment_records_by_urls,
     list_feedback_apartments,
+    list_trashed_apartments,
     mark_apartments_seen,
     replace_active_search_criteria,
+    restore_apartment_feedback,
     update_apartment_feedback_notion_sync,
     upsert_apartment_feedback,
     upsert_apartment_records,
@@ -347,7 +349,7 @@ class SearchBotService:
         telegram_user_id: int,
         external_id: str,
     ) -> bool:
-        """Remove one apartment from the user's saved list."""
+        """Remove one apartment from the user's saved list (soft delete; recoverable)."""
         async with self._session_factory() as session:
             removed = await delete_apartment_feedback(
                 session,
@@ -356,6 +358,36 @@ class SearchBotService:
             )
             await session.commit()
             return removed
+
+    async def get_trashed_apartments(
+        self,
+        *,
+        telegram_user_id: int,
+        limit: int = 10,
+    ) -> list[EnrichedApartment]:
+        """Return recently deleted (recoverable) apartments for one Telegram user."""
+        async with self._session_factory() as session:
+            return await list_trashed_apartments(
+                session,
+                telegram_user_id=telegram_user_id,
+                limit=limit,
+            )
+
+    async def restore_apartment(
+        self,
+        *,
+        telegram_user_id: int,
+        external_id: str,
+    ) -> bool:
+        """Bring one apartment back from the trash to the saved list."""
+        async with self._session_factory() as session:
+            restored = await restore_apartment_feedback(
+                session,
+                telegram_user_id=telegram_user_id,
+                external_id=external_id,
+            )
+            await session.commit()
+            return restored
 
     async def save_apartment(
         self,

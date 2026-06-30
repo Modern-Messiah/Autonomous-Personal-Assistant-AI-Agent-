@@ -320,6 +320,50 @@ async def test_recommend_ranks_candidates_by_preference(monkeypatch: pytest.Monk
 
 
 @pytest.mark.asyncio
+async def test_search_bot_service_lists_trashed(monkeypatch: pytest.MonkeyPatch) -> None:
+    service = SearchBotService(
+        session_factory=FakeSessionFactory(), search_runner=fake_search_runner
+    )
+
+    async def fake_list_trashed(session, *, telegram_user_id: int, limit: int):
+        del session
+        assert telegram_user_id == 77
+        assert limit == 7
+        return [build_apartment()]
+
+    monkeypatch.setattr("bot.service.list_trashed_apartments", fake_list_trashed)
+
+    items = await service.get_trashed_apartments(telegram_user_id=77, limit=7)
+    assert len(items) == 1
+
+
+@pytest.mark.asyncio
+async def test_search_bot_service_restores_apartment(monkeypatch: pytest.MonkeyPatch) -> None:
+    session_factory = FakeSessionFactory()
+    service = SearchBotService(session_factory=session_factory, search_runner=fake_search_runner)
+
+    async def fake_restore(session, *, telegram_user_id: int, external_id: str):
+        del session
+        assert telegram_user_id == 77
+        assert external_id == "900100"
+        return True
+
+    monkeypatch.setattr("bot.service.restore_apartment_feedback", fake_restore)
+
+    assert await service.restore_apartment(telegram_user_id=77, external_id="900100") is True
+    assert session_factory.session.commit_calls == 1
+
+
+def test_build_trashed_item_keyboard_has_restore_and_open() -> None:
+    from bot.keyboards import build_trashed_item_keyboard
+
+    keyboard = build_trashed_item_keyboard("900100", "https://krisha.kz/a/show/900100")
+    buttons = [button for row in keyboard.inline_keyboard for button in row]
+    assert any(button.url == "https://krisha.kz/a/show/900100" for button in buttons)
+    assert any(button.callback_data == "trash:restore:900100" for button in buttons)
+
+
+@pytest.mark.asyncio
 async def test_search_bot_service_hides_saved_and_rejected_apartments(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -176,6 +176,11 @@ class ApartmentFeedbackRecord(Base):
     notion_synced_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Soft delete: a saved row removed from /list keeps the row (recoverable via
+    # /trash) until restored; deleted_at IS NULL means the feedback is active.
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     user: Mapped["User"] = relationship(back_populates="apartment_feedback")
     apartment: Mapped["ApartmentRecord"] = relationship(back_populates="feedback_by_users")

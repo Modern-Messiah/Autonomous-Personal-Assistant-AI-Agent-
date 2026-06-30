@@ -9,7 +9,6 @@ from typing import Literal, TypedDict
 from bot.formatters import (
     format_criteria,
     format_monitor_status,
-    format_saved_apartments,
     format_start_message,
 )
 from bot.service import (
@@ -76,6 +75,7 @@ class DialogTurnResult:
 
     messages: list[str] = field(default_factory=list)
     search_execution: SearchExecution | None = None
+    show_saved: bool = False
     next_state: DialogNextState = "clear"
 
 
@@ -244,14 +244,10 @@ class DialogAgent:
         }
 
     async def _handle_show_saved(self, state: DialogTurnState) -> DialogTurnState:
-        apartments = await self._service.get_saved_apartments(
-            telegram_user_id=state["telegram_user_id"],
-        )
+        # The router renders the saved list as photo cards with delete buttons.
         return {
             **state,
-            "result": DialogTurnResult(
-                messages=[format_saved_apartments(apartments)]
-            ),
+            "result": DialogTurnResult(show_saved=True),
         }
 
     async def _handle_show_criteria(self, state: DialogTurnState) -> DialogTurnState:

@@ -185,7 +185,8 @@ async def test_dialog_agent_handles_saved_requests() -> None:
     )
 
     assert saved_result.search_execution is None
-    assert "Сохраненные квартиры" in saved_result.messages[0]
+    assert saved_result.show_saved is True  # router renders saved as photo cards
+    assert saved_result.messages == []
 
 
 @pytest.mark.asyncio

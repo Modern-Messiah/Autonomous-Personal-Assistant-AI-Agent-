@@ -102,6 +102,9 @@ def create_bot_router(service: SearchBotService) -> Router:
         for item in result.messages:
             await message.answer(item)
 
+        if result.show_saved and message.from_user is not None:
+            await send_saved_list(message, message.from_user.id)
+
         if result.search_execution is not None:
             await send_search_execution(message, state, result.search_execution)
             return

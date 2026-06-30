@@ -14,6 +14,11 @@ from agent.models.score import ApartmentScore
 DEEPSEEK_ENDPOINT = "https://api.deepseek.com/chat/completions"
 
 
+def _or_unknown(value: int | None) -> int | str:
+    """Keep a real 0 (truly none) but report missing data as 'unknown'."""
+    return value if value is not None else "unknown"
+
+
 class DeepSeekApartmentScorer:
     """Scores a whole shortlist in one call so scores are comparative, not uniform."""
 
@@ -80,6 +85,9 @@ class DeepSeekApartmentScorer:
             "schools/parks/metro, more area for the price, a better district.",
             "Penalize 1st or last floor, high price per m², no metro/parks nearby, "
             "a cramped area.",
+            "A nearby count of 'unknown' means the data is unavailable — treat it "
+            "neutrally, do NOT penalize it as if nothing is nearby (0 means truly "
+            "none).",
             "recommendation must be one of strong_buy, consider, skip and stay "
             "consistent with the score.",
             "Write 2-4 short reasons per listing in Russian, naming the concrete "
@@ -117,8 +125,9 @@ class DeepSeekApartmentScorer:
             f"rooms={apartment.rooms or 'unknown'}, area_m2={apartment.area_m2 or 'unknown'}, "
             f"floor={apartment.floor or 'unknown'}, "
             f"district={apartment.district or 'unknown'}, "
-            f"schools={enriched.nearby_schools or 0}, parks={enriched.nearby_parks or 0}, "
-            f"metro={enriched.nearby_metro or 0}, "
+            f"schools={_or_unknown(enriched.nearby_schools)}, "
+            f"parks={_or_unknown(enriched.nearby_parks)}, "
+            f"metro={_or_unknown(enriched.nearby_metro)}, "
             f"mortgage_monthly_kzt={enriched.mortgage_monthly_payment_kzt or 'unknown'}"
         )
 

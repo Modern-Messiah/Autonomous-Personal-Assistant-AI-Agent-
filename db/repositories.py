@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, cast
 
-from sqlalchemy import Select, delete, select, tuple_
+from sqlalchemy import Select, delete, func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agent.models.apartment import Apartment
@@ -561,6 +561,25 @@ async def list_feedback_apartments(
         _load_enriched_apartment(payload)
         for payload in result.scalars()
     ]
+
+
+async def count_feedback_apartments(
+    session: AsyncSession,
+    *,
+    telegram_user_id: int,
+    decision: ApartmentDecision,
+) -> int:
+    """Count apartments matching one persisted user feedback decision."""
+    statement = (
+        select(func.count())
+        .select_from(ApartmentFeedbackRecord)
+        .join(User, ApartmentFeedbackRecord.user_id == User.id)
+        .where(
+            User.telegram_user_id == telegram_user_id,
+            ApartmentFeedbackRecord.decision == decision,
+        )
+    )
+    return int((await session.execute(statement)).scalar_one())
 
 
 async def delete_apartment_feedback(

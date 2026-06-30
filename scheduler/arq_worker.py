@@ -5,11 +5,13 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, ClassVar, cast
 
+from arq import cron
 from arq.connections import RedisSettings
 
 from bot.app import create_bot
 from config.settings import get_settings
 from scheduler.app import create_scheduler_service
+from scheduler.canary import run_parser_canary
 from scheduler.service import SchedulerService
 
 
@@ -48,6 +50,25 @@ async def process_monitor_target_job(
     }
 
 
+async def parser_canary_cron(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Scheduled parser canary: verify krisha parsing and alert the admin on a break."""
+    report = await run_parser_canary(bot=ctx.get("bot"))
+    return {
+        "ok": report.ok,
+        "listing_count": report.listing_count,
+        "failures": report.failures,
+    }
+
+
+def build_canary_cron_jobs() -> list[Any]:
+    """Build the canary cron schedule from settings (empty when disabled)."""
+    scheduler = get_settings().scheduler
+    if not scheduler.canary_enabled:
+        return []
+    hours = set(range(0, 24, scheduler.canary_interval_hours))
+    return [cron(parser_canary_cron, hour=hours, minute=0, run_at_startup=True)]
+
+
 def build_worker_redis_settings() -> RedisSettings:
     """Build ARQ redis settings from project config."""
     settings = get_settings()
@@ -68,6 +89,7 @@ class WorkerSettings:
     """ARQ worker configuration for monitor processing jobs."""
 
     functions: ClassVar[list[Any]] = [process_monitor_target_job]
+    cron_jobs: ClassVar[list[Any]] = build_canary_cron_jobs()
     on_startup: ClassVar[Any] = worker_startup
     on_shutdown: ClassVar[Any] = worker_shutdown
     queue_name: ClassVar[str] = get_settings().arq.queue_name

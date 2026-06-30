@@ -350,6 +350,23 @@ async def list_apartment_records_by_urls(
     return [records_by_url[url] for url in unique_urls if url in records_by_url]
 
 
+async def list_apartment_records_by_external_ids(
+    session: AsyncSession,
+    *,
+    external_ids: Sequence[str],
+) -> list[ApartmentRecord]:
+    """Load apartment records by external_id while preserving the requested order."""
+    unique_ids = list(dict.fromkeys(external_ids))
+    if not unique_ids:
+        return []
+
+    result = await session.execute(
+        select(ApartmentRecord).where(ApartmentRecord.external_id.in_(unique_ids))
+    )
+    records_by_id = {record.external_id: record for record in result.scalars()}
+    return [records_by_id[ext_id] for ext_id in unique_ids if ext_id in records_by_id]
+
+
 async def upsert_apartment_feedback(
     session: AsyncSession,
     *,

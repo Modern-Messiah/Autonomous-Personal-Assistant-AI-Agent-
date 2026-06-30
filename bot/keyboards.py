@@ -2,11 +2,29 @@
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-SAVE_CALLBACK_DATA = "dialog:save"
-REJECT_CALLBACK_DATA = "dialog:reject"
 REFINE_CALLBACK_DATA = "dialog:refine"
 LIST_CALLBACK_DATA = "dialog:list"
 DELETE_SAVED_PREFIX = "saved:del:"
+APT_SAVE_PREFIX = "apt:save:"
+APT_REJECT_PREFIX = "apt:reject:"
+
+
+def build_apartment_actions_keyboard(external_id: str) -> InlineKeyboardMarkup:
+    """Per-apartment Save/Reject buttons shown under each search result card."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="💾 Сохранить",
+                    callback_data=f"{APT_SAVE_PREFIX}{external_id}",
+                ),
+                InlineKeyboardButton(
+                    text="🚫 Отклонить",
+                    callback_data=f"{APT_REJECT_PREFIX}{external_id}",
+                ),
+            ]
+        ]
+    )
 
 
 def build_saved_item_keyboard(external_id: str) -> InlineKeyboardMarkup:
@@ -24,19 +42,9 @@ def build_saved_item_keyboard(external_id: str) -> InlineKeyboardMarkup:
 
 
 def build_search_followup_keyboard() -> InlineKeyboardMarkup:
-    """Return inline actions shown after search results."""
+    """Navigation actions shown after the result cards (save/reject are per-card)."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="Сохранить",
-                    callback_data=SAVE_CALLBACK_DATA,
-                ),
-                InlineKeyboardButton(
-                    text="Отклонить",
-                    callback_data=REJECT_CALLBACK_DATA,
-                ),
-            ],
             [
                 InlineKeyboardButton(
                     text="Уточнить критерии",

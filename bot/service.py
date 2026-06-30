@@ -23,6 +23,7 @@ from db import (
     get_active_search_criteria_record,
     get_apartment_feedback_map,
     get_monitor_settings_record,
+    list_apartment_records_by_external_ids,
     list_apartment_records_by_urls,
     list_feedback_apartments,
     mark_apartments_seen,
@@ -269,6 +270,59 @@ class SearchBotService:
             )
             await session.commit()
             return removed
+
+    async def save_apartment(
+        self,
+        *,
+        telegram_user_id: int,
+        username: str | None,
+        external_id: str,
+    ) -> bool:
+        """Save one apartment (by krisha external id) to the user's list."""
+        return await self._record_single_feedback(
+            telegram_user_id=telegram_user_id,
+            username=username,
+            external_id=external_id,
+            decision="saved",
+        )
+
+    async def reject_apartment(
+        self,
+        *,
+        telegram_user_id: int,
+        username: str | None,
+        external_id: str,
+    ) -> bool:
+        """Reject one apartment so it is hidden from future manual searches."""
+        return await self._record_single_feedback(
+            telegram_user_id=telegram_user_id,
+            username=username,
+            external_id=external_id,
+            decision="rejected",
+        )
+
+    async def _record_single_feedback(
+        self,
+        *,
+        telegram_user_id: int,
+        username: str | None,
+        external_id: str,
+        decision: ApartmentDecision,
+    ) -> bool:
+        async with self._session_factory() as session:
+            records = await list_apartment_records_by_external_ids(
+                session,
+                external_ids=[external_id],
+            )
+        if not records:
+            return False
+        recorded = await self._record_apartment_feedback(
+            telegram_user_id=telegram_user_id,
+            username=username,
+            apartment_urls=[records[0].url],
+            decision=decision,
+        )
+        return recorded > 0
 
     async def save_apartments(
         self,

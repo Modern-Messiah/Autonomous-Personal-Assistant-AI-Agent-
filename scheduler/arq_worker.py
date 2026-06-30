@@ -9,6 +9,7 @@ from arq import cron
 from arq.connections import RedisSettings
 
 from bot.app import create_bot
+from config.observability import configure_observability
 from config.settings import get_settings
 from scheduler.app import create_scheduler_service
 from scheduler.canary import run_parser_canary
@@ -17,6 +18,7 @@ from scheduler.service import SchedulerService
 
 async def worker_startup(ctx: dict[str, Any]) -> None:
     """Initialize bot and scheduler service in ARQ worker context."""
+    configure_observability()
     bot = create_bot()
     ctx["bot"] = bot
     ctx["scheduler_service"] = create_scheduler_service(bot)

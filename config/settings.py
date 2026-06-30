@@ -14,6 +14,17 @@ class AppSettings(BaseModel):
     env: str = Field(default="dev", min_length=1)
     log_level: str = Field(default="INFO", min_length=1)
 
+    @field_validator("log_level", mode="before")
+    @classmethod
+    def normalize_log_level(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip().upper()
+        if normalized not in {"CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"}:
+            msg = f"unsupported log level: {value}"
+            raise ValueError(msg)
+        return normalized
+
 
 class DatabaseSettings(BaseModel):
     """PostgreSQL settings."""
@@ -62,9 +73,16 @@ class APISettings(BaseModel):
 
     two_gis_api_key: SecretStr
     deepseek_api_key: SecretStr
-    langsmith_api_key: SecretStr
-    langsmith_project: str = Field(min_length=1)
-    sentry_dsn: str = Field(min_length=1)
+    langsmith_api_key: SecretStr | None = None
+    langsmith_project: str | None = Field(default=None, min_length=1)
+    sentry_dsn: str | None = Field(default=None, min_length=1)
+
+    @field_validator("langsmith_api_key", "langsmith_project", "sentry_dsn", mode="before")
+    @classmethod
+    def normalize_optional_integration(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
 
 class ParserSettings(BaseModel):

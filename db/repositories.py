@@ -400,6 +400,7 @@ async def upsert_apartment_feedback(
         else:
             feedback.decision = decision
             feedback.decided_at = decided_at
+            feedback.deleted_at = None  # re-saving an apartment restores it from trash
         feedback_records.append(feedback)
 
     await session.flush()
@@ -544,7 +545,7 @@ async def list_feedback_apartments(
     decision: ApartmentDecision,
     limit: int = 10,
 ) -> list[EnrichedApartment]:
-    """Return apartments matching one persisted user feedback decision."""
+    """Return active (not soft-deleted) apartments for one feedback decision."""
     statement = (
         select(ApartmentRecord.payload)
         .join(ApartmentFeedbackRecord, ApartmentFeedbackRecord.apartment_id == ApartmentRecord.id)
@@ -552,6 +553,7 @@ async def list_feedback_apartments(
         .where(
             User.telegram_user_id == telegram_user_id,
             ApartmentFeedbackRecord.decision == decision,
+            ApartmentFeedbackRecord.deleted_at.is_(None),
         )
         .order_by(ApartmentFeedbackRecord.decided_at.desc())
         .limit(limit)
@@ -563,13 +565,37 @@ async def list_feedback_apartments(
     ]
 
 
+async def list_trashed_apartments(
+    session: AsyncSession,
+    *,
+    telegram_user_id: int,
+    decision: ApartmentDecision = "saved",
+    limit: int = 10,
+) -> list[EnrichedApartment]:
+    """Return soft-deleted feedback apartments (the /trash list), newest first."""
+    statement = (
+        select(ApartmentRecord.payload)
+        .join(ApartmentFeedbackRecord, ApartmentFeedbackRecord.apartment_id == ApartmentRecord.id)
+        .join(User, ApartmentFeedbackRecord.user_id == User.id)
+        .where(
+            User.telegram_user_id == telegram_user_id,
+            ApartmentFeedbackRecord.decision == decision,
+            ApartmentFeedbackRecord.deleted_at.is_not(None),
+        )
+        .order_by(ApartmentFeedbackRecord.deleted_at.desc())
+        .limit(limit)
+    )
+    result = await session.execute(statement)
+    return [_load_enriched_apartment(payload) for payload in result.scalars()]
+
+
 async def count_feedback_apartments(
     session: AsyncSession,
     *,
     telegram_user_id: int,
     decision: ApartmentDecision,
 ) -> int:
-    """Count apartments matching one persisted user feedback decision."""
+    """Count active (not soft-deleted) apartments for one feedback decision."""
     statement = (
         select(func.count())
         .select_from(ApartmentFeedbackRecord)
@@ -577,6 +603,7 @@ async def count_feedback_apartments(
         .where(
             User.telegram_user_id == telegram_user_id,
             ApartmentFeedbackRecord.decision == decision,
+            ApartmentFeedbackRecord.deleted_at.is_(None),
         )
     )
     return int((await session.execute(statement)).scalar_one())
@@ -589,7 +616,7 @@ async def delete_apartment_feedback(
     external_id: str,
     decision: ApartmentDecision = "saved",
 ) -> bool:
-    """Remove one persisted feedback decision; returns True if anything was deleted."""
+    """Soft-delete one feedback decision (recoverable via /trash); True if one changed."""
     statement = (
         select(ApartmentFeedbackRecord)
         .join(ApartmentRecord, ApartmentFeedbackRecord.apartment_id == ApartmentRecord.id)
@@ -598,12 +625,40 @@ async def delete_apartment_feedback(
             User.telegram_user_id == telegram_user_id,
             ApartmentRecord.external_id == external_id,
             ApartmentFeedbackRecord.decision == decision,
+            ApartmentFeedbackRecord.deleted_at.is_(None),
+        )
+    )
+    result = await session.execute(statement)
+    records = list(result.scalars())
+    deleted_at = datetime.now(UTC)
+    for record in records:
+        record.deleted_at = deleted_at
+    return bool(records)
+
+
+async def restore_apartment_feedback(
+    session: AsyncSession,
+    *,
+    telegram_user_id: int,
+    external_id: str,
+    decision: ApartmentDecision = "saved",
+) -> bool:
+    """Undo a soft delete, bringing a trashed feedback row back; True if one changed."""
+    statement = (
+        select(ApartmentFeedbackRecord)
+        .join(ApartmentRecord, ApartmentFeedbackRecord.apartment_id == ApartmentRecord.id)
+        .join(User, ApartmentFeedbackRecord.user_id == User.id)
+        .where(
+            User.telegram_user_id == telegram_user_id,
+            ApartmentRecord.external_id == external_id,
+            ApartmentFeedbackRecord.decision == decision,
+            ApartmentFeedbackRecord.deleted_at.is_not(None),
         )
     )
     result = await session.execute(statement)
     records = list(result.scalars())
     for record in records:
-        await session.delete(record)
+        record.deleted_at = None
     return bool(records)
 
 

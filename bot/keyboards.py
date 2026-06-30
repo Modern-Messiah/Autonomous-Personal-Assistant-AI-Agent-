@@ -5,6 +5,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 REFINE_CALLBACK_DATA = "dialog:refine"
 LIST_CALLBACK_DATA = "dialog:list"
 DELETE_SAVED_PREFIX = "saved:del:"
+RESTORE_TRASH_PREFIX = "trash:restore:"
 APT_SAVE_PREFIX = "apt:save:"
 APT_REJECT_PREFIX = "apt:reject:"
 
@@ -39,6 +40,24 @@ def build_saved_item_keyboard(
             InlineKeyboardButton(
                 text="🗑 Удалить",
                 callback_data=f"{DELETE_SAVED_PREFIX}{external_id}",
+            ),
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def build_trashed_item_keyboard(
+    external_id: str, url: str | None = None
+) -> InlineKeyboardMarkup:
+    """Keyboard for a trashed apartment: open on Krisha (if known) + restore."""
+    rows: list[list[InlineKeyboardButton]] = []
+    if url:
+        rows.append([InlineKeyboardButton(text="🌐 Открыть на Krisha", url=url)])
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="♻️ Восстановить",
+                callback_data=f"{RESTORE_TRASH_PREFIX}{external_id}",
             ),
         ]
     )

@@ -27,9 +27,11 @@ from bot.keyboards import (
     DELETE_SAVED_PREFIX,
     LIST_CALLBACK_DATA,
     REFINE_CALLBACK_DATA,
+    RESTORE_TRASH_PREFIX,
     build_apartment_actions_keyboard,
     build_saved_item_keyboard,
     build_search_followup_keyboard,
+    build_trashed_item_keyboard,
 )
 from bot.monitoring import parse_monitor_interval
 from bot.service import (
@@ -108,6 +110,32 @@ def create_bot_router(service: SearchBotService) -> Router:
         for index, item in enumerate(apartments, start=1):
             caption = format_apartment_card(item, index=index)
             keyboard = build_saved_item_keyboard(
+                item.apartment.external_id,
+                clean_listing_url(item.apartment.url),
+            )
+            photo = item.apartment.photos[0] if item.apartment.photos else None
+            if photo is not None:
+                try:
+                    await target.answer_photo(photo=photo, caption=caption, reply_markup=keyboard)
+                    continue
+                except Exception:
+                    pass
+            await target.answer(caption, reply_markup=keyboard)
+
+    async def send_trash_list(target: Message, telegram_user_id: int) -> None:
+        apartments = await service.get_trashed_apartments(telegram_user_id=telegram_user_id)
+        if not apartments:
+            await target.answer(
+                "🗑 Корзина пуста. Удалённые из /list квартиры попадают сюда "
+                "и их можно вернуть."
+            )
+            return
+        await target.answer(
+            f"🗑 Удалённые квартиры ({len(apartments)}) — можно восстановить:"
+        )
+        for index, item in enumerate(apartments, start=1):
+            caption = format_apartment_card(item, index=index)
+            keyboard = build_trashed_item_keyboard(
                 item.apartment.external_id,
                 clean_listing_url(item.apartment.url),
             )
@@ -255,6 +283,12 @@ def create_bot_router(service: SearchBotService) -> Router:
         if message.from_user is None:
             return
         await send_saved_list(message, message.from_user.id)
+
+    @router.message(Command("trash"))
+    async def handle_trash(message: Message) -> None:
+        if message.from_user is None:
+            return
+        await send_trash_list(message, message.from_user.id)
 
     async def send_recommendations(target: Message, result: RecommendationResult) -> None:
         if not result.recommendations:
@@ -458,7 +492,26 @@ def create_bot_router(service: SearchBotService) -> Router:
         if removed and isinstance(callback.message, Message):
             with contextlib.suppress(Exception):
                 await callback.message.delete()
-        await callback.answer("🗑 Удалено из сохранённых" if removed else "Уже удалено")
+        await callback.answer(
+            "🗑 Удалено (вернуть — /trash)" if removed else "Уже удалено"
+        )
+
+    @router.callback_query(F.data.startswith(RESTORE_TRASH_PREFIX))
+    async def handle_restore_trash_callback(callback: CallbackQuery) -> None:
+        if callback.from_user is None or callback.data is None:
+            await callback.answer()
+            return
+        external_id = callback.data[len(RESTORE_TRASH_PREFIX):]
+        restored = await service.restore_apartment(
+            telegram_user_id=callback.from_user.id,
+            external_id=external_id,
+        )
+        if restored and isinstance(callback.message, Message):
+            with contextlib.suppress(Exception):
+                await callback.message.delete()
+        await callback.answer(
+            "♻️ Восстановлено — снова в /list" if restored else "Уже восстановлено"
+        )
 
     @router.message(SearchDialogStates.waiting_for_refinement)
     async def handle_refinement_message(message: Message, state: FSMContext) -> None:

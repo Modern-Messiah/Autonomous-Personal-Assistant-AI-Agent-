@@ -13,7 +13,8 @@ from agent.tools.llm_intent_parser import LLMIntentParser
 @pytest.mark.asyncio
 async def test_llm_intent_parser_posts_openai_compatible_request() -> None:
     expected = {
-        "city": "Karaganda",
+        "city": "Қарағанды",
+        "districts": ["Қазыбек би ауданы"],
         "deal_type": "sale",
         "max_price_kzt": 30_000_000,
         "rooms": [2],
@@ -28,6 +29,9 @@ async def test_llm_intent_parser_posts_openai_compatible_request() -> None:
         assert payload["response_format"] == {"type": "json_object"}
         assert payload["messages"][0]["role"] == "system"
         assert payload["messages"][1]["role"] == "user"
+        prompt = payload["messages"][1]["content"]
+        assert "Return city and district names as written by the user" in prompt
+        assert "suitable for Krisha paths" not in prompt
         return httpx.Response(
             status_code=200,
             json={"choices": [{"message": {"content": json.dumps(expected)}}]},

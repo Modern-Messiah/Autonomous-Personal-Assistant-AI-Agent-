@@ -12,6 +12,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.methods import SendMessage
 from aiogram.types import Message, Update
 
+from agent.locations import LocationInputError
 from bot.app import create_dispatcher
 from bot.service import SEARCH_EXECUTION_ERROR_MESSAGE, SearchExecutionError
 
@@ -136,6 +137,20 @@ class FailingSearchService:
         return None
 
 
+class InvalidLocationSearchService(FailingSearchService):
+    """Service stub that reports an expected user-input location error."""
+
+    async def run_search(
+        self,
+        *,
+        telegram_user_id: int,
+        username: str | None,
+        query: str,
+    ):
+        del telegram_user_id, username, query
+        raise LocationInputError("Бостандыкский район не относится к городу Астана.")
+
+
 def build_command_update(*, text: str) -> Update:
     """Construct a minimal Telegram update for command routing tests."""
 
@@ -168,4 +183,21 @@ async def test_search_command_replies_with_user_facing_error_when_search_fails()
     assert session.sent_texts == [
         "Ищу варианты по заданным критериям...",
         SEARCH_EXECUTION_ERROR_MESSAGE,
+    ]
+
+
+@pytest.mark.asyncio
+async def test_search_command_replies_with_location_validation_error() -> None:
+    dispatcher = create_dispatcher(  # type: ignore[arg-type]
+        service=InvalidLocationSearchService(),
+        storage=MemoryStorage(),
+    )
+    session = CapturingSession()
+    bot = Bot(token="123456:ABCDEF", session=session, default=DefaultBotProperties())
+
+    await dispatcher.feed_update(bot, build_command_update(text="/search test"))
+
+    assert session.sent_texts == [
+        "Ищу варианты по заданным критериям...",
+        "Бостандыкский район не относится к городу Астана.",
     ]

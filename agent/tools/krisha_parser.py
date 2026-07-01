@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import random
+from enum import StrEnum
 from importlib import import_module
 from typing import TYPE_CHECKING, Protocol, cast
 from urllib.parse import quote, urlencode
@@ -15,6 +16,7 @@ from urllib.parse import quote, urlencode
 from fake_useragent import UserAgent
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
+from agent.locations import LOCATIONS
 from agent.models.apartment import Apartment
 from agent.models.criteria import SearchCriteria
 from agent.tools.districts import canonical_district
@@ -86,6 +88,14 @@ class RedisSetProtocol(Protocol):
     ) -> bool | None: ...
 
     async def delete(self, *names: str) -> int: ...
+
+
+class DistrictMatch(StrEnum):
+    """Three-state preview decision for strict district filtering."""
+
+    MATCH = "match"
+    MISMATCH = "mismatch"
+    UNKNOWN = "unknown"
 
 
 class UserAgentProvider:
@@ -201,10 +211,11 @@ class KrishaParser:
             raise last_listing_timeout
 
         deduped_previews = self._deduplicate_previews(previews)
-        # krisha ignores our listing-page filter params, so apply the criteria
-        # client-side on the parsed previews. This also bounds work: only the
-        # first `max_results` matching listings are fetched in detail, instead of
-        # crawling every listing on every page just to show a short shortlist.
+        # rooms/price/area are filtered server-side by krisha's das[] params in
+        # _build_listing_urls; district is not filterable that way, so it is
+        # applied client-side here (and confirmed again after the detail page).
+        # This also bounds work: only the first `max_results` matching listings
+        # are fetched in detail, instead of crawling every listing on every page.
         matching_previews = [
             preview for preview in deduped_previews if self._matches_criteria(preview, criteria)
         ]
@@ -240,7 +251,13 @@ class KrishaParser:
                 )
                 raise
             else:
-                apartments.append(apartment)
+                if self._apartment_matches_district(apartment, criteria):
+                    apartments.append(apartment)
+                else:
+                    await self._release_preview(
+                        user_id=criteria.user_id,
+                        external_id=preview.external_id,
+                    )
             finally:
                 await page.close()
             await self._sleep_between_requests()
@@ -311,7 +328,11 @@ class KrishaParser:
         )
 
     def _build_listing_urls(self, criteria: SearchCriteria) -> list[str]:
-        city_slug = quote(criteria.city.strip().lower().replace(" ", "-"))
+        catalog_slug = LOCATIONS.city_slug(criteria.city)
+        if catalog_slug is None:
+            msg = f"city {criteria.city!r} has no verified Krisha slug"
+            raise ValueError(msg)
+        city_slug = quote(catalog_slug)
         segment = "prodazha" if criteria.deal_type == "sale" else "arenda"
         base_url = f"{BASE_URL}/{segment}/kvartiry/{city_slug}/"
 
@@ -370,29 +391,21 @@ class KrishaParser:
 
         Unknown rooms/price/area (``None``) are treated as a match so listings with
         a sparse card are not dropped before the detail page is fetched. Districts
-        are stricter: when a district is explicitly requested and resolvable for the
-        city, a listing is kept only if its own district (from the card label or
-        address) resolves to one of the requested districts — unconfirmed locations
-        (suburbs/villages like "пос. Гульдала") are dropped, not leaked. If the
-        requested districts can't be resolved for the city (unmapped city/district),
-        district filtering is skipped, so "city without a district" returns the whole city.
+        are resolved to a city-scoped canonical name on both sides (requested vs the
+        card's Russian label). A known mismatch is dropped immediately; an unknown
+        preview is fetched provisionally and must be confirmed after detail parsing.
+        An unresolved requested district never broadens the search.
         """
         rooms = preview.rooms
         if criteria.rooms and rooms is not None and rooms not in criteria.rooms:
             return False
 
-        if criteria.districts:
-            wanted = {canonical_district(name, criteria.city) for name in criteria.districts}
-            wanted.discard(None)
-            if wanted:
-                found = canonical_district(preview.district, criteria.city) or canonical_district(
-                    preview.address, criteria.city
-                )
-                # A district was explicitly requested: keep only listings we can
-                # confirm are in a wanted district. Unresolved locations (a suburb
-                # or village like "пос. Гульдала") are dropped, not leaked.
-                if found not in wanted:
-                    return False
+        if (
+            criteria.districts
+            and KrishaParser._preview_district_match(preview, criteria)
+            == DistrictMatch.MISMATCH
+        ):
+            return False
 
         price = preview.price_kzt
         if price is not None:
@@ -409,6 +422,49 @@ class KrishaParser:
                 return False
 
         return True
+
+    @staticmethod
+    def _wanted_districts(criteria: SearchCriteria) -> set[str]:
+        wanted = {
+            canonical
+            for name in criteria.districts or ()
+            if (canonical := canonical_district(name, criteria.city)) is not None
+        }
+        return wanted
+
+    @staticmethod
+    def _preview_district_match(
+        preview: ListingPreview,
+        criteria: SearchCriteria,
+    ) -> DistrictMatch:
+        if not criteria.districts:
+            return DistrictMatch.MATCH
+        wanted = KrishaParser._wanted_districts(criteria)
+        if not wanted:
+            return DistrictMatch.MISMATCH
+        found = canonical_district(preview.district, criteria.city) or canonical_district(
+            preview.address,
+            criteria.city,
+        )
+        if found is None:
+            return DistrictMatch.UNKNOWN
+        return DistrictMatch.MATCH if found in wanted else DistrictMatch.MISMATCH
+
+    @staticmethod
+    def _apartment_matches_district(
+        apartment: Apartment,
+        criteria: SearchCriteria,
+    ) -> bool:
+        if not criteria.districts:
+            return True
+        wanted = KrishaParser._wanted_districts(criteria)
+        if not wanted:
+            return False
+        found = canonical_district(
+            apartment.district,
+            criteria.city,
+        ) or canonical_district(apartment.address, criteria.city)
+        return found in wanted if found is not None else False
 
     def _dedup_key(self, *, user_id: int, external_id: str) -> str:
         if self._dedup_namespace == "search":

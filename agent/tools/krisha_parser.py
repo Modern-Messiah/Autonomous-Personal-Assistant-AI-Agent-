@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import random
+from enum import StrEnum
 from importlib import import_module
 from typing import TYPE_CHECKING, Protocol, cast
 from urllib.parse import quote, urlencode
@@ -15,6 +16,7 @@ from urllib.parse import quote, urlencode
 from fake_useragent import UserAgent
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
+from agent.locations import LOCATIONS
 from agent.models.apartment import Apartment
 from agent.models.criteria import SearchCriteria
 from agent.tools.districts import canonical_district
@@ -86,6 +88,14 @@ class RedisSetProtocol(Protocol):
     ) -> bool | None: ...
 
     async def delete(self, *names: str) -> int: ...
+
+
+class DistrictMatch(StrEnum):
+    """Three-state preview decision for strict district filtering."""
+
+    MATCH = "match"
+    MISMATCH = "mismatch"
+    UNKNOWN = "unknown"
 
 
 class UserAgentProvider:
@@ -240,7 +250,13 @@ class KrishaParser:
                 )
                 raise
             else:
-                apartments.append(apartment)
+                if self._apartment_matches_district(apartment, criteria):
+                    apartments.append(apartment)
+                else:
+                    await self._release_preview(
+                        user_id=criteria.user_id,
+                        external_id=preview.external_id,
+                    )
             finally:
                 await page.close()
             await self._sleep_between_requests()
@@ -311,7 +327,11 @@ class KrishaParser:
         )
 
     def _build_listing_urls(self, criteria: SearchCriteria) -> list[str]:
-        city_slug = quote(criteria.city.strip().lower().replace(" ", "-"))
+        catalog_slug = LOCATIONS.city_slug(criteria.city)
+        if catalog_slug is None:
+            msg = f"city {criteria.city!r} has no verified Krisha slug"
+            raise ValueError(msg)
+        city_slug = quote(catalog_slug)
         segment = "prodazha" if criteria.deal_type == "sale" else "arenda"
         base_url = f"{BASE_URL}/{segment}/kvartiry/{city_slug}/"
 
@@ -372,15 +392,12 @@ class KrishaParser:
         if criteria.rooms and rooms is not None and rooms not in criteria.rooms:
             return False
 
-        if criteria.districts:
-            wanted = {canonical_district(name, criteria.city) for name in criteria.districts}
-            wanted.discard(None)
-            if wanted:
-                found = canonical_district(preview.district, criteria.city) or canonical_district(
-                    preview.address, criteria.city
-                )
-                if found is not None and found not in wanted:
-                    return False
+        if (
+            criteria.districts
+            and KrishaParser._preview_district_match(preview, criteria)
+            == DistrictMatch.MISMATCH
+        ):
+            return False
 
         price = preview.price_kzt
         if price is not None:
@@ -397,6 +414,49 @@ class KrishaParser:
                 return False
 
         return True
+
+    @staticmethod
+    def _wanted_districts(criteria: SearchCriteria) -> set[str]:
+        wanted = {
+            canonical
+            for name in criteria.districts or ()
+            if (canonical := canonical_district(name, criteria.city)) is not None
+        }
+        return wanted
+
+    @staticmethod
+    def _preview_district_match(
+        preview: ListingPreview,
+        criteria: SearchCriteria,
+    ) -> DistrictMatch:
+        if not criteria.districts:
+            return DistrictMatch.MATCH
+        wanted = KrishaParser._wanted_districts(criteria)
+        if not wanted:
+            return DistrictMatch.MISMATCH
+        found = canonical_district(preview.district, criteria.city) or canonical_district(
+            preview.address,
+            criteria.city,
+        )
+        if found is None:
+            return DistrictMatch.UNKNOWN
+        return DistrictMatch.MATCH if found in wanted else DistrictMatch.MISMATCH
+
+    @staticmethod
+    def _apartment_matches_district(
+        apartment: Apartment,
+        criteria: SearchCriteria,
+    ) -> bool:
+        if not criteria.districts:
+            return True
+        wanted = KrishaParser._wanted_districts(criteria)
+        if not wanted:
+            return False
+        found = canonical_district(
+            apartment.district,
+            criteria.city,
+        ) or canonical_district(apartment.address, criteria.city)
+        return found in wanted if found is not None else False
 
     def _dedup_key(self, *, user_id: int, external_id: str) -> str:
         if self._dedup_namespace == "search":

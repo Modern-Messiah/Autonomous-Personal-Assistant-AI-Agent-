@@ -7,7 +7,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Protocol
+from typing import Literal, Protocol
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -20,6 +20,7 @@ from bot.monitoring import DEFAULT_MONITOR_INTERVAL_MINUTES
 from bot.preferences import build_preference_profile, rank_by_preference
 from db import (
     ApartmentDecision,
+    clear_apartment_feedback,
     count_feedback_apartments,
     delete_apartment_feedback,
     get_active_search_criteria_record,
@@ -40,6 +41,9 @@ from db import (
 )
 
 SearchRunner = Callable[..., Awaitable[list[EnrichedApartment]]]
+# What a /trash restore actually did: a deleted-from-saved item goes back to the
+# saved list; a rejected item has its rejection lifted so it can reappear in search.
+RestoreOutcome = Literal["restored_to_saved", "unrejected"]
 SEARCH_EXECUTION_ERROR_MESSAGE = (
     "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c "
     "\u043f\u043e\u043b\u0443\u0447\u0438\u0442\u044c "
@@ -386,7 +390,7 @@ class SearchBotService:
             dedup_namespace="foryou",
         )
         profile = build_preference_profile(saved, rejected)
-        ranked = rank_by_preference(candidates, profile)[:limit]
+        ranked = rank_by_preference(candidates, profile, criteria=criteria)[:limit]
         return RecommendationResult(
             criteria=criteria,
             recommendations=[
@@ -416,29 +420,56 @@ class SearchBotService:
         telegram_user_id: int,
         limit: int = 10,
     ) -> list[EnrichedApartment]:
-        """Return recently deleted (recoverable) apartments for one Telegram user."""
+        """Return recoverable apartments for the /trash list.
+
+        Two kinds land here: items deleted from the saved list (soft-deleted
+        "saved" feedback) and rejected items. Both can be brought back via
+        :meth:`restore_apartment`. Rejected items come first (most likely the
+        user's latest action), then deleted-from-saved, capped at ``limit``.
+        """
         async with self._session_factory() as session:
-            return await list_trashed_apartments(
+            rejected = await list_feedback_apartments(
+                session,
+                telegram_user_id=telegram_user_id,
+                decision="rejected",
+                limit=limit,
+            )
+            deleted_saved = await list_trashed_apartments(
                 session,
                 telegram_user_id=telegram_user_id,
                 limit=limit,
             )
+        return (rejected + deleted_saved)[:limit]
 
     async def restore_apartment(
         self,
         *,
         telegram_user_id: int,
         external_id: str,
-    ) -> bool:
-        """Bring one apartment back from the trash to the saved list."""
+    ) -> RestoreOutcome | None:
+        """Bring one apartment back from the trash.
+
+        A deleted-from-saved item is un-deleted (back to the saved list); a
+        rejected item has its rejection cleared so it can reappear in searches.
+        Returns which happened, or None if nothing matched.
+        """
         async with self._session_factory() as session:
-            restored = await restore_apartment_feedback(
+            if await restore_apartment_feedback(
                 session,
                 telegram_user_id=telegram_user_id,
                 external_id=external_id,
-            )
-            await session.commit()
-            return restored
+            ):
+                await session.commit()
+                return "restored_to_saved"
+            if await clear_apartment_feedback(
+                session,
+                telegram_user_id=telegram_user_id,
+                external_id=external_id,
+                decision="rejected",
+            ):
+                await session.commit()
+                return "unrejected"
+            return None
 
     async def save_apartment(
         self,

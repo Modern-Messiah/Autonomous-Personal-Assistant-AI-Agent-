@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from agent.models.apartment import Apartment
+from agent.models.criteria import SearchCriteria
 from agent.models.enriched import EnrichedApartment
 from agent.models.score import ApartmentScore
 from bot.preferences import build_preference_profile, rank_by_preference, score_candidate
@@ -96,3 +97,30 @@ def test_rank_breaks_ties_by_objective_score() -> None:
     high = apt(ext="21", district="Бостандыкский район", score=90.0)
     ranked = rank_by_preference([low, high], profile)
     assert ranked[0][0].apartment.external_id == "21"
+
+
+def test_rank_uses_active_criteria_district_and_budget() -> None:
+    # Taste is identical for both candidates (neither district is liked/disliked,
+    # same rooms/price/area); the active criteria break the tie toward the
+    # requested district + in-budget listing, and explain why.
+    profile = build_preference_profile(
+        [apt(ext="1", district="Турксибский район", price=30_000_000, area=55, rooms=2)],
+        [],
+    )
+    criteria = SearchCriteria(
+        user_id=1,
+        city="Almaty",
+        deal_type="sale",
+        property_type="apartment",
+        max_price_kzt=45_000_000,
+        rooms=[2],
+        districts=["Medeu"],
+    )
+    medeu = apt(ext="10", district="Медеуский район", price=30_000_000, area=55, rooms=2)
+    almaly = apt(ext="11", district="Алмалинский район", price=30_000_000, area=55, rooms=2)
+
+    ranked = rank_by_preference([almaly, medeu], profile, criteria=criteria)
+
+    assert ranked[0][0].apartment.external_id == "10"  # requested district wins the tie
+    assert any("Medeu" in reason for reason in ranked[0][1])
+    assert any("бюджет" in reason for reason in ranked[0][1])

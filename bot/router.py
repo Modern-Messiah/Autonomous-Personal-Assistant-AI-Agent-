@@ -128,12 +128,13 @@ def create_bot_router(service: SearchBotService) -> Router:
         apartments = await service.get_trashed_apartments(telegram_user_id=telegram_user_id)
         if not apartments:
             await target.answer(
-                "🗑 Корзина пуста. Удалённые из /list квартиры попадают сюда "
-                "и их можно вернуть."
+                "🗑 Корзина пуста. Сюда попадают отклонённые (🚫) квартиры и "
+                "удалённые из /list — любую можно вернуть."
             )
             return
         await target.answer(
-            f"🗑 Удалённые квартиры ({len(apartments)}) — можно восстановить:"
+            f"🗑 Корзина ({len(apartments)}) — отклонённые и удалённые, "
+            "можно вернуть кнопкой ♻️:"
         )
         for index, item in enumerate(apartments, start=1):
             keyboard = build_trashed_item_keyboard(
@@ -507,7 +508,7 @@ def create_bot_router(service: SearchBotService) -> Router:
             with contextlib.suppress(Exception):
                 await callback.message.edit_reply_markup(reply_markup=None)
         await callback.answer(
-            "🚫 Отклонено — больше не покажу" if rejected else "Квартира не найдена"
+            "🚫 Отклонено — вернуть можно в /trash" if rejected else "Квартира не найдена"
         )
 
     @router.callback_query(F.data == LIST_CALLBACK_DATA)
@@ -543,16 +544,20 @@ def create_bot_router(service: SearchBotService) -> Router:
             await callback.answer()
             return
         external_id = callback.data[len(RESTORE_TRASH_PREFIX):]
-        restored = await service.restore_apartment(
+        outcome = await service.restore_apartment(
             telegram_user_id=callback.from_user.id,
             external_id=external_id,
         )
-        if restored and isinstance(callback.message, Message):
+        if outcome is not None and isinstance(callback.message, Message):
             with contextlib.suppress(Exception):
                 await callback.message.delete()
-        await callback.answer(
-            "♻️ Восстановлено — снова в /list" if restored else "Уже восстановлено"
-        )
+        if outcome == "restored_to_saved":
+            text = "♻️ Восстановлено — снова в /list"
+        elif outcome == "unrejected":
+            text = "♻️ Отклонение снято — снова появится в поиске"
+        else:
+            text = "Уже восстановлено"
+        await callback.answer(text)
 
     @router.message(SearchDialogStates.waiting_for_refinement)
     async def handle_refinement_message(message: Message, state: FSMContext) -> None:

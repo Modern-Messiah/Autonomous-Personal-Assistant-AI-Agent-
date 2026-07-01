@@ -12,6 +12,7 @@ from agent.models.apartment import Apartment
 from agent.models.enriched import EnrichedApartment
 from db.models import ApartmentRecord, SeenApartment
 from db.repositories import (
+    clear_apartment_feedback,
     delete_apartment_feedback,
     list_feedback_apartments,
     list_trashed_apartments,
@@ -99,6 +100,42 @@ async def test_feedback_soft_delete_and_restore_round_trip(
                 session, telegram_user_id=1001, decision="saved"
             )
         ) == 1
+
+
+@pytest.mark.asyncio
+async def test_clear_rejected_feedback_removes_it_from_search_and_trash(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        user = await upsert_telegram_user(
+            session, telegram_user_id=1003, username="integration"
+        )
+        record = (await upsert_apartment_records(session, apartments=[apartment()]))[0]
+        await upsert_apartment_feedback(
+            session, user_id=user.id, apartments=[record], decision="rejected"
+        )
+        await session.commit()
+
+    async with session_factory() as session:
+        # A rejected item is active feedback (hidden from search) and shows in trash.
+        assert len(
+            await list_feedback_apartments(
+                session, telegram_user_id=1003, decision="rejected"
+            )
+        ) == 1
+        assert await clear_apartment_feedback(
+            session, telegram_user_id=1003, external_id="apt-1", decision="rejected"
+        )
+        await session.commit()
+
+    async with session_factory() as session:
+        # Un-rejected: no feedback row remains, so it can resurface in search.
+        assert await list_feedback_apartments(
+            session, telegram_user_id=1003, decision="rejected"
+        ) == []
+        assert not await clear_apartment_feedback(
+            session, telegram_user_id=1003, external_id="apt-1", decision="rejected"
+        )
 
 
 @pytest.mark.asyncio

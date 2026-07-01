@@ -315,21 +315,29 @@ class KrishaParser:
         segment = "prodazha" if criteria.deal_type == "sale" else "arenda"
         base_url = f"{BASE_URL}/{segment}/kvartiry/{city_slug}/"
 
+        # krisha honors ONLY its own ``das[...]`` filter params server-side. The
+        # plain ``rooms=``/``price_to=``/``districts=`` params are silently
+        # ignored (verified against the live site: they return an unfiltered
+        # city-wide sample). Using the real params pre-filters rooms/price/area
+        # server-side so each fetched page is dense with matches instead of a
+        # thin city-wide sample — otherwise a specific district ∩ rooms ∩ price
+        # slice almost never appears in the first few pages and search returns
+        # nothing. District is NOT filterable this way (krisha uses opaque
+        # numeric region IDs), so it stays a client-side filter in
+        # ``_matches_criteria``.
         urls: list[str] = []
         for page in range(1, criteria.page_limit + 1):
-            params: dict[str, str] = {"page": str(page)}
+            params: list[tuple[str, str]] = [("page", str(page))]
             if criteria.min_price_kzt is not None:
-                params["price_from"] = str(criteria.min_price_kzt)
+                params.append(("das[price][from]", str(criteria.min_price_kzt)))
             if criteria.max_price_kzt is not None:
-                params["price_to"] = str(criteria.max_price_kzt)
+                params.append(("das[price][to]", str(criteria.max_price_kzt)))
             if criteria.rooms:
-                params["rooms"] = ",".join(str(room) for room in criteria.rooms)
+                params.extend(("das[live.rooms][]", str(room)) for room in criteria.rooms)
             if criteria.min_area_m2 is not None:
-                params["area_from"] = str(criteria.min_area_m2)
+                params.append(("das[live.square][from]", format(criteria.min_area_m2, "g")))
             if criteria.max_area_m2 is not None:
-                params["area_to"] = str(criteria.max_area_m2)
-            if criteria.districts:
-                params["districts"] = ",".join(criteria.districts)
+                params.append(("das[live.square][to]", format(criteria.max_area_m2, "g")))
             urls.append(f"{base_url}?{urlencode(params)}")
         return urls
 

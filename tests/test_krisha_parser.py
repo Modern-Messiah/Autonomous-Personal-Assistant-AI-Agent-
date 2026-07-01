@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
+from agent.models.apartment import Apartment
 from agent.models.criteria import SearchCriteria
 from agent.tools.krisha_parser import (
     AntiBotBlockedError,
@@ -360,6 +361,43 @@ async def test_search_requires_detail_confirmation_for_requested_district() -> N
 
     assert [apartment.external_id for apartment in apartments] == ["2"]
     assert "krisha:seen:1:1" in redis.deleted_keys
+
+
+def test_apartment_matches_criteria_rechecks_rooms_and_price_after_detail() -> None:
+    # A sparse-preview promoted listing (no rooms/price on the card) passes the
+    # preview filter, but the detail page reveals the real values; the post-detail
+    # check must enforce rooms/price/area, not only district.
+    criteria = SearchCriteria(
+        user_id=1, city="Almaty", deal_type="sale", property_type="apartment",
+        max_price_kzt=45_000_000, rooms=[2], districts=["Bostandyk"],
+    )
+
+    def apt(*, rooms: int | None, price: int, district: str) -> Apartment:
+        return Apartment(
+            external_id="x", url="https://krisha.kz/a/show/x", title="t",
+            price_kzt=price, city="Almaty", district=district, rooms=rooms, photos=[],
+        )
+
+    # wrong rooms + over budget (the promoted 5-room/160M leak) -> dropped
+    assert not KrishaParser._apartment_matches_criteria(
+        apt(rooms=5, price=160_000_000, district="Бостандыкский р-н"), criteria  # noqa: RUF001
+    )
+    # right district but over budget -> dropped
+    assert not KrishaParser._apartment_matches_criteria(
+        apt(rooms=2, price=66_800_000, district="Бостандыкский р-н"), criteria  # noqa: RUF001
+    )
+    # fully matching -> kept
+    assert KrishaParser._apartment_matches_criteria(
+        apt(rooms=2, price=40_000_000, district="Бостандыкский р-н"), criteria  # noqa: RUF001
+    )
+    # rooms unknown even after detail, but price/district ok -> kept (None tolerated)
+    assert KrishaParser._apartment_matches_criteria(
+        apt(rooms=None, price=43_500_000, district="Бостандыкский р-н"), criteria  # noqa: RUF001
+    )
+    # in budget and right rooms but wrong district -> dropped
+    assert not KrishaParser._apartment_matches_criteria(
+        apt(rooms=2, price=40_000_000, district="Медеуский р-н"), criteria  # noqa: RUF001
+    )
 
 
 @pytest.mark.asyncio

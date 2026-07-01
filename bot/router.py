@@ -29,6 +29,7 @@ from bot.keyboards import (
     LIST_CALLBACK_DATA,
     REFINE_CALLBACK_DATA,
     RESTORE_TRASH_PREFIX,
+    SEARCH_MORE_CALLBACK_DATA,
     build_apartment_actions_keyboard,
     build_saved_item_keyboard,
     build_search_followup_keyboard,
@@ -67,6 +68,8 @@ def create_bot_router(service: SearchBotService) -> Router:
         message: Message,
         state: FSMContext,
         result: SearchExecution,
+        *,
+        empty_message: str | None = None,
     ) -> None:
         presented_apartments = result.apartments[:DEFAULT_SEARCH_RESULTS_LIMIT]
         for notice in result.notices:
@@ -74,7 +77,7 @@ def create_bot_router(service: SearchBotService) -> Router:
         await message.answer(format_criteria(result.criteria))
         if not presented_apartments:
             await state.clear()
-            await message.answer(format_search_results([]))
+            await message.answer(empty_message or format_search_results([]))
             return
 
         for index, apartment in enumerate(presented_apartments, start=1):
@@ -413,6 +416,39 @@ def create_bot_router(service: SearchBotService) -> Router:
         await message.answer(
             "Поддерживаются команды: /monitor, /monitor on, /monitor off, "
             "/monitor interval 6h"
+        )
+
+    @router.callback_query(F.data == SEARCH_MORE_CALLBACK_DATA)
+    async def handle_search_more_callback(callback: CallbackQuery, state: FSMContext) -> None:
+        if callback.from_user is None or not isinstance(callback.message, Message):
+            await callback.answer()
+            return
+        await callback.answer()  # ack the tap so the button stops spinning
+        target = callback.message
+        await target.answer("Ищу ещё варианты по тем же критериям…")
+        try:
+            async with typing(target):
+                result = await service.rerun_active_search(
+                    telegram_user_id=callback.from_user.id,
+                    username=callback.from_user.username,
+                )
+        except ActiveCriteriaNotFoundError:
+            await target.answer(
+                "Активные критерии не найдены. Сначала выполни поиск через /search."
+            )
+            return
+        except (LocationInputError, SearchExecutionError) as exc:
+            await target.answer(exc.user_message)
+            return
+        await send_search_execution(
+            target,
+            state,
+            result,
+            empty_message=(
+                "🔍 Новых вариантов по текущим критериям пока нет — я показал всё, что нашлось.\n"
+                "Уточни критерии кнопкой «Уточнить критерии» или загляни позже: "
+                "объявления добавляются постоянно."
+            ),
         )
 
     @router.callback_query(F.data == REFINE_CALLBACK_DATA)

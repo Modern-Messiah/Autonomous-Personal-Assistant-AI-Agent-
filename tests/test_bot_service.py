@@ -29,6 +29,7 @@ from bot.keyboards import (
     APT_SAVE_PREFIX,
     LIST_CALLBACK_DATA,
     REFINE_CALLBACK_DATA,
+    SEARCH_MORE_CALLBACK_DATA,
     build_apartment_actions_keyboard,
     build_search_followup_keyboard,
 )
@@ -826,6 +827,86 @@ async def test_search_bot_service_refine_requires_active_criteria(
 
 
 @pytest.mark.asyncio
+async def test_search_bot_service_reruns_active_criteria(monkeypatch: pytest.MonkeyPatch) -> None:
+    session_factory = FakeSessionFactory()
+    service = SearchBotService(session_factory=session_factory, search_runner=fake_search_runner)
+
+    stored_criteria = {
+        "user_id": 77,
+        "city": "Almaty",
+        "deal_type": "sale",
+        "property_type": "apartment",
+        "max_price_kzt": 45_000_000,
+        "rooms": [2],
+        "districts": ["Medeu"],
+        "page_limit": 3,
+    }
+
+    async def fake_get_record(session, *, telegram_user_id: int):
+        del session
+        assert telegram_user_id == 77
+        return SimpleNamespace(criteria=stored_criteria)
+
+    async def fake_upsert(session, *, telegram_user_id: int, username: str | None):
+        del session, telegram_user_id, username
+        return SimpleNamespace(id=123)
+
+    stored_payloads: list[dict[str, object]] = []
+
+    async def fake_replace(session, *, user_id: int, criteria_payload):
+        del session, user_id
+        stored_payloads.append(dict(criteria_payload))
+        return SimpleNamespace()
+
+    async def fake_upsert_apartments(session, *, apartments: list[EnrichedApartment]):
+        del session
+        return [SimpleNamespace(id="apt-1") for _ in apartments]
+
+    async def fake_mark_seen(session, *, user_id: int, apartments: list[SimpleNamespace]):
+        del session, user_id, apartments
+
+    async def fake_feedback_map(session, *, user_id: int, apartments: list[SimpleNamespace]):
+        del session, user_id, apartments
+        return {}
+
+    monkeypatch.setattr("bot.service.get_active_search_criteria_record", fake_get_record)
+    monkeypatch.setattr("bot.service.upsert_telegram_user", fake_upsert)
+    monkeypatch.setattr("bot.service.replace_active_search_criteria", fake_replace)
+    monkeypatch.setattr("bot.service.upsert_apartment_records", fake_upsert_apartments)
+    monkeypatch.setattr("bot.service.mark_apartments_seen", fake_mark_seen)
+    monkeypatch.setattr("bot.service.get_apartment_feedback_map", fake_feedback_map)
+
+    result = await service.rerun_active_search(telegram_user_id=77, username="tester")
+
+    # Re-runs the stored criteria unchanged (the "next batch"); dedup lives in the
+    # search runner, so here we just confirm the same criteria drive the search.
+    assert result.criteria.city == "Almaty"
+    assert result.criteria.rooms == [2]
+    assert result.criteria.districts == ["Medeu"]
+    assert len(result.apartments) == 1
+    assert stored_payloads[0]["rooms"] == [2]
+    assert stored_payloads[0]["districts"] == ["Medeu"]
+
+
+@pytest.mark.asyncio
+async def test_search_bot_service_rerun_requires_active_criteria(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = SearchBotService(
+        session_factory=FakeSessionFactory(), search_runner=fake_search_runner
+    )
+
+    async def fake_get_record(session, *, telegram_user_id: int):
+        del session, telegram_user_id
+        return None
+
+    monkeypatch.setattr("bot.service.get_active_search_criteria_record", fake_get_record)
+
+    with pytest.raises(ActiveCriteriaNotFoundError):
+        await service.rerun_active_search(telegram_user_id=77, username="tester")
+
+
+@pytest.mark.asyncio
 async def test_search_bot_service_reads_monitor_status(monkeypatch: pytest.MonkeyPatch) -> None:
     session_factory = FakeSessionFactory()
     service = SearchBotService(session_factory=session_factory, search_runner=fake_search_runner)
@@ -949,8 +1030,9 @@ def test_formatters_render_expected_content() -> None:
     assert "Сохраненные квартиры" in saved_text
     assert "Статус мониторинга" in monitor_text
     assert "Мониторинг пока не настроен" in empty_monitor_text
-    assert keyboard.inline_keyboard[0][0].callback_data == REFINE_CALLBACK_DATA
-    assert keyboard.inline_keyboard[0][1].callback_data == LIST_CALLBACK_DATA
+    assert keyboard.inline_keyboard[0][0].callback_data == SEARCH_MORE_CALLBACK_DATA
+    assert keyboard.inline_keyboard[1][0].callback_data == REFINE_CALLBACK_DATA
+    assert keyboard.inline_keyboard[1][1].callback_data == LIST_CALLBACK_DATA
 
     actions = build_apartment_actions_keyboard("1013149871")
     assert actions.inline_keyboard[0][0].callback_data == f"{APT_SAVE_PREFIX}1013149871"

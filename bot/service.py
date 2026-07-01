@@ -198,6 +198,28 @@ class SearchBotService:
             criteria=criteria,
         )
 
+    async def rerun_active_search(
+        self,
+        *,
+        telegram_user_id: int,
+        username: str | None,
+    ) -> SearchExecution:
+        """Re-run the current active criteria to fetch the next batch.
+
+        Same criteria as the last search; per-user dedup hides listings the user
+        has already been shown, so this surfaces new results (the "show more"
+        action). Raises ActiveCriteriaNotFoundError if the user has not searched yet.
+        """
+        active_criteria = await self.get_active_criteria(telegram_user_id=telegram_user_id)
+        if active_criteria is None:
+            msg = "active criteria not found"
+            raise ActiveCriteriaNotFoundError(msg)
+        return await self._persist_and_run_search(
+            telegram_user_id=telegram_user_id,
+            username=username,
+            criteria=active_criteria,
+        )
+
     async def _persist_and_run_search(
         self,
         *,

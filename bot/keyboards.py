@@ -4,6 +4,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 REFINE_CALLBACK_DATA = "dialog:refine"
 LIST_CALLBACK_DATA = "dialog:list"
+SEARCH_MORE_CALLBACK_DATA = "dialog:more"
 DELETE_SAVED_PREFIX = "saved:del:"
 RESTORE_TRASH_PREFIX = "trash:restore:"
 APT_SAVE_PREFIX = "apt:save:"
@@ -65,9 +66,19 @@ def build_trashed_item_keyboard(
 
 
 def build_search_followup_keyboard() -> InlineKeyboardMarkup:
-    """Navigation actions shown after the result cards (save/reject are per-card)."""
+    """Navigation actions shown after the result cards (save/reject are per-card).
+
+    The primary action re-runs the same search for the next batch of listings
+    (already-seen ones are deduped out); refine/saved sit on the second row.
+    """
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🔎 Ещё варианты",
+                    callback_data=SEARCH_MORE_CALLBACK_DATA,
+                ),
+            ],
             [
                 InlineKeyboardButton(
                     text="Уточнить критерии",
@@ -77,6 +88,6 @@ def build_search_followup_keyboard() -> InlineKeyboardMarkup:
                     text="Сохраненные",
                     callback_data=LIST_CALLBACK_DATA,
                 ),
-            ]
+            ],
         ]
     )

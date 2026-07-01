@@ -50,6 +50,15 @@ def test_profile_learns_districts_price_area_rooms() -> None:
     assert profile.rooms == {2}
 
 
+def test_profile_uses_city_scoped_catalog_outside_almaty() -> None:
+    profile = build_preference_profile(
+        [apt(ext="1", city="Aktobe", district="Алматинский район")],
+        [],
+    )
+
+    assert profile.liked_districts == {"Almaty"}
+
+
 def test_empty_profile_has_no_signal() -> None:
     assert not build_preference_profile([], []).has_signal
 

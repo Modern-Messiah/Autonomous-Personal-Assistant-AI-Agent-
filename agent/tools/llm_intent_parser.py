@@ -96,12 +96,10 @@ class LLMIntentParser:
                 "Use integer prices in KZT and numeric areas in square meters.",
                 'Normalize deal_type to "sale" or "rent".',
                 (
-                    'Normalize city to English title case suitable for Krisha paths, '
-                    'for example "Almaty", "Astana", "Shymkent", "Karaganda".'
-                ),
-                (
-                    "Normalize known districts to canonical Latin names when possible. "
-                    "If a district is unclear, return the cleaned original district text."
+                    "Return city and district names as written by the user, with "
+                    "surrounding punctuation removed. Do not translate, transliterate, "
+                    "guess, or replace a location. Deterministic application code "
+                    "validates locations after extraction."
                 ),
                 (
                     'Interpret room phrases like "двухкомнатная" as [2] and '

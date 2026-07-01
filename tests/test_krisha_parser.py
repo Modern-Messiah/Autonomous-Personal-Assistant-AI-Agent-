@@ -225,7 +225,9 @@ def test_build_listing_urls_uses_city_slug() -> None:
         ("Almaty", "almaty"),
         ("Pavlodar", "pavlodar"),
         ("Ust-Kamenogorsk", "ust-kamenogorsk"),
-        ("Semei", "semei"),
+        ("Semei", "semej"),
+        ("Shchuchinsk", "shhuchinsk"),
+        ("Tobyl", "zatobolsk"),
     ]:
         crit = SearchCriteria(
             user_id=1, city=city, deal_type="sale", property_type="apartment", page_limit=1
@@ -243,13 +245,8 @@ def test_matches_criteria_filters_by_district() -> None:
     assert KrishaParser._matches_criteria(make_preview(district="Бостандыкский район"), criteria)
     # a different district -> filtered out
     assert not KrishaParser._matches_criteria(make_preview(district="Медеуский район"), criteria)
-    # district requested but unconfirmed -> dropped (was the leak: unknown districts
-    # slipped into a specific-district search)
-    assert not KrishaParser._matches_criteria(make_preview(district=None), criteria)
-    # a suburb/village whose address is not the requested district -> dropped
-    assert not KrishaParser._matches_criteria(
-        make_preview(district=None, address="пос. Гульдала, Гульдала"), criteria
-    )
+    # district unknown on the card (and no address) -> kept, not dropped by mistake
+    assert KrishaParser._matches_criteria(make_preview(district=None), criteria)
 
 
 def test_matches_criteria_district_uses_address_fallback() -> None:
@@ -275,15 +272,15 @@ def test_matches_criteria_district_is_city_scoped() -> None:
     assert not KrishaParser._matches_criteria(make_preview(district="Сарыаркинский район"), astana)
 
 
-def test_matches_criteria_unmapped_city_keeps_whole_city() -> None:
-    # A city we don't map -> requested district can't resolve -> no district filter.
+def test_matches_criteria_unresolved_district_never_broadens_search() -> None:
     criteria = SearchCriteria(
         user_id=1, city="Taraz", deal_type="sale", property_type="apartment",
         districts=["Center"],
     )
-    assert KrishaParser._matches_criteria(make_preview(district="Центральный район"), criteria)
-    # unknown fields are kept (resolved on the detail page)
-    assert KrishaParser._matches_criteria(
+    assert not KrishaParser._matches_criteria(
+        make_preview(district="Центральный район"), criteria
+    )
+    assert not KrishaParser._matches_criteria(
         make_preview(rooms=None, price_kzt=None), criteria
     )
 
@@ -317,6 +314,52 @@ async def test_search_caps_detail_fetches_to_max_results() -> None:
     apartments = await parser.search(FakeBrowserContext(page_map), criteria)
 
     assert len(apartments) == 2  # capped, third listing not fetched
+
+
+@pytest.mark.asyncio
+async def test_search_requires_detail_confirmation_for_requested_district() -> None:
+    cards = "".join(
+        f'<div class="a-card">'
+        f'<a class="a-card__title" href="/a/show/{external_id}">'
+        f"2-комнатная квартира · 60 м² · 3/9 этаж</a>"
+        f'<div class="a-card__price">40 000 000 〒</div>'
+        f"</div>"
+        for external_id in ("1", "2")
+    )
+    listing_html = f"<html><body>{cards}</body></html>"
+    bostandyk_detail = load_fixture("detail_123456789.html")
+    medeu_detail = bostandyk_detail.replace(
+        "Бостандыкский р-н",  # noqa: RUF001
+        "Медеуский р-н",  # noqa: RUF001
+    )
+    redis = FakeRedis()
+    parser = KrishaParser(
+        redis_client=redis,
+        min_delay_seconds=0,
+        max_delay_seconds=0,
+        max_results=1,
+    )
+    criteria = SearchCriteria(
+        user_id=1,
+        city="Almaty",
+        deal_type="sale",
+        property_type="apartment",
+        districts=["Bostandyk"],
+        page_limit=1,
+    )
+    listing_url = parser._build_listing_urls(criteria)[0]
+    context = FakeBrowserContext(
+        {
+            listing_url: (200, listing_html),
+            "https://krisha.kz/a/show/1": (200, medeu_detail),
+            "https://krisha.kz/a/show/2": (200, bostandyk_detail),
+        }
+    )
+
+    apartments = await parser.search(context, criteria)
+
+    assert [apartment.external_id for apartment in apartments] == ["2"]
+    assert "krisha:seen:1:1" in redis.deleted_keys
 
 
 @pytest.mark.asyncio

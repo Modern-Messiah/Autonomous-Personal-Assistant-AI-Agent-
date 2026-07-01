@@ -21,6 +21,11 @@ Krisha location URLs and the district labels found in its apartment cards are
 verified separately because an official KATO name is not necessarily the string
 or URL slug used by Krisha.
 
+Live verification found one upstream exception: Krisha has no location entry or
+search URL for the official city of Zhem. Zhem remains a recognised catalog
+city, but requests for it return an explicit Krisha limitation instead of
+falling back to another city. The other 89 cities have verified slugs.
+
 Authoritative references:
 
 - Bureau of National Statistics,
@@ -67,7 +72,7 @@ Create a data file dedicated to Kazakhstan locations. Each city entry contains:
 - canonical application name;
 - official Russian and Kazakh names;
 - accepted historical, transliterated and inflected aliases;
-- verified Krisha city slug;
+- verified Krisha city slug, nullable only for Zhem;
 - zero or more official city-district entries.
 
 Each district entry contains:
@@ -181,7 +186,7 @@ location validation failure.
 Catalog integrity tests verify:
 
 - exactly 90 unique official cities from the pinned KATO snapshot;
-- a non-empty unique Krisha slug for every city;
+- 89 non-empty unique Krisha slugs and one explicit unavailable city, Zhem;
 - all district parent references and KATO codes;
 - no illegal alias ambiguity;
 - cities without administrative districts return an empty district list.
@@ -197,10 +202,10 @@ listing whose district remains unknown.
 Bot-service tests verify that invalid locations produce a correction and do not
 invoke the search graph.
 
-A separate catalog audit checks the 90 configured Krisha URLs without becoming
+A separate catalog audit checks the 89 configured Krisha URLs without becoming
 a normal test-suite dependency. It runs deliberately with rate limiting and
 records redirects, missing pages and anti-bot responses. The existing small
-production canary remains the continuous markup check; CI must not crawl 90
+production canary remains the continuous markup check; CI must not crawl 89
 Krisha locations on every run.
 
 ## Data Maintenance
@@ -219,7 +224,8 @@ The application does not silently fetch and replace geography data at runtime.
 ## Acceptance Criteria
 
 - Every one of the 90 official cities in the pinned 2026 KATO snapshot resolves
-  from its official Russian and Kazakh name and has a verified Krisha slug.
+  from its official Russian and Kazakh name; 89 have a verified Krisha slug and
+  Zhem returns an explicit upstream-support error.
 - Every official city district in that snapshot resolves only within its parent
   city.
 - City-only requests search the entire city.

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from agent.tools.districts import CITY_DISTRICTS, canonical_district, flat_district_aliases
+from agent.tools.districts import canonical_district, flat_district_aliases
 
 
 def test_canonical_district_resolves_russian_label_and_declensions() -> None:
@@ -22,6 +22,11 @@ def test_canonical_district_is_scoped_to_city() -> None:
     assert canonical_district("Алматы", "Almaty") is None
 
 
+def test_canonical_district_supports_aktobe_city_districts() -> None:
+    assert canonical_district("Алматинский район", "Aktobe") == "Almaty"
+    assert canonical_district("район Астана", "Aktobe") == "Astana"
+
+
 def test_city_name_tokens_excluded_from_flat_union() -> None:
     # "Алматы"/"Almaty" are city names; they must not become districts during
     # city-agnostic intent parsing, even though Astana has an "Алматы" district.
@@ -39,11 +44,10 @@ def test_canonical_district_returns_none_for_unknown_inputs() -> None:
     assert canonical_district("Несуществующий район", "Almaty") is None
 
 
-def test_flat_aliases_cover_every_city_and_prefer_first_on_collision() -> None:
+def test_flat_aliases_contain_only_globally_unambiguous_districts() -> None:
     flat = flat_district_aliases()
-    # every alias from every city is present
-    total = sum(len(aliases) for aliases in CITY_DISTRICTS.values())
-    assert len(flat) <= total  # collisions collapse, never exceed
     assert flat["бостандык"] == "Bostandyk"
-    assert flat["сарыарк"] == "Saryarka"
-    assert flat["абай"] == "Abay"
+    assert flat["saryarka"] == "Saryarka"
+    # Almaty and Astana are both city names and repeat as district names.
+    assert "алматы" not in flat
+    assert "astana" not in flat

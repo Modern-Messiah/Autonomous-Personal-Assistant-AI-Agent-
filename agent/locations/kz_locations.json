@@ -1,0 +1,1614 @@
+{
+  "metadata": {
+    "kato_version": "НК РК 11-2025",
+    "updated_at": "2026-06-18",
+    "source_url": "https://stat.gov.kz/ru/classifiers/statistical/21/",
+    "source_sha256": "3f8f7d84099e8a5a584933d76f9f91bf9c3f3a3400d2f09d62590ac8eb51571c"
+  },
+  "cities": [
+    {
+      "kato_code": "101010000",
+      "canonical": "Semei",
+      "name_ru": "Семей",
+      "name_kk": "Семей",
+      "aliases": [
+        "Semei",
+        "Семей",
+        "Семе",
+        "semej",
+        "Семипалатинск",
+        "Semey"
+      ],
+      "krisha_slug": "semej",
+      "districts": []
+    },
+    {
+      "kato_code": "101810000",
+      "canonical": "Kurchatov",
+      "name_ru": "Курчатов",
+      "name_kk": "Курчатов",
+      "aliases": [
+        "Kurchatov",
+        "Курчатов",
+        "kurchatov"
+      ],
+      "krisha_slug": "kurchatov",
+      "districts": []
+    },
+    {
+      "kato_code": "103620100",
+      "canonical": "Ayagoz",
+      "name_ru": "Аягоз",
+      "name_kk": "Аягөз",
+      "aliases": [
+        "Ayagoz",
+        "Аягоз",
+        "Аягөз",
+        "ajagoz"
+      ],
+      "krisha_slug": "ajagoz",
+      "districts": []
+    },
+    {
+      "kato_code": "104221100",
+      "canonical": "Shar",
+      "name_ru": "Шар",
+      "name_kk": "Шар",
+      "aliases": [
+        "Shar",
+        "Шар",
+        "shar"
+      ],
+      "krisha_slug": "shar",
+      "districts": []
+    },
+    {
+      "kato_code": "111010000",
+      "canonical": "Kokshetau",
+      "name_ru": "Кокшетау",
+      "name_kk": "Көкшетау",
+      "aliases": [
+        "Kokshetau",
+        "Кокшетау",
+        "Көкшетау",
+        "kokshetau"
+      ],
+      "krisha_slug": "kokshetau",
+      "districts": []
+    },
+    {
+      "kato_code": "111610000",
+      "canonical": "Kosshy",
+      "name_ru": "Косшы",
+      "name_kk": "Қосшы",
+      "aliases": [
+        "Kosshy",
+        "Косшы",
+        "Қосшы",
+        "kosshy"
+      ],
+      "krisha_slug": "kosshy",
+      "districts": []
+    },
+    {
+      "kato_code": "111810000",
+      "canonical": "Stepnogorsk",
+      "name_ru": "Степногорск",
+      "name_kk": "Степногор",
+      "aliases": [
+        "Stepnogorsk",
+        "Степногорск",
+        "Степногор",
+        "stepnogorsk"
+      ],
+      "krisha_slug": "stepnogorsk",
+      "districts": []
+    },
+    {
+      "kato_code": "113220100",
+      "canonical": "Akkol",
+      "name_ru": "Акколь",
+      "name_kk": "Ақкөл",
+      "aliases": [
+        "Akkol",
+        "Акколь",
+        "Аккол",
+        "Ақкөл",
+        "akkol"
+      ],
+      "krisha_slug": "akkol",
+      "districts": []
+    },
+    {
+      "kato_code": "113820100",
+      "canonical": "Atbasar",
+      "name_ru": "Атбасар",
+      "name_kk": "Атбасар",
+      "aliases": [
+        "Atbasar",
+        "Атбасар",
+        "atbasar"
+      ],
+      "krisha_slug": "atbasar",
+      "districts": []
+    },
+    {
+      "kato_code": "114020100",
+      "canonical": "Makinsk",
+      "name_ru": "Макинск",
+      "name_kk": "Макинск",
+      "aliases": [
+        "Makinsk",
+        "Макинск",
+        "makinsk"
+      ],
+      "krisha_slug": "makinsk",
+      "districts": []
+    },
+    {
+      "kato_code": "114520100",
+      "canonical": "Stepnyak",
+      "name_ru": "Степняк",
+      "name_kk": "Степняк",
+      "aliases": [
+        "Stepnyak",
+        "Степняк",
+        "stepnjak"
+      ],
+      "krisha_slug": "stepnjak",
+      "districts": []
+    },
+    {
+      "kato_code": "114620100",
+      "canonical": "Ereymentau",
+      "name_ru": "Ерейментау",
+      "name_kk": "Ерейментау",
+      "aliases": [
+        "Ereymentau",
+        "Ерейментау",
+        "erejmentau"
+      ],
+      "krisha_slug": "erejmentau",
+      "districts": []
+    },
+    {
+      "kato_code": "114820100",
+      "canonical": "Esil",
+      "name_ru": "Есиль",
+      "name_kk": "Есіл",
+      "aliases": [
+        "Esil",
+        "Есиль",
+        "Есил",
+        "Есіл",
+        "esil"
+      ],
+      "krisha_slug": "esil",
+      "districts": []
+    },
+    {
+      "kato_code": "115420100",
+      "canonical": "Derzhavinsk",
+      "name_ru": "Державинск",
+      "name_kk": "Державин",
+      "aliases": [
+        "Derzhavinsk",
+        "Державинск",
+        "Державин",
+        "derzhavinsk"
+      ],
+      "krisha_slug": "derzhavinsk",
+      "districts": []
+    },
+    {
+      "kato_code": "117020100",
+      "canonical": "Shchuchinsk",
+      "name_ru": "Щучинск",
+      "name_kk": "Щучинск",
+      "aliases": [
+        "Shchuchinsk",
+        "Щучинск",
+        "shhuchinsk"
+      ],
+      "krisha_slug": "shhuchinsk",
+      "districts": []
+    },
+    {
+      "kato_code": "151010000",
+      "canonical": "Aktobe",
+      "name_ru": "Актобе",
+      "name_kk": "Ақтөбе",
+      "aliases": [
+        "Aktobe",
+        "Актобе",
+        "Ақтөбе",
+        "aktobe",
+        "Актюбинск"
+      ],
+      "krisha_slug": "aktobe",
+      "districts": [
+        {
+          "kato_code": "151011100",
+          "canonical": "Astana",
+          "name_ru": "район Астана",
+          "name_kk": "Астана ауданы",
+          "aliases": [
+            "Astana",
+            "Астана",
+            "Астан",
+            "Астанинский"
+          ]
+        },
+        {
+          "kato_code": "151013100",
+          "canonical": "Almaty",
+          "name_ru": "район Алматы",
+          "name_kk": "Алматы ауданы",
+          "aliases": [
+            "Almaty",
+            "Алматы",
+            "Алматинский"
+          ]
+        }
+      ]
+    },
+    {
+      "kato_code": "153220100",
+      "canonical": "Alga",
+      "name_ru": "Алга",
+      "name_kk": "Алға",
+      "aliases": [
+        "Alga",
+        "Алга",
+        "Алға",
+        "alga"
+      ],
+      "krisha_slug": "alga",
+      "districts": []
+    },
+    {
+      "kato_code": "154820100",
+      "canonical": "Kandyagash",
+      "name_ru": "Кандыагаш",
+      "name_kk": "Қандыағаш",
+      "aliases": [
+        "Kandyagash",
+        "Кандыагаш",
+        "Қандыағаш",
+        "kandyagash"
+      ],
+      "krisha_slug": "kandyagash",
+      "districts": []
+    },
+    {
+      "kato_code": "154823100",
+      "canonical": "Emba",
+      "name_ru": "Эмба",
+      "name_kk": "Ембі",
+      "aliases": [
+        "Emba",
+        "Эмба",
+        "Ембі",
+        "jemba"
+      ],
+      "krisha_slug": "jemba",
+      "districts": []
+    },
+    {
+      "kato_code": "154825100",
+      "canonical": "Zhem",
+      "name_ru": "Жем",
+      "name_kk": "Жем",
+      "aliases": [
+        "Zhem",
+        "Жем"
+      ],
+      "krisha_slug": null,
+      "districts": []
+    },
+    {
+      "kato_code": "155621100",
+      "canonical": "Temir",
+      "name_ru": "Темир",
+      "name_kk": "Темір",
+      "aliases": [
+        "Temir",
+        "Темир",
+        "Темір",
+        "temir"
+      ],
+      "krisha_slug": "temir",
+      "districts": []
+    },
+    {
+      "kato_code": "156020100",
+      "canonical": "Khromtau",
+      "name_ru": "Хромтау",
+      "name_kk": "Хромтау",
+      "aliases": [
+        "Khromtau",
+        "Хромтау",
+        "hromtau"
+      ],
+      "krisha_slug": "hromtau",
+      "districts": []
+    },
+    {
+      "kato_code": "156420100",
+      "canonical": "Shalkar",
+      "name_ru": "Шалкар",
+      "name_kk": "Шалқар",
+      "aliases": [
+        "Shalkar",
+        "Шалкар",
+        "Шалқар",
+        "shalkar"
+      ],
+      "krisha_slug": "shalkar",
+      "districts": []
+    },
+    {
+      "kato_code": "191010000",
+      "canonical": "Konaev",
+      "name_ru": "Қонаев",
+      "name_kk": "Қонаев",
+      "aliases": [
+        "Konaev",
+        "Қонаев",
+        "konaev",
+        "Конаев",
+        "Капчагай",
+        "Капчага",
+        "Қапшағай",
+        "Қапшаға",
+        "Kapchagay",
+        "Qonaev"
+      ],
+      "krisha_slug": "konaev",
+      "districts": []
+    },
+    {
+      "kato_code": "191810000",
+      "canonical": "Alatau",
+      "name_ru": "Алатау",
+      "name_kk": "Алатау",
+      "aliases": [
+        "Alatau",
+        "Алатау",
+        "zhetygen",
+        "Жетыген",
+        "Zhetygen"
+      ],
+      "krisha_slug": "zhetygen",
+      "districts": []
+    },
+    {
+      "kato_code": "194020100",
+      "canonical": "Esik",
+      "name_ru": "Есик",
+      "name_kk": "Есік",
+      "aliases": [
+        "Esik",
+        "Есик",
+        "Есік",
+        "esik"
+      ],
+      "krisha_slug": "esik",
+      "districts": []
+    },
+    {
+      "kato_code": "195220100",
+      "canonical": "Kaskelen",
+      "name_ru": "Каскелен",
+      "name_kk": "Қаскелең",
+      "aliases": [
+        "Kaskelen",
+        "Каскелен",
+        "Қаскелең",
+        "kaskelen"
+      ],
+      "krisha_slug": "kaskelen",
+      "districts": []
+    },
+    {
+      "kato_code": "196220100",
+      "canonical": "Talgar",
+      "name_ru": "Талгар",
+      "name_kk": "Талғар",
+      "aliases": [
+        "Talgar",
+        "Талгар",
+        "Талғар",
+        "talgar"
+      ],
+      "krisha_slug": "talgar",
+      "districts": []
+    },
+    {
+      "kato_code": "231010000",
+      "canonical": "Atyrau",
+      "name_ru": "Атырау",
+      "name_kk": "Атырау",
+      "aliases": [
+        "Atyrau",
+        "Атырау",
+        "atyrau",
+        "Гурьев"
+      ],
+      "krisha_slug": "atyrau",
+      "districts": []
+    },
+    {
+      "kato_code": "233620100",
+      "canonical": "Kulsary",
+      "name_ru": "Кульсары",
+      "name_kk": "Құлсары",
+      "aliases": [
+        "Kulsary",
+        "Кульсары",
+        "Құлсары",
+        "kulsary"
+      ],
+      "krisha_slug": "kulsary",
+      "districts": []
+    },
+    {
+      "kato_code": "271010000",
+      "canonical": "Uralsk",
+      "name_ru": "Уральск",
+      "name_kk": "Орал",
+      "aliases": [
+        "Uralsk",
+        "Уральск",
+        "Орал",
+        "uralsk",
+        "Oral"
+      ],
+      "krisha_slug": "uralsk",
+      "districts": []
+    },
+    {
+      "kato_code": "273620100",
+      "canonical": "Aksay",
+      "name_ru": "Аксай",
+      "name_kk": "Ақсай",
+      "aliases": [
+        "Aksay",
+        "Аксай",
+        "Акса",
+        "Ақсай",
+        "Ақса",
+        "aksaj"
+      ],
+      "krisha_slug": "aksaj",
+      "districts": []
+    },
+    {
+      "kato_code": "311010000",
+      "canonical": "Taraz",
+      "name_ru": "Тараз",
+      "name_kk": "Тараз",
+      "aliases": [
+        "Taraz",
+        "Тараз",
+        "taraz",
+        "Джамбул",
+        "Жамбыл"
+      ],
+      "krisha_slug": "taraz",
+      "districts": [
+        {
+          "kato_code": "311011100",
+          "canonical": "Aulieata",
+          "name_ru": "район Әулиеата",
+          "name_kk": "Әулиеата ауданы",
+          "aliases": [
+            "Aulieata",
+            "Әулиеата",
+            "Аулиеата",
+            "Аулие-Ата"
+          ]
+        },
+        {
+          "kato_code": "311013100",
+          "canonical": "Zhibek Zholy",
+          "name_ru": "район Жібек жолы",
+          "name_kk": "Жібек жолы ауданы",
+          "aliases": [
+            "Zhibek Zholy",
+            "Жібек жолы",
+            "Жибек жолы",
+            "Жибек Жолы"
+          ]
+        }
+      ]
+    },
+    {
+      "kato_code": "316020100",
+      "canonical": "Zhanatas",
+      "name_ru": "Жанатас",
+      "name_kk": "Жаңатас",
+      "aliases": [
+        "Zhanatas",
+        "Жанатас",
+        "Жаңатас",
+        "zhanatas"
+      ],
+      "krisha_slug": "zhanatas",
+      "districts": []
+    },
+    {
+      "kato_code": "316220100",
+      "canonical": "Karatau",
+      "name_ru": "Каратау",
+      "name_kk": "Қаратау",
+      "aliases": [
+        "Karatau",
+        "Каратау",
+        "Қаратау",
+        "karatau"
+      ],
+      "krisha_slug": "karatau",
+      "districts": []
+    },
+    {
+      "kato_code": "316621100",
+      "canonical": "Shu",
+      "name_ru": "Шу",
+      "name_kk": "Шу",
+      "aliases": [
+        "Shu",
+        "Шу",
+        "shu"
+      ],
+      "krisha_slug": "shu",
+      "districts": []
+    },
+    {
+      "kato_code": "331010000",
+      "canonical": "Taldykorgan",
+      "name_ru": "Талдыкорган",
+      "name_kk": "Талдықорған",
+      "aliases": [
+        "Taldykorgan",
+        "Талдыкорган",
+        "Талдықорған",
+        "taldykorgan"
+      ],
+      "krisha_slug": "taldykorgan",
+      "districts": []
+    },
+    {
+      "kato_code": "331810000",
+      "canonical": "Tekeli",
+      "name_ru": "Текели",
+      "name_kk": "Текелі",
+      "aliases": [
+        "Tekeli",
+        "Текели",
+        "Текелі",
+        "tekeli"
+      ],
+      "krisha_slug": "tekeli",
+      "districts": []
+    },
+    {
+      "kato_code": "333420100",
+      "canonical": "Usharal",
+      "name_ru": "Ушарал",
+      "name_kk": "Үшарал",
+      "aliases": [
+        "Usharal",
+        "Ушарал",
+        "Үшарал",
+        "usharal"
+      ],
+      "krisha_slug": "usharal",
+      "districts": []
+    },
+    {
+      "kato_code": "334420100",
+      "canonical": "Ushtobe",
+      "name_ru": "Уштобе",
+      "name_kk": "Үштөбе",
+      "aliases": [
+        "Ushtobe",
+        "Уштобе",
+        "Үштөбе",
+        "ushtobe"
+      ],
+      "krisha_slug": "ushtobe",
+      "districts": []
+    },
+    {
+      "kato_code": "334620100",
+      "canonical": "Zharkent",
+      "name_ru": "Жаркент",
+      "name_kk": "Жаркент",
+      "aliases": [
+        "Zharkent",
+        "Жаркент",
+        "zharkent"
+      ],
+      "krisha_slug": "zharkent",
+      "districts": []
+    },
+    {
+      "kato_code": "334820100",
+      "canonical": "Sarkan",
+      "name_ru": "Саркан",
+      "name_kk": "Сарқан",
+      "aliases": [
+        "Sarkan",
+        "Саркан",
+        "Сарқан",
+        "sarkand",
+        "Сарканд"
+      ],
+      "krisha_slug": "sarkand",
+      "districts": []
+    },
+    {
+      "kato_code": "351010000",
+      "canonical": "Karaganda",
+      "name_ru": "Караганда",
+      "name_kk": "Қарағанды",
+      "aliases": [
+        "Karaganda",
+        "Караганда",
+        "Караганд",
+        "Қарағанды",
+        "karaganda"
+      ],
+      "krisha_slug": "karaganda",
+      "districts": [
+        {
+          "kato_code": "351011100",
+          "canonical": "Alikhan Bokeikhan",
+          "name_ru": "район Әлихан Бөкейхан",
+          "name_kk": "Әлихан Бөкейхан ауданы",
+          "aliases": [
+            "Alikhan Bokeikhan",
+            "Әлихан Бөкейхан",
+            "Октябрьский район",
+            "Октябрьский",
+            "Октябрьски",
+            "Oktyabrsky",
+            "Алихан Бокейхан"
+          ]
+        },
+        {
+          "kato_code": "351013100",
+          "canonical": "Kazybek bi",
+          "name_ru": "район им.Казыбек би",
+          "name_kk": "Қазыбек би атын.ауданы",
+          "aliases": [
+            "Kazybek bi",
+            "Казыбек би",
+            "Қазыбек би",
+            "Kazybek"
+          ]
+        }
+      ]
+    },
+    {
+      "kato_code": "351610000",
+      "canonical": "Balkhash",
+      "name_ru": "Балхаш",
+      "name_kk": "Балқаш",
+      "aliases": [
+        "Balkhash",
+        "Балхаш",
+        "Балқаш",
+        "balhash"
+      ],
+      "krisha_slug": "balhash",
+      "districts": []
+    },
+    {
+      "kato_code": "352110000",
+      "canonical": "Priozersk",
+      "name_ru": "Приозерск",
+      "name_kk": "Приозерск",
+      "aliases": [
+        "Priozersk",
+        "Приозерск",
+        "priozjorsk",
+        "Приозёрск"
+      ],
+      "krisha_slug": "priozjorsk",
+      "districts": []
+    },
+    {
+      "kato_code": "352210000",
+      "canonical": "Saran",
+      "name_ru": "Сарань",
+      "name_kk": "Саран",
+      "aliases": [
+        "Saran",
+        "Сарань",
+        "Саран",
+        "saran"
+      ],
+      "krisha_slug": "saran",
+      "districts": []
+    },
+    {
+      "kato_code": "352410000",
+      "canonical": "Temirtau",
+      "name_ru": "Темиртау",
+      "name_kk": "Теміртау",
+      "aliases": [
+        "Temirtau",
+        "Темиртау",
+        "Теміртау",
+        "temirtau"
+      ],
+      "krisha_slug": "temirtau",
+      "districts": []
+    },
+    {
+      "kato_code": "352810000",
+      "canonical": "Shakhtinsk",
+      "name_ru": "Шахтинск",
+      "name_kk": "Шахтинск",
+      "aliases": [
+        "Shakhtinsk",
+        "Шахтинск",
+        "shahtinsk"
+      ],
+      "krisha_slug": "shahtinsk",
+      "districts": []
+    },
+    {
+      "kato_code": "353220100",
+      "canonical": "Abay",
+      "name_ru": "Абай",
+      "name_kk": "Абай",
+      "aliases": [
+        "Abay",
+        "Абай",
+        "karagandinskaja-oblast-abaj"
+      ],
+      "krisha_slug": "karagandinskaja-oblast-abaj",
+      "districts": []
+    },
+    {
+      "kato_code": "354820100",
+      "canonical": "Karkaralinsk",
+      "name_ru": "Каркаралинск",
+      "name_kk": "Қарқаралы",
+      "aliases": [
+        "Karkaralinsk",
+        "Каркаралинск",
+        "Қарқаралы",
+        "karkaralinsk"
+      ],
+      "krisha_slug": "karkaralinsk",
+      "districts": []
+    },
+    {
+      "kato_code": "391010000",
+      "canonical": "Kostanay",
+      "name_ru": "Костанай",
+      "name_kk": "Қостанай",
+      "aliases": [
+        "Kostanay",
+        "Костанай",
+        "Костана",
+        "Қостанай",
+        "Қостана",
+        "kostanaj"
+      ],
+      "krisha_slug": "kostanaj",
+      "districts": []
+    },
+    {
+      "kato_code": "391610000",
+      "canonical": "Arkalyk",
+      "name_ru": "Аркалык",
+      "name_kk": "Арқалық",
+      "aliases": [
+        "Arkalyk",
+        "Аркалык",
+        "Арқалық",
+        "arkalyk"
+      ],
+      "krisha_slug": "arkalyk",
+      "districts": []
+    },
+    {
+      "kato_code": "392010000",
+      "canonical": "Lisakovsk",
+      "name_ru": "Лисаковск",
+      "name_kk": "Лисаков",
+      "aliases": [
+        "Lisakovsk",
+        "Лисаковск",
+        "Лисаков",
+        "lisakovsk"
+      ],
+      "krisha_slug": "lisakovsk",
+      "districts": []
+    },
+    {
+      "kato_code": "392410000",
+      "canonical": "Rudnyy",
+      "name_ru": "Рудный",
+      "name_kk": "Рудный",
+      "aliases": [
+        "Rudnyy",
+        "Рудный",
+        "Рудны",
+        "rudnyj"
+      ],
+      "krisha_slug": "rudnyj",
+      "districts": []
+    },
+    {
+      "kato_code": "394420100",
+      "canonical": "Zhitikara",
+      "name_ru": "Житикара",
+      "name_kk": "Жітіқара",
+      "aliases": [
+        "Zhitikara",
+        "Житикара",
+        "Житикар",
+        "Жітіқара",
+        "Жітіқар",
+        "zhitikara"
+      ],
+      "krisha_slug": "zhitikara",
+      "districts": []
+    },
+    {
+      "kato_code": "395420100",
+      "canonical": "Tobyl",
+      "name_ru": "Тобыл",
+      "name_kk": "Тобыл",
+      "aliases": [
+        "Tobyl",
+        "Тобыл",
+        "zatobolsk",
+        "Затобольск (Тобыл)",
+        "Затобольск"
+      ],
+      "krisha_slug": "zatobolsk",
+      "districts": []
+    },
+    {
+      "kato_code": "431010000",
+      "canonical": "Kyzylorda",
+      "name_ru": "Кызылорда",
+      "name_kk": "Қызылорда",
+      "aliases": [
+        "Kyzylorda",
+        "Кызылорда",
+        "Кызылорд",
+        "Қызылорда",
+        "Қызылорд",
+        "kyzylorda",
+        "Кзыл-Орда",
+        "Кзыл-Орд"
+      ],
+      "krisha_slug": "kyzylorda",
+      "districts": []
+    },
+    {
+      "kato_code": "431910000",
+      "canonical": "Baykonyr",
+      "name_ru": "Байконыр",
+      "name_kk": "Байқоңыр",
+      "aliases": [
+        "Baykonyr",
+        "Байконыр",
+        "Байқоңыр",
+        "bajkonur",
+        "Байконур",
+        "Baikonur"
+      ],
+      "krisha_slug": "bajkonur",
+      "districts": []
+    },
+    {
+      "kato_code": "433220100",
+      "canonical": "Aralsk",
+      "name_ru": "Аральск",
+      "name_kk": "Арал",
+      "aliases": [
+        "Aralsk",
+        "Аральск",
+        "Арал",
+        "aralsk"
+      ],
+      "krisha_slug": "aralsk",
+      "districts": []
+    },
+    {
+      "kato_code": "434423100",
+      "canonical": "Kazalinsk",
+      "name_ru": "Казалинск",
+      "name_kk": "Қазалы",
+      "aliases": [
+        "Kazalinsk",
+        "Казалинск",
+        "Қазалы",
+        "kazalinsk"
+      ],
+      "krisha_slug": "kazalinsk",
+      "districts": []
+    },
+    {
+      "kato_code": "471010000",
+      "canonical": "Aktau",
+      "name_ru": "Актау",
+      "name_kk": "Ақтау",
+      "aliases": [
+        "Aktau",
+        "Актау",
+        "Ақтау",
+        "aktau",
+        "Шевченко"
+      ],
+      "krisha_slug": "aktau",
+      "districts": []
+    },
+    {
+      "kato_code": "471810000",
+      "canonical": "Zhanaozen",
+      "name_ru": "Жанаозен",
+      "name_kk": "Жаңаөзен",
+      "aliases": [
+        "Zhanaozen",
+        "Жанаозен",
+        "Жаңаөзен",
+        "zhanaozen"
+      ],
+      "krisha_slug": "zhanaozen",
+      "districts": []
+    },
+    {
+      "kato_code": "475220100",
+      "canonical": "Fort-Shevchenko",
+      "name_ru": "Форт-Шевченко",
+      "name_kk": "Форт-Шевченко",
+      "aliases": [
+        "Fort-Shevchenko",
+        "Форт-Шевченко",
+        "fort-shevchenko"
+      ],
+      "krisha_slug": "fort-shevchenko",
+      "districts": []
+    },
+    {
+      "kato_code": "551010000",
+      "canonical": "Pavlodar",
+      "name_ru": "Павлодар",
+      "name_kk": "Павлодар",
+      "aliases": [
+        "Pavlodar",
+        "Павлодар",
+        "pavlodar"
+      ],
+      "krisha_slug": "pavlodar",
+      "districts": []
+    },
+    {
+      "kato_code": "551610000",
+      "canonical": "Aksu",
+      "name_ru": "Аксу",
+      "name_kk": "Ақсу",
+      "aliases": [
+        "Aksu",
+        "Аксу",
+        "Ақсу",
+        "aksu"
+      ],
+      "krisha_slug": "aksu",
+      "districts": []
+    },
+    {
+      "kato_code": "552210000",
+      "canonical": "Ekibastuz",
+      "name_ru": "Экибастуз",
+      "name_kk": "Екібастұз",
+      "aliases": [
+        "Ekibastuz",
+        "Экибастуз",
+        "Екібастұз",
+        "ekibastuz"
+      ],
+      "krisha_slug": "ekibastuz",
+      "districts": []
+    },
+    {
+      "kato_code": "591010000",
+      "canonical": "Petropavlovsk",
+      "name_ru": "Петропавловск",
+      "name_kk": "Петропавл",
+      "aliases": [
+        "Petropavlovsk",
+        "Петропавловск",
+        "Петропавл",
+        "petropavlovsk"
+      ],
+      "krisha_slug": "petropavlovsk",
+      "districts": []
+    },
+    {
+      "kato_code": "593620100",
+      "canonical": "Bulaevo",
+      "name_ru": "Булаево",
+      "name_kk": "Булаев",
+      "aliases": [
+        "Bulaevo",
+        "Булаево",
+        "Булаев",
+        "bulaevo"
+      ],
+      "krisha_slug": "bulaevo",
+      "districts": []
+    },
+    {
+      "kato_code": "595220100",
+      "canonical": "Mamlyutka",
+      "name_ru": "Мамлютка",
+      "name_kk": "Мамлют",
+      "aliases": [
+        "Mamlyutka",
+        "Мамлютка",
+        "Мамлютк",
+        "Мамлют",
+        "mamljutka"
+      ],
+      "krisha_slug": "mamljutka",
+      "districts": []
+    },
+    {
+      "kato_code": "595620100",
+      "canonical": "Sergeevka",
+      "name_ru": "Сергеевка",
+      "name_kk": "Сергеев",
+      "aliases": [
+        "Sergeevka",
+        "Сергеевка",
+        "Сергеевк",
+        "Сергеев",
+        "sergeevka"
+      ],
+      "krisha_slug": "sergeevka",
+      "districts": []
+    },
+    {
+      "kato_code": "596020100",
+      "canonical": "Tayynsha",
+      "name_ru": "Тайынша",
+      "name_kk": "Тайынша",
+      "aliases": [
+        "Tayynsha",
+        "Тайынша",
+        "Тайынш",
+        "tajynsha"
+      ],
+      "krisha_slug": "tajynsha",
+      "districts": []
+    },
+    {
+      "kato_code": "611010000",
+      "canonical": "Turkestan",
+      "name_ru": "Туркестан",
+      "name_kk": "Түркістан",
+      "aliases": [
+        "Turkestan",
+        "Туркестан",
+        "Түркістан",
+        "turkestan"
+      ],
+      "krisha_slug": "turkestan",
+      "districts": []
+    },
+    {
+      "kato_code": "611610000",
+      "canonical": "Arys",
+      "name_ru": "Арысь",
+      "name_kk": "Арыс",
+      "aliases": [
+        "Arys",
+        "Арысь",
+        "Арыс",
+        "arys"
+      ],
+      "krisha_slug": "arys",
+      "districts": []
+    },
+    {
+      "kato_code": "612010000",
+      "canonical": "Kentau",
+      "name_ru": "Кентау",
+      "name_kk": "Кентау",
+      "aliases": [
+        "Kentau",
+        "Кентау",
+        "kentau"
+      ],
+      "krisha_slug": "kentau",
+      "districts": []
+    },
+    {
+      "kato_code": "613820100",
+      "canonical": "Zhetysay",
+      "name_ru": "Жетысай",
+      "name_kk": "Жетісай",
+      "aliases": [
+        "Zhetysay",
+        "Жетысай",
+        "Жетыса",
+        "Жетісай",
+        "Жетіса",
+        "zhetysaj"
+      ],
+      "krisha_slug": "zhetysaj",
+      "districts": []
+    },
+    {
+      "kato_code": "615420100",
+      "canonical": "Saryagash",
+      "name_ru": "Сарыагаш",
+      "name_kk": "Сарыағаш",
+      "aliases": [
+        "Saryagash",
+        "Сарыагаш",
+        "Сарыағаш",
+        "saryagash"
+      ],
+      "krisha_slug": "saryagash",
+      "districts": []
+    },
+    {
+      "kato_code": "615820100",
+      "canonical": "Lenger",
+      "name_ru": "Ленгер",
+      "name_kk": "Леңгір",
+      "aliases": [
+        "Lenger",
+        "Ленгер",
+        "Леңгір",
+        "lenger"
+      ],
+      "krisha_slug": "lenger",
+      "districts": []
+    },
+    {
+      "kato_code": "616420100",
+      "canonical": "Shardara",
+      "name_ru": "Шардара",
+      "name_kk": "Шардара",
+      "aliases": [
+        "Shardara",
+        "Шардара",
+        "Шардар",
+        "shardara"
+      ],
+      "krisha_slug": "shardara",
+      "districts": []
+    },
+    {
+      "kato_code": "621010000",
+      "canonical": "Zhezkazgan",
+      "name_ru": "Жезказган",
+      "name_kk": "Жезқазған",
+      "aliases": [
+        "Zhezkazgan",
+        "Жезказган",
+        "Жезқазған",
+        "zhezkazgan"
+      ],
+      "krisha_slug": "zhezkazgan",
+      "districts": []
+    },
+    {
+      "kato_code": "621810000",
+      "canonical": "Karazhal",
+      "name_ru": "Каражал",
+      "name_kk": "Қаражал",
+      "aliases": [
+        "Karazhal",
+        "Каражал",
+        "Қаражал",
+        "karazhal"
+      ],
+      "krisha_slug": "karazhal",
+      "districts": []
+    },
+    {
+      "kato_code": "622010000",
+      "canonical": "Satpaev",
+      "name_ru": "Сатпаев",
+      "name_kk": "Сәтбаев",
+      "aliases": [
+        "Satpaev",
+        "Сатпаев",
+        "Сәтбаев",
+        "satpaev"
+      ],
+      "krisha_slug": "satpaev",
+      "districts": []
+    },
+    {
+      "kato_code": "631010000",
+      "canonical": "Ust-Kamenogorsk",
+      "name_ru": "Усть-Каменогорск",
+      "name_kk": "Өскемен",
+      "aliases": [
+        "Ust-Kamenogorsk",
+        "Усть-Каменогорск",
+        "Өскемен",
+        "ust-kamenogorsk",
+        "Оскемен",
+        "Oskemen"
+      ],
+      "krisha_slug": "ust-kamenogorsk",
+      "districts": []
+    },
+    {
+      "kato_code": "632410000",
+      "canonical": "Ridder",
+      "name_ru": "Риддер",
+      "name_kk": "Риддер",
+      "aliases": [
+        "Ridder",
+        "Риддер",
+        "ridder"
+      ],
+      "krisha_slug": "ridder",
+      "districts": []
+    },
+    {
+      "kato_code": "634620100",
+      "canonical": "Zaysan",
+      "name_ru": "Зайсан",
+      "name_kk": "Зайсан",
+      "aliases": [
+        "Zaysan",
+        "Зайсан",
+        "zajsan"
+      ],
+      "krisha_slug": "zajsan",
+      "districts": []
+    },
+    {
+      "kato_code": "634820100",
+      "canonical": "Altay",
+      "name_ru": "Алтай",
+      "name_kk": "Алтай",
+      "aliases": [
+        "Altay",
+        "Алтай",
+        "Алта",
+        "altai",
+        "Зыряновск"
+      ],
+      "krisha_slug": "altai",
+      "districts": []
+    },
+    {
+      "kato_code": "634821100",
+      "canonical": "Serebryansk",
+      "name_ru": "Серебрянск",
+      "name_kk": "Серебрянск",
+      "aliases": [
+        "Serebryansk",
+        "Серебрянск",
+        "serebrjansk"
+      ],
+      "krisha_slug": "serebrjansk",
+      "districts": []
+    },
+    {
+      "kato_code": "636820100",
+      "canonical": "Shemonaikha",
+      "name_ru": "Шемонаиха",
+      "name_kk": "Шемонайха",
+      "aliases": [
+        "Shemonaikha",
+        "Шемонаиха",
+        "Шемонаих",
+        "Шемонайха",
+        "Шемонайх",
+        "shemonaixa"
+      ],
+      "krisha_slug": "shemonaixa",
+      "districts": []
+    },
+    {
+      "kato_code": "710000000",
+      "canonical": "Astana",
+      "name_ru": "Астана",
+      "name_kk": "Астана",
+      "aliases": [
+        "Astana",
+        "Астана",
+        "Астан",
+        "astana",
+        "Нур-Султан",
+        "Нурсултан",
+        "Целиноград",
+        "Nur-Sultan"
+      ],
+      "krisha_slug": "astana",
+      "districts": [
+        {
+          "kato_code": "711110000",
+          "canonical": "Almaty",
+          "name_ru": "район Алматы",
+          "name_kk": "Алматы ауданы",
+          "aliases": [
+            "Almaty",
+            "Алматы",
+            "Алматинский"
+          ]
+        },
+        {
+          "kato_code": "711210000",
+          "canonical": "Yesil",
+          "name_ru": "район Есиль",
+          "name_kk": "Есіл ауданы",
+          "aliases": [
+            "Yesil",
+            "Есиль",
+            "Есил",
+            "Есіл"
+          ]
+        },
+        {
+          "kato_code": "711310000",
+          "canonical": "Saryarka",
+          "name_ru": "район Сарыарка",
+          "name_kk": "Сарыарқа ауданы",
+          "aliases": [
+            "Saryarka",
+            "Сарыарка",
+            "Сарыарк",
+            "Сарыаркинский",
+            "Сарыарқа",
+            "Сарыарқ"
+          ]
+        },
+        {
+          "kato_code": "711410000",
+          "canonical": "Baikonyr",
+          "name_ru": "район Байқоңыр",
+          "name_kk": "Байқоңыр ауданы",
+          "aliases": [
+            "Baikonyr",
+            "Байқоңыр",
+            "Байконур",
+            "Baikonur"
+          ]
+        },
+        {
+          "kato_code": "711510000",
+          "canonical": "Nura",
+          "name_ru": "район Нұра",
+          "name_kk": "Нұра ауданы",
+          "aliases": [
+            "Nura",
+            "Нұра",
+            "Нура",
+            "Нуринский"
+          ]
+        },
+        {
+          "kato_code": "711610000",
+          "canonical": "Saraishyk",
+          "name_ru": "район Сарайшық",
+          "name_kk": "Сарайшық ауданы",
+          "aliases": [
+            "Saraishyk",
+            "Сарайшық",
+            "Сарайшык"
+          ]
+        }
+      ]
+    },
+    {
+      "kato_code": "750000000",
+      "canonical": "Almaty",
+      "name_ru": "Алматы",
+      "name_kk": "Алматы",
+      "aliases": [
+        "Almaty",
+        "Алматы",
+        "almaty",
+        "Алма-Ата",
+        "Алма-Ат",
+        "Alma-Ata"
+      ],
+      "krisha_slug": "almaty",
+      "districts": [
+        {
+          "kato_code": "751110000",
+          "canonical": "Almaly",
+          "name_ru": "Алмалинский район",
+          "name_kk": "Алмалы ауданы",
+          "aliases": [
+            "Almaly",
+            "Алмалинский",
+            "Алмалински",
+            "Алмалы"
+          ]
+        },
+        {
+          "kato_code": "751210000",
+          "canonical": "Alatau",
+          "name_ru": "Алатауский район",
+          "name_kk": "Алатау ауданы",
+          "aliases": [
+            "Alatau",
+            "Алатауский",
+            "Алатауски",
+            "Алатау"
+          ]
+        },
+        {
+          "kato_code": "751310000",
+          "canonical": "Auezov",
+          "name_ru": "Ауэзовский район",
+          "name_kk": "Әуезов ауданы",
+          "aliases": [
+            "Auezov",
+            "Ауэзовский",
+            "Ауэзовски",
+            "Әуезов",
+            "Ауезовский",
+            "Ауезовски",
+            "Ауезов"
+          ]
+        },
+        {
+          "kato_code": "751410000",
+          "canonical": "Bostandyk",
+          "name_ru": "Бостандыкский район",
+          "name_kk": "Бостандық ауданы",
+          "aliases": [
+            "Bostandyk",
+            "Бостандыкский",
+            "Бостандыкски",
+            "Бостандық"
+          ]
+        },
+        {
+          "kato_code": "751510000",
+          "canonical": "Zhetysu",
+          "name_ru": "Жетысуский район",
+          "name_kk": "Жетісу ауданы",
+          "aliases": [
+            "Zhetysu",
+            "Жетысуский",
+            "Жетысуски",
+            "Жетісу"
+          ]
+        },
+        {
+          "kato_code": "751710000",
+          "canonical": "Medeu",
+          "name_ru": "Медеуский район",
+          "name_kk": "Медеу ауданы",
+          "aliases": [
+            "Medeu",
+            "Медеуский",
+            "Медеуски",
+            "Медеу"
+          ]
+        },
+        {
+          "kato_code": "751810000",
+          "canonical": "Nauryzbay",
+          "name_ru": "Наурызбайский район",
+          "name_kk": "Наурызбай ауданы",
+          "aliases": [
+            "Nauryzbay",
+            "Наурызбайский",
+            "Наурызбайски",
+            "Наурызбай",
+            "Наурызба"
+          ]
+        },
+        {
+          "kato_code": "751910000",
+          "canonical": "Turksib",
+          "name_ru": "Турксибский район",
+          "name_kk": "Түрксіб ауданы",
+          "aliases": [
+            "Turksib",
+            "Турксибский",
+            "Турксибски",
+            "Түрксіб"
+          ]
+        }
+      ]
+    },
+    {
+      "kato_code": "790000000",
+      "canonical": "Shymkent",
+      "name_ru": "Шымкент",
+      "name_kk": "Шымкент",
+      "aliases": [
+        "Shymkent",
+        "Шымкент",
+        "shymkent",
+        "Чимкент",
+        "Шимкент",
+        "Chimkent"
+      ],
+      "krisha_slug": "shymkent",
+      "districts": [
+        {
+          "kato_code": "791110000",
+          "canonical": "Abay",
+          "name_ru": "Абайский район",
+          "name_kk": "Абай ауданы",
+          "aliases": [
+            "Abay",
+            "Абайский",
+            "Абайски",
+            "Абай"
+          ]
+        },
+        {
+          "kato_code": "791310000",
+          "canonical": "Al-Farabi",
+          "name_ru": "Аль-Фарабийский район",
+          "name_kk": "Әл Фараби ауданы",
+          "aliases": [
+            "Al-Farabi",
+            "Аль-Фарабийский",
+            "Аль-Фарабийски",
+            "Әл Фараби",
+            "Аль-Фараби",
+            "Аль Фараби",
+            "Al Farabi",
+            "Alfarabi"
+          ]
+        },
+        {
+          "kato_code": "791510000",
+          "canonical": "Yenbekshi",
+          "name_ru": "Енбекшинский район",
+          "name_kk": "Еңбекші ауданы",
+          "aliases": [
+            "Yenbekshi",
+            "Енбекшинский",
+            "Енбекшински",
+            "Еңбекші",
+            "Енбекши",
+            "Enbekshi"
+          ]
+        },
+        {
+          "kato_code": "791710000",
+          "canonical": "Karatau",
+          "name_ru": "Каратауский район",
+          "name_kk": "Қаратау ауданы",
+          "aliases": [
+            "Karatau",
+            "Каратауский",
+            "Каратауски",
+            "Қаратау"
+          ]
+        },
+        {
+          "kato_code": "791910000",
+          "canonical": "Turan",
+          "name_ru": "район Тұран",
+          "name_kk": "Тұран ауданы",
+          "aliases": [
+            "Turan",
+            "Тұран",
+            "Туран"
+          ]
+        }
+      ]
+    }
+  ]
+}

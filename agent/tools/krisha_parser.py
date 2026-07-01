@@ -360,13 +360,14 @@ class KrishaParser:
     def _matches_criteria(preview: ListingPreview, criteria: SearchCriteria) -> bool:
         """Check a listing-card preview against search criteria.
 
-        Unknown preview fields (``None``) are treated as a match so listings with
+        Unknown rooms/price/area (``None``) are treated as a match so listings with
         a sparse card are not dropped before the detail page is fetched. Districts
-        are resolved to a city-scoped canonical name on both sides (requested vs the
-        card's Russian label); a listing is dropped only when its district is known
-        and not among the requested ones. If the requested districts can't be
-        resolved for the city (unmapped city/district), district filtering is
-        skipped, so "city without a district" returns the whole city.
+        are stricter: when a district is explicitly requested and resolvable for the
+        city, a listing is kept only if its own district (from the card label or
+        address) resolves to one of the requested districts — unconfirmed locations
+        (suburbs/villages like "пос. Гульдала") are dropped, not leaked. If the
+        requested districts can't be resolved for the city (unmapped city/district),
+        district filtering is skipped, so "city without a district" returns the whole city.
         """
         rooms = preview.rooms
         if criteria.rooms and rooms is not None and rooms not in criteria.rooms:
@@ -379,7 +380,10 @@ class KrishaParser:
                 found = canonical_district(preview.district, criteria.city) or canonical_district(
                     preview.address, criteria.city
                 )
-                if found is not None and found not in wanted:
+                # A district was explicitly requested: keep only listings we can
+                # confirm are in a wanted district. Unresolved locations (a suburb
+                # or village like "пос. Гульдала") are dropped, not leaked.
+                if found not in wanted:
                     return False
 
         price = preview.price_kzt

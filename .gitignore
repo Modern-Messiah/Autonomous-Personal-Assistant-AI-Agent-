@@ -209,3 +209,4 @@ marimo/_lsp/
 __marimo__/
 .codegraph
 docs/
+.worktrees/

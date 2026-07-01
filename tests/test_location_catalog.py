@@ -66,8 +66,9 @@ def test_catalog_contains_all_official_city_districts() -> None:
         "Astana": 6,
         "Karaganda": 2,
         "Shymkent": 5,
+        "Taraz": 2,
     }
-    assert sum(counts.values()) == 23
+    assert sum(counts.values()) == 25
 
 
 def test_city_without_city_districts_has_empty_district_list() -> None:

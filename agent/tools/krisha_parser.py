@@ -383,10 +383,9 @@ class KrishaParser:
         Unknown preview fields (``None``) are treated as a match so listings with
         a sparse card are not dropped before the detail page is fetched. Districts
         are resolved to a city-scoped canonical name on both sides (requested vs the
-        card's Russian label); a listing is dropped only when its district is known
-        and not among the requested ones. If the requested districts can't be
-        resolved for the city (unmapped city/district), district filtering is
-        skipped, so "city without a district" returns the whole city.
+        card's Russian label). A known mismatch is dropped immediately; an unknown
+        preview is fetched provisionally and must be confirmed after detail parsing.
+        An unresolved requested district never broadens the search.
         """
         rooms = preview.rooms
         if criteria.rooms and rooms is not None and rooms not in criteria.rooms:

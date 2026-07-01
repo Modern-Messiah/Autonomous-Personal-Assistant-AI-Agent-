@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 
 from agent.graph import run_search_graph_from_text
+from agent.locations import LocationInputError
 from agent.models.apartment import Apartment
 from agent.models.criteria import SearchCriteria
 from agent.nodes.intent_node import IntentNode
@@ -158,6 +159,63 @@ async def test_intent_node_recognizes_kazakhstan_cities(
     node = IntentNode(llm_parser_factory=lambda: None)
     criteria = await node.parse(user_id=1, message=message)
     assert criteria.city == expected_city
+
+
+@pytest.mark.asyncio
+async def test_regex_fallback_recognizes_new_catalog_city_and_district() -> None:
+    node = IntentNode(llm_parser_factory=lambda: None)
+
+    city_only = await node.parse(
+        user_id=1,
+        message="двухкомнатная в Қонаеве до 30 млн",
+    )
+    district = await node.parse(
+        user_id=1,
+        message="квартира в Актобе, Алматинский район",
+    )
+
+    assert city_only.city == "Konaev"
+    assert city_only.districts is None
+    assert district.city == "Aktobe"
+    assert district.districts == ["Almaty"]
+
+
+@pytest.mark.asyncio
+async def test_llm_location_text_is_validated_against_catalog() -> None:
+    node = IntentNode(
+        llm_parser=StubLLMIntentParser(
+            {
+                "city": "Астана",
+                "districts": ["Есильский район"],
+                "rooms": [2],
+            }
+        )
+    )
+
+    criteria = await node.parse(user_id=1, message="двухкомнатная в Астане")
+
+    assert criteria.city == "Astana"
+    assert criteria.districts == ["Yesil"]
+
+
+@pytest.mark.asyncio
+async def test_intent_rejects_city_district_mismatch_from_llm() -> None:
+    node = IntentNode(
+        llm_parser=StubLLMIntentParser(
+            {"city": "Астана", "districts": ["Бостандыкский район"]}
+        )
+    )
+
+    with pytest.raises(LocationInputError, match="не относится"):
+        await node.parse(user_id=1, message="Астана, Бостандыкский район")
+
+
+@pytest.mark.asyncio
+async def test_intent_reports_city_missing_from_krisha() -> None:
+    node = IntentNode(llm_parser_factory=lambda: None)
+
+    with pytest.raises(LocationInputError, match="Krisha"):
+        await node.parse(user_id=1, message="квартира в Жеме")
 
 
 @pytest.mark.asyncio

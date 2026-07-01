@@ -9,8 +9,8 @@ from typing import Literal, Protocol, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from agent.locations import ResolvedLocations, resolve_locations
 from agent.models.criteria import SearchCriteria
-from agent.tools.districts import flat_district_aliases
 from agent.tools.llm_intent_parser import LLMIntentParser
 from config.settings import get_settings
 
@@ -64,45 +64,6 @@ PAGE_LIMIT_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-# Maps a city name (RU / KZ-RU / EN / common alt) to the canonical name whose
-# lowercase form is krisha's URL slug (verified live against krisha). Matched as a
-# substring, so stems cover declensions. Unmapped ASCII names pass through the
-# validator (best-effort slug); unmapped Cyrillic names fall back to the default.
-CITY_ALIASES = {
-    # republican cities
-    "almaty": "Almaty", "алматы": "Almaty", "алмат": "Almaty",
-    "astana": "Astana", "астана": "Astana", "астан": "Astana",
-    "нур-султан": "Astana", "нурсултан": "Astana",
-    "shymkent": "Shymkent", "шымкент": "Shymkent", "шимкент": "Shymkent",
-    "чимкент": "Shymkent",
-    # regional centers / major cities
-    "karaganda": "Karaganda", "караганд": "Karaganda",
-    "aktobe": "Aktobe", "актобе": "Aktobe", "актюбинск": "Aktobe",
-    "aktau": "Aktau", "актау": "Aktau",
-    "atyrau": "Atyrau", "атырау": "Atyrau",
-    "kokshetau": "Kokshetau", "кокшетау": "Kokshetau",
-    "kostanay": "Kostanay", "костана": "Kostanay", "кустана": "Kostanay",
-    "kyzylorda": "Kyzylorda", "кызылорд": "Kyzylorda",
-    "uralsk": "Uralsk", "уральск": "Uralsk", "орал": "Uralsk", "oral": "Uralsk",
-    "ust-kamenogorsk": "Ust-Kamenogorsk", "усть-каменогорск": "Ust-Kamenogorsk",
-    "оскемен": "Ust-Kamenogorsk", "oskemen": "Ust-Kamenogorsk",
-    "pavlodar": "Pavlodar", "павлодар": "Pavlodar",
-    "petropavlovsk": "Petropavlovsk", "петропавловск": "Petropavlovsk",
-    "петропавл": "Petropavlovsk", "petropavl": "Petropavlovsk",
-    "semei": "Semei", "semey": "Semei", "семей": "Semei", "семипалатинск": "Semei",
-    "taldykorgan": "Taldykorgan", "талдыкорган": "Taldykorgan",
-    "taraz": "Taraz", "тараз": "Taraz", "джамбул": "Taraz", "жамбыл": "Taraz",
-    "turkestan": "Turkestan", "туркестан": "Turkestan",
-    "zhezkazgan": "Zhezkazgan", "жезказган": "Zhezkazgan",
-    "temirtau": "Temirtau", "темиртау": "Temirtau",
-    "ekibastuz": "Ekibastuz", "экибастуз": "Ekibastuz",
-    "kentau": "Kentau", "кентау": "Kentau",
-}
-# City-agnostic union for free-text normalization; the authoritative,
-# city-scoped match happens later in the parser via canonical_district.
-DISTRICT_ALIASES = flat_district_aliases()
-
-
 class LLMIntentParserProtocol(Protocol):
     """Contract for optional LLM-backed criteria extraction."""
 
@@ -136,19 +97,6 @@ class IntentCriteriaPatch(BaseModel):
             return value
         normalized = value.strip()
         return normalized or None
-
-    @field_validator("city")
-    @classmethod
-    def canonicalize_city(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        lowered = value.lower()
-        for alias, canonical in CITY_ALIASES.items():
-            if alias in lowered:
-                return canonical
-        if lowered.isascii():
-            return " ".join(part.capitalize() for part in lowered.split())
-        return value
 
     @field_validator("deal_type", mode="before")
     @classmethod
@@ -206,33 +154,6 @@ class IntentCriteriaPatch(BaseModel):
             return None
 
         cleaned = [str(item).strip() for item in value if str(item).strip()]
-        return cleaned or None
-
-    @field_validator("districts")
-    @classmethod
-    def canonicalize_districts(cls, value: list[str] | None) -> list[str] | None:
-        if value is None:
-            return None
-
-        cleaned: list[str] = []
-        seen: set[str] = set()
-        for district in value:
-            lowered = district.lower()
-            canonical = None
-            for alias, alias_value in DISTRICT_ALIASES.items():
-                if alias in lowered:
-                    canonical = alias_value
-                    break
-            if canonical is None:
-                stripped = re.sub(
-                    r"\b(?:district|districts|район|района|\u0440-\u043d|микрорайон)\b",
-                    "",
-                    lowered,
-                ).strip(" -_,.")
-                canonical = " ".join(part.capitalize() for part in stripped.split()) or district
-            if canonical not in seen:
-                cleaned.append(canonical)
-                seen.add(canonical)
         return cleaned or None
 
     @field_validator("page_limit", mode="before")
@@ -358,21 +279,61 @@ class IntentNode:
         """Parse criteria and report when the configured default city was used."""
         patch = await self._parse_with_llm(message=message, existing_criteria=None)
         if patch is not None:
-            return ParsedIntent(
-                criteria=self._build_search_criteria(user_id=user_id, patch=patch),
-                defaulted_city=patch.city is None,
+            locations = resolve_locations(
+                message=message,
+                default_city=self._default_city,
+                llm_city=patch.city,
+                llm_districts=patch.districts,
             )
+            return ParsedIntent(
+                criteria=self._build_search_criteria(
+                    user_id=user_id,
+                    patch=patch,
+                    locations=locations,
+                ),
+                defaulted_city=locations.defaulted_city,
+            )
+        locations = resolve_locations(
+            message=message,
+            default_city=self._default_city,
+        )
         return ParsedIntent(
-            criteria=self._parse_with_regex(user_id=user_id, message=message),
-            defaulted_city=self._find_city(message.strip().lower()) is None,
+            criteria=self._parse_with_regex(
+                user_id=user_id,
+                message=message,
+                locations=locations,
+            ),
+            defaulted_city=locations.defaulted_city,
         )
 
     async def refine(self, *, criteria: SearchCriteria, message: str) -> SearchCriteria:
         """Merge free-form refinement text into existing criteria."""
         patch = await self._parse_with_llm(message=message, existing_criteria=criteria)
         if patch is not None:
-            return self._build_refined_criteria(criteria=criteria, patch=patch)
-        return self._refine_with_regex(criteria=criteria, message=message)
+            locations = resolve_locations(
+                message=message,
+                default_city=self._default_city,
+                llm_city=patch.city,
+                llm_districts=patch.districts,
+                existing_city=criteria.city,
+                existing_districts=criteria.districts,
+            )
+            return self._build_refined_criteria(
+                criteria=criteria,
+                patch=patch,
+                locations=locations,
+            )
+        locations = resolve_locations(
+            message=message,
+            default_city=self._default_city,
+            existing_city=criteria.city,
+            existing_districts=criteria.districts,
+        )
+        return self._refine_with_regex(
+            criteria=criteria,
+            message=message,
+            locations=locations,
+        )
 
     async def _parse_with_llm(
         self,
@@ -413,16 +374,17 @@ class IntentNode:
         *,
         user_id: int,
         patch: IntentCriteriaPatch,
+        locations: ResolvedLocations,
     ) -> SearchCriteria:
         return SearchCriteria(
             user_id=user_id,
-            city=patch.city or self._default_city,
+            city=locations.city,
             deal_type=patch.deal_type or self._default_deal_type,
             property_type="apartment",
             min_price_kzt=patch.min_price_kzt,
             max_price_kzt=patch.max_price_kzt,
             rooms=patch.rooms,
-            districts=patch.districts,
+            districts=list(locations.districts) if locations.districts else None,
             min_area_m2=patch.min_area_m2,
             max_area_m2=patch.max_area_m2,
             page_limit=patch.page_limit or self._default_page_limit,
@@ -433,10 +395,11 @@ class IntentNode:
         *,
         criteria: SearchCriteria,
         patch: IntentCriteriaPatch,
+        locations: ResolvedLocations,
     ) -> SearchCriteria:
         return SearchCriteria(
             user_id=criteria.user_id,
-            city=patch.city or criteria.city,
+            city=locations.city,
             deal_type=patch.deal_type or criteria.deal_type,
             property_type=criteria.property_type,
             min_price_kzt=(
@@ -450,55 +413,63 @@ class IntentNode:
                 else patch.max_price_kzt
             ),
             rooms=criteria.rooms if patch.rooms is None else patch.rooms,
-            districts=criteria.districts if patch.districts is None else patch.districts,
+            districts=list(locations.districts) if locations.districts else None,
             min_area_m2=criteria.min_area_m2 if patch.min_area_m2 is None else patch.min_area_m2,
             max_area_m2=criteria.max_area_m2 if patch.max_area_m2 is None else patch.max_area_m2,
             page_limit=criteria.page_limit if patch.page_limit is None else patch.page_limit,
         )
 
-    def _parse_with_regex(self, *, user_id: int, message: str) -> SearchCriteria:
+    def _parse_with_regex(
+        self,
+        *,
+        user_id: int,
+        message: str,
+        locations: ResolvedLocations,
+    ) -> SearchCriteria:
         normalized = message.strip().lower()
         deal_type = self._parse_deal_type(normalized)
-        city = self._parse_city(normalized)
         min_price, max_price = self._parse_price_bounds(normalized)
         min_area, max_area = self._parse_area_bounds(normalized)
         rooms = self._parse_rooms(normalized)
-        districts = self._parse_districts(normalized)
         page_limit = self._parse_page_limit(normalized)
 
         return SearchCriteria(
             user_id=user_id,
-            city=city,
+            city=locations.city,
             deal_type=deal_type,
             property_type="apartment",
             min_price_kzt=min_price,
             max_price_kzt=max_price,
             rooms=rooms,
-            districts=districts,
+            districts=list(locations.districts) if locations.districts else None,
             min_area_m2=min_area,
             max_area_m2=max_area,
             page_limit=page_limit,
         )
 
-    def _refine_with_regex(self, *, criteria: SearchCriteria, message: str) -> SearchCriteria:
+    def _refine_with_regex(
+        self,
+        *,
+        criteria: SearchCriteria,
+        message: str,
+        locations: ResolvedLocations,
+    ) -> SearchCriteria:
         normalized = message.strip().lower()
         deal_type = self._find_deal_type(normalized)
-        city = self._find_city(normalized)
         min_price, max_price = self._parse_price_bounds(normalized)
         min_area, max_area = self._parse_area_bounds(normalized)
         rooms = self._parse_rooms(normalized)
-        districts = self._parse_districts(normalized)
         page_limit = self._find_page_limit(normalized)
 
         return SearchCriteria(
             user_id=criteria.user_id,
-            city=city or criteria.city,
+            city=locations.city,
             deal_type=deal_type or criteria.deal_type,
             property_type=criteria.property_type,
             min_price_kzt=criteria.min_price_kzt if min_price is None else min_price,
             max_price_kzt=criteria.max_price_kzt if max_price is None else max_price,
             rooms=criteria.rooms if rooms is None else rooms,
-            districts=criteria.districts if districts is None else districts,
+            districts=list(locations.districts) if locations.districts else None,
             min_area_m2=criteria.min_area_m2 if min_area is None else min_area,
             max_area_m2=criteria.max_area_m2 if max_area is None else max_area,
             page_limit=criteria.page_limit if page_limit is None else page_limit,
@@ -517,18 +488,6 @@ class IntentNode:
         sale_markers = ("куп", "покуп", "sale", "buy")
         if any(marker in text for marker in sale_markers):
             return "sale"
-        return None
-
-    def _parse_city(self, text: str) -> str:
-        city = self._find_city(text)
-        if city is not None:
-            return city
-        return self._default_city
-
-    def _find_city(self, text: str) -> str | None:
-        for alias, city in CITY_ALIASES.items():
-            if alias in text:
-                return city
         return None
 
     def _parse_price_bounds(self, text: str) -> tuple[int | None, int | None]:
@@ -605,15 +564,6 @@ class IntentNode:
 
         cleaned = sorted(room for room in rooms if room > 0)
         return cleaned or None
-
-    def _parse_districts(self, text: str) -> list[str] | None:
-        districts: list[str] = []
-        seen: set[str] = set()
-        for alias, canonical in DISTRICT_ALIASES.items():
-            if alias in text and canonical not in seen:
-                districts.append(canonical)
-                seen.add(canonical)
-        return districts or None
 
     def _parse_page_limit(self, text: str) -> int:
         parsed = self._find_page_limit(text)

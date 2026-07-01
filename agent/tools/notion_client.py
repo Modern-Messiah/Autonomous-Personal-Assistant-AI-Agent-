@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 import httpx
 
 from agent.models.enriched import EnrichedApartment
+from agent.tools.http_retry import request_with_retry
 
 NOTION_API_VERSION = "2022-06-28"
 
@@ -380,8 +381,9 @@ class NotionClient:
             timeout=self._timeout_seconds,
             transport=self._transport,
         ) as client:
-            response = await client.request(method, path, json=json)
-            response.raise_for_status()
+            response = await request_with_retry(
+                lambda: client.request(method, path, json=json)
+            )
             payload = response.json()
         if not isinstance(payload, dict):
             msg = "Notion API returned non-object JSON payload"

@@ -59,6 +59,36 @@ ROOMS_SINGLE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 ROOMS_OR_PATTERN = re.compile(r"(\d+)\s*(?:или|or)\s*(\d+)", re.IGNORECASE)
+# Word-number room counts so the spelled-out forms parse the same as "2-комнатная".
+# Both spellings (with and without the "yo" letter) are keyed so lookup is a plain
+# lowercased match with no character folding.
+_WORD_ROOMS: dict[str, int] = {
+    "одно": 1,
+    "двух": 2,
+    "трех": 3,
+    "трёх": 3,
+    "четырех": 4,
+    "четырёх": 4,
+    "пяти": 5,
+    "шести": 6,
+}
+ROOMS_WORD_PATTERN = re.compile(
+    r"(одно|двух|трёх|трех|четырёх|четырех|пяти|шести)[-\s]*ком\w*",
+    re.IGNORECASE,
+)
+# Colloquial single words (odnushka / dvushka / tryoshka / chetyryoshka).
+_SLANG_ROOMS: dict[str, int] = {
+    "однушк": 1,
+    "двушк": 2,
+    "трешк": 3,
+    "трёшк": 3,
+    "четырешк": 4,
+    "четырёшк": 4,
+}
+ROOMS_SLANG_PATTERN = re.compile(
+    r"(однушк|двушк|трёшк|трешк|четырёшк|четырешк)\w*",
+    re.IGNORECASE,
+)
 PAGE_LIMIT_PATTERN = re.compile(
     r"(?:pages?|page_limit|страниц\w*)\s*(\d+)",
     re.IGNORECASE,
@@ -561,6 +591,16 @@ class IntentNode:
 
         for room_str in ROOMS_SINGLE_PATTERN.findall(text):
             rooms.add(int(room_str))
+
+        for word in ROOMS_WORD_PATTERN.findall(text):
+            count = _WORD_ROOMS.get(word.lower())
+            if count is not None:
+                rooms.add(count)
+
+        for word in ROOMS_SLANG_PATTERN.findall(text):
+            count = _SLANG_ROOMS.get(word.lower())
+            if count is not None:
+                rooms.add(count)
 
         cleaned = sorted(room for room in rooms if room > 0)
         return cleaned or None

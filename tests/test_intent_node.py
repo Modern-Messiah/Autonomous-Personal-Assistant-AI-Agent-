@@ -127,6 +127,28 @@ async def test_intent_node_parses_rent_message() -> None:
     assert criteria.page_limit == 2
 
 
+@pytest.mark.parametrize(
+    ("message", "expected_rooms"),
+    [
+        ("2-комнатная в Павлодаре до 45 млн", [2]),
+        ("2 комнатная в Павлодаре до 45 млн", [2]),
+        ("двухкомнатная в Павлодаре до 45 млн", [2]),
+        ("двух комнатная в Павлодаре", [2]),
+        ("трёхкомнатную в Астане", [3]),
+        ("однокомнатная в Алматы", [1]),
+        ("двушка в Алматы до 25 млн", [2]),
+        ("трёшка в Астане", [3]),
+    ],
+)
+@pytest.mark.asyncio
+async def test_intent_node_parses_room_word_forms(
+    message: str, expected_rooms: list[int]
+) -> None:
+    node = IntentNode(llm_parser_factory=lambda: None)
+    criteria = await node.parse(user_id=1, message=message)
+    assert criteria.rooms == expected_rooms
+
+
 @pytest.mark.asyncio
 async def test_intent_node_reports_when_default_city_is_used() -> None:
     node = IntentNode(llm_parser_factory=lambda: None)

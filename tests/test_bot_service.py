@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
+from agent.locations import LocationInputError
 from agent.models.apartment import Apartment
 from agent.models.criteria import SearchCriteria
 from agent.models.enriched import EnrichedApartment
@@ -66,6 +67,34 @@ class FakeSession:
 
     async def commit(self) -> None:
         self.commit_calls += 1
+
+
+@pytest.mark.asyncio
+async def test_invalid_location_does_not_persist_or_run_search() -> None:
+    calls = 0
+
+    async def runner(*args, **kwargs):
+        nonlocal calls
+        del args, kwargs
+        calls += 1
+        return []
+
+    session_factory = FakeSessionFactory()
+    service = SearchBotService(
+        session_factory=session_factory,
+        intent_node=IntentNode(llm_parser_factory=lambda: None),
+        search_runner=runner,
+    )
+
+    with pytest.raises(LocationInputError, match="не относится"):
+        await service.run_search(
+            telegram_user_id=42,
+            username="tester",
+            query="Астана, Бостандыкский район",
+        )
+
+    assert calls == 0
+    assert session_factory.session.commit_calls == 0
 
 
 def build_apartment(external_id: str = "900100") -> EnrichedApartment:

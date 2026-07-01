@@ -11,6 +11,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from aiogram.utils.chat_action import ChatActionSender
 
+from agent.locations import LocationInputError
 from bot.card_sender import send_apartment_card
 from bot.dialog_agent import DialogAgent, DialogTurnResult
 from bot.formatters import (
@@ -203,7 +204,7 @@ def create_bot_router(service: SearchBotService) -> Router:
                     username=message.from_user.username,
                     query=query,
                 )
-        except SearchExecutionError as exc:
+        except (LocationInputError, SearchExecutionError) as exc:
             await message.answer(exc.user_message)
             return
         await send_search_execution(message, state, result)
@@ -254,7 +255,7 @@ def create_bot_router(service: SearchBotService) -> Router:
                 "Напиши, например: «только 3 комнаты и до 35 млн»."
             )
             return
-        except SearchExecutionError as exc:
+        except (LocationInputError, SearchExecutionError) as exc:
             await message.answer(exc.user_message)
             return
 
@@ -342,7 +343,7 @@ def create_bot_router(service: SearchBotService) -> Router:
                 "и /foryou начнёт подбирать похожие."
             )
             return
-        except SearchExecutionError as exc:
+        except (LocationInputError, SearchExecutionError) as exc:
             await message.answer(exc.user_message)
             return
         await send_recommendations(message, result)

@@ -45,6 +45,14 @@ def test_mismatched_district_is_rejected() -> None:
         )
 
 
+def test_mismatched_known_district_is_rejected_without_llm() -> None:
+    with pytest.raises(LocationInputError, match="не относится"):
+        resolve_locations(
+            message="квартира в Астане, Бостандыкский район",
+            default_city="Almaty",
+        )
+
+
 def test_ambiguous_district_without_city_is_rejected() -> None:
     with pytest.raises(LocationInputError, match="укажи город"):
         resolve_locations(

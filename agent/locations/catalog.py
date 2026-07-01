@@ -34,6 +34,19 @@ def _alias_pattern(alias: str) -> re.Pattern[str]:
     return re.compile(rf"(?<!\w){escaped}{suffix}(?!\w)", re.IGNORECASE)
 
 
+def _alias_variants(alias: str) -> tuple[str, ...]:
+    """Return an alias plus a Russian adjective stem when applicable."""
+    normalized = normalize_location_text(alias)
+    variants = [normalized]
+    for ending in ("ский", "ская", "ское"):
+        if normalized.endswith(ending):
+            stem = normalized[: -len(ending)]
+            if len(stem) >= 4:
+                variants.append(stem)
+            break
+    return tuple(variants)
+
+
 @dataclass(frozen=True, slots=True)
 class CatalogMetadata:
     """Provenance of the official location snapshot."""
@@ -122,8 +135,10 @@ class LocationCatalog:
         for city in self.cities:
             aliases = {city.canonical, city.name_ru, city.name_kk, *city.aliases}
             for alias in aliases:
-                normalized = normalize_location_text(alias)
-                matchers.append((len(normalized), _alias_pattern(alias), city.canonical))
+                for variant in _alias_variants(alias):
+                    matchers.append(
+                        (len(variant), _alias_pattern(variant), city.canonical)
+                    )
         return tuple(sorted(matchers, key=lambda item: item[0], reverse=True))
 
     @staticmethod
@@ -139,8 +154,10 @@ class LocationCatalog:
                 *district.aliases,
             }
             for alias in aliases:
-                normalized = normalize_location_text(alias)
-                matchers.append((len(normalized), _alias_pattern(alias), district.canonical))
+                for variant in _alias_variants(alias):
+                    matchers.append(
+                        (len(variant), _alias_pattern(variant), district.canonical)
+                    )
         return tuple(sorted(matchers, key=lambda item: item[0], reverse=True))
 
     def _validate(self) -> None:
@@ -244,7 +261,6 @@ class LocationCatalog:
     def unambiguous_district_aliases(self) -> dict[str, str]:
         """Return aliases that identify only one canonical district globally."""
         owners: dict[str, set[str]] = {}
-        originals: dict[str, str] = {}
         for city in self.cities:
             for district in city.districts:
                 for alias in {
@@ -253,11 +269,10 @@ class LocationCatalog:
                     district.name_kk,
                     *district.aliases,
                 }:
-                    normalized = normalize_location_text(alias)
-                    originals.setdefault(normalized, alias)
-                    owners.setdefault(normalized, set()).add(district.canonical)
+                    for variant in _alias_variants(alias):
+                        owners.setdefault(variant, set()).add(district.canonical)
         return {
-            originals[alias]: next(iter(canonicals))
+            alias: next(iter(canonicals))
             for alias, canonicals in owners.items()
             if len(canonicals) == 1
         }

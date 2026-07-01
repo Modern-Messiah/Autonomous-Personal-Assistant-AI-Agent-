@@ -34,6 +34,17 @@ def _alias_pattern(alias: str) -> re.Pattern[str]:
     return re.compile(rf"(?<!\w){escaped}{suffix}(?!\w)", re.IGNORECASE)
 
 
+def _city_alias_pattern(alias: str) -> re.Pattern[str]:
+    """Match a city plus common case endings, but never district adjectives."""
+    normalized = normalize_location_text(alias)
+    escaped = re.escape(normalized).replace(r"\ ", r"[\s-]+")
+    suffix = (
+        r"(?:\u0435|\u0430|\u0443|\u043e\u043c|\u0435\u043c|"
+        r"\u044b|\u0438|\u044f|\u044e)?"
+    )
+    return re.compile(rf"(?<!\w){escaped}{suffix}(?!\w)", re.IGNORECASE)
+
+
 def _alias_variants(alias: str) -> tuple[str, ...]:
     """Return an alias plus a Russian adjective stem when applicable."""
     normalized = normalize_location_text(alias)
@@ -137,7 +148,7 @@ class LocationCatalog:
             for alias in aliases:
                 for variant in _alias_variants(alias):
                     matchers.append(
-                        (len(variant), _alias_pattern(variant), city.canonical)
+                        (len(variant), _city_alias_pattern(variant), city.canonical)
                     )
         return tuple(sorted(matchers, key=lambda item: item[0], reverse=True))
 

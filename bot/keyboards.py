@@ -7,6 +7,7 @@ LIST_CALLBACK_DATA = "dialog:list"
 SEARCH_MORE_CALLBACK_DATA = "dialog:more"
 DELETE_SAVED_PREFIX = "saved:del:"
 RESTORE_TRASH_PREFIX = "trash:restore:"
+PURGE_TRASH_PREFIX = "trash:purge:"
 APT_SAVE_PREFIX = "apt:save:"
 APT_REJECT_PREFIX = "apt:reject:"
 
@@ -50,7 +51,8 @@ def build_saved_item_keyboard(
 def build_trashed_item_keyboard(
     external_id: str, url: str | None = None
 ) -> InlineKeyboardMarkup:
-    """Keyboard for a trashed apartment: open on Krisha (if known) + restore."""
+    """Keyboard for a trashed apartment: open on Krisha (if known), restore, or
+    delete it forever (permanent dismiss — stays hidden, not recoverable)."""
     rows: list[list[InlineKeyboardButton]] = []
     if url:
         rows.append([InlineKeyboardButton(text="🌐 Открыть на Krisha", url=url)])
@@ -59,6 +61,10 @@ def build_trashed_item_keyboard(
             InlineKeyboardButton(
                 text="♻️ Восстановить",
                 callback_data=f"{RESTORE_TRASH_PREFIX}{external_id}",
+            ),
+            InlineKeyboardButton(
+                text="🗑 Удалить навсегда",
+                callback_data=f"{PURGE_TRASH_PREFIX}{external_id}",
             ),
         ]
     )

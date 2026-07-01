@@ -27,6 +27,7 @@ from bot.keyboards import (
     APT_SAVE_PREFIX,
     DELETE_SAVED_PREFIX,
     LIST_CALLBACK_DATA,
+    PURGE_TRASH_PREFIX,
     REFINE_CALLBACK_DATA,
     RESTORE_TRASH_PREFIX,
     SEARCH_MORE_CALLBACK_DATA,
@@ -558,6 +559,23 @@ def create_bot_router(service: SearchBotService) -> Router:
         else:
             text = "Уже восстановлено"
         await callback.answer(text)
+
+    @router.callback_query(F.data.startswith(PURGE_TRASH_PREFIX))
+    async def handle_purge_trash_callback(callback: CallbackQuery) -> None:
+        if callback.from_user is None or callback.data is None:
+            await callback.answer()
+            return
+        external_id = callback.data[len(PURGE_TRASH_PREFIX):]
+        purged = await service.purge_trashed_apartment(
+            telegram_user_id=callback.from_user.id,
+            external_id=external_id,
+        )
+        if purged and isinstance(callback.message, Message):
+            with contextlib.suppress(Exception):
+                await callback.message.delete()
+        await callback.answer(
+            "🗑 Удалено навсегда — больше не покажу" if purged else "Уже удалено"
+        )
 
     @router.message(SearchDialogStates.waiting_for_refinement)
     async def handle_refinement_message(message: Message, state: FSMContext) -> None:

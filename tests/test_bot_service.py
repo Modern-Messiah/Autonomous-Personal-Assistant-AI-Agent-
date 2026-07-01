@@ -418,6 +418,25 @@ async def test_search_bot_service_restore_unrejects(monkeypatch: pytest.MonkeyPa
     assert session_factory.session.commit_calls == 1
 
 
+@pytest.mark.asyncio
+async def test_search_bot_service_purges_trashed_apartment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_factory = FakeSessionFactory()
+    service = SearchBotService(session_factory=session_factory, search_runner=fake_search_runner)
+
+    async def fake_tombstone(session, *, telegram_user_id: int, external_id: str):
+        del session
+        assert telegram_user_id == 77
+        assert external_id == "900100"
+        return True
+
+    monkeypatch.setattr("bot.service.tombstone_apartment_feedback", fake_tombstone)
+
+    assert await service.purge_trashed_apartment(telegram_user_id=77, external_id="900100") is True
+    assert session_factory.session.commit_calls == 1
+
+
 def test_build_trashed_item_keyboard_has_restore_and_open() -> None:
     from bot.keyboards import build_trashed_item_keyboard
 
@@ -425,6 +444,7 @@ def test_build_trashed_item_keyboard_has_restore_and_open() -> None:
     buttons = [button for row in keyboard.inline_keyboard for button in row]
     assert any(button.url == "https://krisha.kz/a/show/900100" for button in buttons)
     assert any(button.callback_data == "trash:restore:900100" for button in buttons)
+    assert any(button.callback_data == "trash:purge:900100" for button in buttons)
 
 
 @pytest.mark.asyncio

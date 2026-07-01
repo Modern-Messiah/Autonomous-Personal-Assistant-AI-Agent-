@@ -2,10 +2,23 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 
 from agent.locations.catalog import LocationCatalog
+
+_DISTRICT_AFTER_MARKER = re.compile(
+    (
+        r"(?:\b\u0440\u0430\u0439\u043e\u043d"
+        r"(?:\u0435|\u0430|\u0443|\u043e\u043c)?\b"
+        r"|\b\u0440-\u043d\b"
+        r"|\b\u0430\u0443\u0434\u0430\u043d"
+        r"(?:\u044b|\u044b\u043d\u0434\u0430)?\b)"
+        r"\s+([^,.;]+)"
+    ),
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,17 +111,21 @@ def resolve_locations(
     existing_districts: Iterable[str] | None = None,
 ) -> ResolvedLocations:
     """Resolve new-search or refinement locations with strict validation."""
+    marker_matches = list(_DISTRICT_AFTER_MARKER.finditer(message))
+    marker_districts = tuple(match.group(1).strip() for match in marker_matches)
+    message_without_marker_districts = _DISTRICT_AFTER_MARKER.sub(" ", message)
+
     explicit_city = None
     if llm_city is not None:
         explicit_city = catalog.canonical_city(llm_city)
         if explicit_city is None:
             raise LocationInputError(f"Город «{llm_city}» не удалось распознать.")
 
-    message_city = catalog.find_city_in_text(message)
+    message_city = catalog.find_city_in_text(message_without_marker_districts)
     selected_city = explicit_city or message_city
     city_was_supplied = selected_city is not None
 
-    raw_districts = tuple(llm_districts or ())
+    raw_districts = tuple(llm_districts or marker_districts)
     selected_districts: tuple[str, ...] | None = None
     if raw_districts:
         selected_city, selected_districts = _resolve_explicit_districts(

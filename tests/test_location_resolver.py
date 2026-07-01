@@ -62,6 +62,24 @@ def test_ambiguous_district_without_city_is_rejected() -> None:
         )
 
 
+def test_ambiguous_district_marker_is_rejected_without_llm() -> None:
+    with pytest.raises(LocationInputError, match="укажи город"):
+        resolve_locations(
+            message="квартира в районе Алматы",
+            default_city="Almaty",
+        )
+
+
+def test_district_marker_does_not_replace_explicit_city() -> None:
+    result = resolve_locations(
+        message="квартира в Астане, район Алматы",
+        default_city="Almaty",
+    )
+
+    assert result.city == "Astana"
+    assert result.districts == ("Almaty",)
+
+
 def test_invalid_llm_city_is_not_silently_defaulted() -> None:
     with pytest.raises(LocationInputError, match="Город"):
         resolve_locations(

@@ -33,6 +33,7 @@ from db import (
     mark_apartments_seen,
     replace_active_search_criteria,
     restore_apartment_feedback,
+    tombstone_apartment_feedback,
     update_apartment_feedback_notion_sync,
     upsert_apartment_feedback,
     upsert_apartment_records,
@@ -470,6 +471,26 @@ class SearchBotService:
                 await session.commit()
                 return "unrejected"
             return None
+
+    async def purge_trashed_apartment(
+        self,
+        *,
+        telegram_user_id: int,
+        external_id: str,
+    ) -> bool:
+        """Permanently dismiss a trashed apartment ("delete forever").
+
+        Leaves /trash for good and stays hidden from search; not recoverable.
+        Returns True if a trashed row was affected.
+        """
+        async with self._session_factory() as session:
+            purged = await tombstone_apartment_feedback(
+                session,
+                telegram_user_id=telegram_user_id,
+                external_id=external_id,
+            )
+            await session.commit()
+            return purged
 
     async def save_apartment(
         self,

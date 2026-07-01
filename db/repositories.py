@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, cast
 
-from sqlalchemy import Select, delete, func, select
+from sqlalchemy import Select, delete, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -674,6 +674,43 @@ async def clear_apartment_feedback(
     records = list(result.scalars())
     for record in records:
         await session.delete(record)
+    return bool(records)
+
+
+async def tombstone_apartment_feedback(
+    session: AsyncSession,
+    *,
+    telegram_user_id: int,
+    external_id: str,
+) -> bool:
+    """Permanently dismiss a trashed listing (the "delete forever" action).
+
+    Applies to a row that is currently in /trash — either deleted-from-saved
+    (``deleted_at`` set) or rejected — and turns it into a hidden tombstone
+    (``decision='rejected'``, ``deleted_at`` set). The listing stays hidden from
+    search (the search filter counts any feedback row) but leaves /trash for good
+    and is not recoverable. An actively saved item (in /list) is left untouched.
+    Returns True if a row was affected.
+    """
+    statement = (
+        select(ApartmentFeedbackRecord)
+        .join(ApartmentRecord, ApartmentFeedbackRecord.apartment_id == ApartmentRecord.id)
+        .join(User, ApartmentFeedbackRecord.user_id == User.id)
+        .where(
+            User.telegram_user_id == telegram_user_id,
+            ApartmentRecord.external_id == external_id,
+            or_(
+                ApartmentFeedbackRecord.deleted_at.is_not(None),
+                ApartmentFeedbackRecord.decision == "rejected",
+            ),
+        )
+    )
+    result = await session.execute(statement)
+    records = list(result.scalars())
+    tombstoned_at = datetime.now(UTC)
+    for record in records:
+        record.decision = "rejected"
+        record.deleted_at = tombstoned_at
     return bool(records)
 
 

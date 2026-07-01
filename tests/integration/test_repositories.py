@@ -14,10 +14,12 @@ from db.models import ApartmentRecord, SeenApartment
 from db.repositories import (
     clear_apartment_feedback,
     delete_apartment_feedback,
+    get_apartment_feedback_map,
     list_feedback_apartments,
     list_trashed_apartments,
     mark_apartments_seen,
     restore_apartment_feedback,
+    tombstone_apartment_feedback,
     upsert_apartment_feedback,
     upsert_apartment_records,
     upsert_telegram_user,
@@ -136,6 +138,41 @@ async def test_clear_rejected_feedback_removes_it_from_search_and_trash(
         assert not await clear_apartment_feedback(
             session, telegram_user_id=1003, external_id="apt-1", decision="rejected"
         )
+
+
+@pytest.mark.asyncio
+async def test_tombstone_removes_from_trash_but_keeps_it_hidden(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        user = await upsert_telegram_user(
+            session, telegram_user_id=1004, username="integration"
+        )
+        record = (await upsert_apartment_records(session, apartments=[apartment()]))[0]
+        user_id = user.id
+        await upsert_apartment_feedback(
+            session, user_id=user_id, apartments=[record], decision="rejected"
+        )
+        await session.commit()
+
+    async with session_factory() as session:
+        assert await tombstone_apartment_feedback(
+            session, telegram_user_id=1004, external_id="apt-1"
+        )
+        await session.commit()
+
+    async with session_factory() as session:
+        record = (await upsert_apartment_records(session, apartments=[apartment()]))[0]
+        # Gone from both trash views...
+        assert await list_feedback_apartments(
+            session, telegram_user_id=1004, decision="rejected"
+        ) == []
+        assert await list_trashed_apartments(session, telegram_user_id=1004) == []
+        # ...but the feedback row still exists, so search keeps hiding it.
+        feedback_map = await get_apartment_feedback_map(
+            session, user_id=user_id, apartments=[record]
+        )
+        assert feedback_map.get(record.id) == "rejected"
 
 
 @pytest.mark.asyncio

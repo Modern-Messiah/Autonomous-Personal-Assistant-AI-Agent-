@@ -1,0 +1,16 @@
+# Production override: run the CI-built, smoke-tested image from GHCR instead of
+# building on the VPS. The base podman-compose.yml still builds locally for dev.
+#
+# VPS usage:
+#   podman login ghcr.io
+#   podman-compose -f podman-compose.yml -f podman-compose.prod.yml pull
+#   podman-compose -f podman-compose.yml -f podman-compose.prod.yml up -d
+services:
+  migrate:
+    image: ghcr.io/modern-messiah/krisha-agent:latest
+  bot:
+    image: ghcr.io/modern-messiah/krisha-agent:latest
+  scheduler-producer:
+    image: ghcr.io/modern-messiah/krisha-agent:latest
+  scheduler-worker:
+    image: ghcr.io/modern-messiah/krisha-agent:latest

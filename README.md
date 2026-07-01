@@ -218,7 +218,7 @@ Current scheduler behavior:
 
 ## Podman Stack
 
-The repository includes a shared runtime image in [Containerfile](/home/workpc/Desktop/Autonomous-Personal-Assistant-AI-Agent-/Containerfile) and a local stack in [podman-compose.yml](/home/workpc/Desktop/Autonomous-Personal-Assistant-AI-Agent-/podman-compose.yml).
+The repository includes a shared runtime image in [Containerfile](Containerfile) and a local stack in [podman-compose.yml](podman-compose.yml).
 
 Suggested local flow:
 
@@ -249,18 +249,27 @@ Current stack layout:
 
 ## Container Workflow
 
-GitHub Actions now includes [container.yml](/home/workpc/Desktop/Autonomous-Personal-Assistant-AI-Agent-/.github/workflows/container.yml):
+GitHub Actions now includes [container.yml](.github/workflows/container.yml):
 
-- pull requests build the runtime image for validation,
+- pull requests build the runtime image and smoke-test it (runs as non-root, imports `bot.app`/`scheduler.app`),
 - pushes to `main` build and push the image to `ghcr.io/<owner>/krisha-agent`.
+
+To consume that prebuilt image in production instead of building on the VPS, layer
+[podman-compose.prod.yml](podman-compose.prod.yml) on top of the base stack:
+
+```bash
+podman login ghcr.io
+podman-compose -f podman-compose.yml -f podman-compose.prod.yml pull
+podman-compose -f podman-compose.yml -f podman-compose.prod.yml up -d
+```
 
 ## VPS Deploy
 
 The repository includes a rootless Podman deploy path for Ubuntu 24:
 
-- [bootstrap_ubuntu_24.sh](/home/workpc/Desktop/Autonomous-Personal-Assistant-AI-Agent-/deploy/vps/bootstrap_ubuntu_24.sh) installs Podman prerequisites and enables linger for the deploy user.
-- [krisha-agent-compose.service.template](/home/workpc/Desktop/Autonomous-Personal-Assistant-AI-Agent-/deploy/systemd/krisha-agent-compose.service.template) wraps the full `podman-compose` stack in a user-level systemd service.
-- [install_user_service.sh](/home/workpc/Desktop/Autonomous-Personal-Assistant-AI-Agent-/deploy/systemd/install_user_service.sh) renders the template into `~/.config/systemd/user`.
+- [bootstrap_ubuntu_24.sh](deploy/vps/bootstrap_ubuntu_24.sh) installs Podman prerequisites and enables linger for the deploy user.
+- [krisha-agent-compose.service.template](deploy/systemd/krisha-agent-compose.service.template) wraps the full `podman-compose` stack in a user-level systemd service.
+- [install_user_service.sh](deploy/systemd/install_user_service.sh) renders the template into `~/.config/systemd/user`.
 
 Suggested VPS flow:
 

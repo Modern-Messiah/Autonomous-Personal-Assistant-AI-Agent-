@@ -243,8 +243,13 @@ def test_matches_criteria_filters_by_district() -> None:
     assert KrishaParser._matches_criteria(make_preview(district="Бостандыкский район"), criteria)
     # a different district -> filtered out
     assert not KrishaParser._matches_criteria(make_preview(district="Медеуский район"), criteria)
-    # district unknown on the card (and no address) -> kept, not dropped by mistake
-    assert KrishaParser._matches_criteria(make_preview(district=None), criteria)
+    # district requested but unconfirmed -> dropped (was the leak: unknown districts
+    # slipped into a specific-district search)
+    assert not KrishaParser._matches_criteria(make_preview(district=None), criteria)
+    # a suburb/village whose address is not the requested district -> dropped
+    assert not KrishaParser._matches_criteria(
+        make_preview(district=None, address="пос. Гульдала, Гульдала"), criteria
+    )
 
 
 def test_matches_criteria_district_uses_address_fallback() -> None:

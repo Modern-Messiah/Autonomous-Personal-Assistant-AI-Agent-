@@ -120,6 +120,17 @@ def resolve_locations(
     elif selected_city is not None:
         found = catalog.find_districts_in_text(message, selected_city)
         selected_districts = found or None
+        if not found:
+            mismatches = [
+                (candidate_city, district)
+                for candidate_city, district in _district_matches(catalog, message)
+                if district != selected_city
+            ]
+            if mismatches:
+                district = mismatches[0][1]
+                raise LocationInputError(
+                    f"Район «{district}» не относится к городу {selected_city}."
+                )
     elif existing_city is not None:
         found = catalog.find_districts_in_text(message, existing_city)
         if found:

@@ -49,7 +49,7 @@ def test_catalog_contains_pinned_90_official_cities() -> None:
     assert LOCATIONS.metadata.updated_at == "2026-06-18"
     assert len(LOCATIONS.cities) == 90
     assert len({city.kato_code for city in LOCATIONS.cities}) == 90
-    assert len({city.krisha_slug for city in LOCATIONS.cities}) == 90
+    assert sum(city.krisha_slug is not None for city in LOCATIONS.cities) == 89
 
 
 def test_catalog_resolves_official_languages_and_historical_aliases() -> None:
@@ -113,13 +113,14 @@ class City:
     name_ru: str
     name_kk: str
     aliases: tuple[str, ...]
-    krisha_slug: str
+    krisha_slug: str | None
     districts: tuple[District, ...]
 ```
 
 `LocationCatalog.from_path()` must validate:
 
-- exactly one canonical name, KATO code and Krisha slug per city;
+- exactly one canonical name and KATO code per city, plus 89 unique Krisha
+  slugs and one explicit unavailable city (Zhem);
 - unique district KATO codes;
 - non-empty official names and aliases;
 - no alias collision between two cities after normalization;
@@ -134,7 +135,7 @@ Expose:
 ```python
 def canonical_city(self, text: str | None) -> str | None: ...
 def canonical_district(self, text: str | None, city: str | None) -> str | None: ...
-def city_slug(self, city: str) -> str: ...
+def city_slug(self, city: str) -> str | None: ...
 def cities_for_district(self, text: str) -> tuple[str, ...]: ...
 def districts_for_city(self, city: str) -> tuple[District, ...]: ...
 def find_city_in_text(self, text: str) -> str | None: ...
@@ -167,8 +168,9 @@ The JSON root is:
 Fill `cities` with the 90 `г.`/`қ.` city records from KATO. Attach KATO
 `район в городе` records only to their actual city parent. Each city receives a
 verified Krisha path slug and Russian, Kazakh, Latin, inflected and historical
-aliases where applicable. Preserve the four existing canonical city/district
-values so stored criteria remain readable.
+aliases where applicable. Zhem has `krisha_slug: null` because live Krisha
+region selection and URL verification show no corresponding location. Preserve
+the existing canonical city/district values so stored criteria remain readable.
 
 - [ ] **Step 5: Run catalog tests and verify GREEN**
 
@@ -695,7 +697,8 @@ unit-test or CI path.
 
 README must state:
 
-- all 90 official cities are supported;
+- all 90 official cities are recognised; 89 are searchable and Zhem receives an
+  explicit Krisha limitation;
 - districts are optional and city-scoped;
 - district requests exclude unconfirmed listings;
 - villages, settlements and microdistricts are excluded;

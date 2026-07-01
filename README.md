@@ -177,6 +177,36 @@ Current dialog additions:
 - a plain-text clarification like `только 3 комнаты и до 35 млн` merges into active criteria instead of resetting the whole search,
 - free-text messages like `покажи сохраненные квартиры` or `какой сейчас мониторинг` are routed through the dialog supervisor without slash commands.
 
+### Kazakhstan cities and districts
+
+`/search` recognizes all 90 official Kazakhstan cities from KATO
+`НК РК 11-2025` (snapshot updated 18 June 2026). Krisha currently exposes
+search pages for 89 of them. The official city of Zhem is recognized, but the
+bot returns a clear limitation message because Krisha has no Zhem location or
+URL instead of silently searching another city.
+
+An omitted district means the whole selected city. An explicitly supplied
+district is validated within its city and results are returned only after the
+listing preview or detail page confirms that district. The catalog contains all
+25 official city districts in Aktobe, Almaty, Astana, Karaganda, Shymkent and
+Taraz. Villages, settlements and microdistricts are intentionally excluded.
+
+Refresh/audit the pinned official data with:
+
+```bash
+curl -fsSL \
+  'https://stat.gov.kz/upload/iblock/ecf/td3x7i3ylpv00rgmlwitae1nbngfriqc/%D0%9A%D0%90%D0%A2%D0%9E_18.06.2026.xlsx' \
+  -o /tmp/KATO_18.06.2026.xlsx
+
+uv run python scripts/validate_kz_locations.py \
+  --kato-xlsx /tmp/KATO_18.06.2026.xlsx
+
+# Optional live URL audit; deliberately rate-limited and not part of CI.
+uv run python scripts/validate_kz_locations.py \
+  --kato-xlsx /tmp/KATO_18.06.2026.xlsx \
+  --audit-krisha --delay-seconds 2
+```
+
 ## Notion Sync
 
 Saved apartments can be exported to Notion automatically when all of these are set:

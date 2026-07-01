@@ -496,7 +496,32 @@
         "Жамбыл"
       ],
       "krisha_slug": "taraz",
-      "districts": []
+      "districts": [
+        {
+          "kato_code": "311011100",
+          "canonical": "Aulieata",
+          "name_ru": "район Әулиеата",
+          "name_kk": "Әулиеата ауданы",
+          "aliases": [
+            "Aulieata",
+            "Әулиеата",
+            "Аулиеата",
+            "Аулие-Ата"
+          ]
+        },
+        {
+          "kato_code": "311013100",
+          "canonical": "Zhibek Zholy",
+          "name_ru": "район Жібек жолы",
+          "name_kk": "Жібек жолы ауданы",
+          "aliases": [
+            "Zhibek Zholy",
+            "Жібек жолы",
+            "Жибек жолы",
+            "Жибек Жолы"
+          ]
+        }
+      ]
     },
     {
       "kato_code": "316020100",

@@ -645,6 +645,38 @@ async def restore_apartment_feedback(
     return bool(records)
 
 
+async def clear_apartment_feedback(
+    session: AsyncSession,
+    *,
+    telegram_user_id: int,
+    external_id: str,
+    decision: ApartmentDecision,
+) -> bool:
+    """Hard-delete an active feedback row (used to undo a rejection).
+
+    Unlike a soft delete, this removes the row entirely, so the listing is no
+    longer hidden from future searches (the search filter counts any feedback
+    row regardless of ``deleted_at``) and no longer feeds the taste profile.
+    Returns True if a row was removed.
+    """
+    statement = (
+        select(ApartmentFeedbackRecord)
+        .join(ApartmentRecord, ApartmentFeedbackRecord.apartment_id == ApartmentRecord.id)
+        .join(User, ApartmentFeedbackRecord.user_id == User.id)
+        .where(
+            User.telegram_user_id == telegram_user_id,
+            ApartmentRecord.external_id == external_id,
+            ApartmentFeedbackRecord.decision == decision,
+            ApartmentFeedbackRecord.deleted_at.is_(None),
+        )
+    )
+    result = await session.execute(statement)
+    records = list(result.scalars())
+    for record in records:
+        await session.delete(record)
+    return bool(records)
+
+
 async def purge_stale_records(
     session: AsyncSession,
     *,

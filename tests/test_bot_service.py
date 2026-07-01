@@ -359,12 +359,21 @@ async def test_search_bot_service_lists_trashed(monkeypatch: pytest.MonkeyPatch)
         del session
         assert telegram_user_id == 77
         assert limit == 7
-        return [build_apartment()]
+        return [build_apartment(external_id="deleted-1")]
+
+    async def fake_list_feedback(session, *, telegram_user_id: int, decision, limit: int):
+        del session
+        assert telegram_user_id == 77
+        assert decision == "rejected"
+        assert limit == 7
+        return [build_apartment(external_id="rejected-1")]
 
     monkeypatch.setattr("bot.service.list_trashed_apartments", fake_list_trashed)
+    monkeypatch.setattr("bot.service.list_feedback_apartments", fake_list_feedback)
 
     items = await service.get_trashed_apartments(telegram_user_id=77, limit=7)
-    assert len(items) == 1
+    # Corzina merges rejected + deleted-from-saved, rejected first.
+    assert [item.apartment.external_id for item in items] == ["rejected-1", "deleted-1"]
 
 
 @pytest.mark.asyncio
@@ -380,7 +389,32 @@ async def test_search_bot_service_restores_apartment(monkeypatch: pytest.MonkeyP
 
     monkeypatch.setattr("bot.service.restore_apartment_feedback", fake_restore)
 
-    assert await service.restore_apartment(telegram_user_id=77, external_id="900100") is True
+    outcome = await service.restore_apartment(telegram_user_id=77, external_id="900100")
+    assert outcome == "restored_to_saved"
+    assert session_factory.session.commit_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_search_bot_service_restore_unrejects(monkeypatch: pytest.MonkeyPatch) -> None:
+    session_factory = FakeSessionFactory()
+    service = SearchBotService(session_factory=session_factory, search_runner=fake_search_runner)
+
+    async def fake_restore(session, *, telegram_user_id: int, external_id: str):
+        del session, telegram_user_id, external_id
+        return False  # nothing soft-deleted to bring back
+
+    async def fake_clear(session, *, telegram_user_id: int, external_id: str, decision):
+        del session
+        assert telegram_user_id == 77
+        assert external_id == "900100"
+        assert decision == "rejected"
+        return True  # an active rejection was cleared
+
+    monkeypatch.setattr("bot.service.restore_apartment_feedback", fake_restore)
+    monkeypatch.setattr("bot.service.clear_apartment_feedback", fake_clear)
+
+    outcome = await service.restore_apartment(telegram_user_id=77, external_id="900100")
+    assert outcome == "unrejected"
     assert session_factory.session.commit_calls == 1
 
 

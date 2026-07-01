@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+import difflib
 import json
 import re
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+# A misspelled city token is accepted only when its best match is this similar
+# AND clearly ahead of the runner-up, so a typo is corrected without mapping to
+# the wrong city.
+_FUZZY_CITY_MIN_RATIO = 0.82
+_FUZZY_CITY_MIN_GAP = 0.06
 
 _DASHES = str.maketrans(
     {"\u2013": "-", "\u2014": "-", "\u2212": "-", "\u2011": "-"}
@@ -214,6 +221,34 @@ class LocationCatalog:
         for _, pattern, canonical in self._city_matchers:
             if pattern.search(normalized):
                 return canonical
+        return None
+
+    def fuzzy_city(self, text: str | None) -> str | None:
+        """Best-effort match for a misspelled *single city token* (e.g. "Алмата").
+
+        Intended for a clean token such as the LLM's ``city`` field, not free-form
+        text. Conservative: needs a strong, unambiguous winner (see the module
+        thresholds), so a typo is corrected without silently mapping to the wrong
+        city. Returns None when nothing is close enough.
+        """
+        if not text:
+            return None
+        token = normalize_location_text(text)
+        if len(token.replace(" ", "")) < 4:
+            return None
+        scored: list[tuple[float, str]] = []
+        for city in self.cities:
+            aliases = {city.canonical, city.name_ru, city.name_kk, *city.aliases}
+            best = max(
+                difflib.SequenceMatcher(None, token, normalize_location_text(alias)).ratio()
+                for alias in aliases
+            )
+            scored.append((best, city.canonical))
+        scored.sort(key=lambda row: row[0], reverse=True)
+        top_ratio, top_city = scored[0]
+        runner_up = scored[1][0] if len(scored) > 1 else 0.0
+        if top_ratio >= _FUZZY_CITY_MIN_RATIO and top_ratio - runner_up >= _FUZZY_CITY_MIN_GAP:
+            return top_city
         return None
 
     def canonical_district(self, text: str | None, city: str | None) -> str | None:

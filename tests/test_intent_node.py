@@ -203,6 +203,22 @@ async def test_regex_fallback_recognizes_new_catalog_city_and_district() -> None
 
 
 @pytest.mark.asyncio
+async def test_misspelled_llm_city_is_corrected() -> None:
+    # The LLM echoes the user's typo ("Алмата"); the resolver corrects it instead
+    # of failing with "город не удалось распознать".
+    node = IntentNode(
+        llm_parser=StubLLMIntentParser({"city": "Алмата", "rooms": [2]})
+    )
+
+    criteria = await node.parse(
+        user_id=1, message="двух комнатная квартира Алмата до 50 миллионов"
+    )
+
+    assert criteria.city == "Almaty"
+    assert criteria.rooms == [2]
+
+
+@pytest.mark.asyncio
 async def test_llm_location_text_is_validated_against_catalog() -> None:
     node = IntentNode(
         llm_parser=StubLLMIntentParser(

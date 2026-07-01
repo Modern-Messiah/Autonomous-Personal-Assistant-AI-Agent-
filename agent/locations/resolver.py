@@ -117,7 +117,8 @@ def resolve_locations(
 
     explicit_city = None
     if llm_city is not None:
-        explicit_city = catalog.canonical_city(llm_city)
+        # Correct common misspellings (e.g. "Алмата" -> Almaty) before giving up.
+        explicit_city = catalog.canonical_city(llm_city) or catalog.fuzzy_city(llm_city)
         if explicit_city is None:
             raise LocationInputError(f"Город «{llm_city}» не удалось распознать.")
 

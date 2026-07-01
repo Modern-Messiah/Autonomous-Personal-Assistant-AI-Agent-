@@ -19,9 +19,17 @@ def configure_observability(settings: Settings | None = None) -> None:
         force=True,
     )
 
-    sentry_enabled = active.api.sentry_dsn is not None
+    # A malformed/placeholder DSN must never crash the whole process — observability
+    # setup should degrade to "disabled", not take the bot down in a restart loop.
+    sentry_enabled = False
     if active.api.sentry_dsn is not None:
-        sentry_sdk.init(dsn=active.api.sentry_dsn, environment=active.app.env)
+        try:
+            sentry_sdk.init(dsn=active.api.sentry_dsn, environment=active.app.env)
+            sentry_enabled = True
+        except Exception:
+            logging.getLogger(__name__).warning(
+                "invalid API__SENTRY_DSN; error tracking disabled", exc_info=True
+            )
 
     langsmith_key = active.api.langsmith_api_key
     langsmith_project = active.api.langsmith_project

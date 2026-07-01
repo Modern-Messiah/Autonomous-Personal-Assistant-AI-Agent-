@@ -47,6 +47,37 @@ def test_every_city_official_name_resolves_to_itself() -> None:
         assert LOCATIONS.canonical_city(city.name_kk) == city.canonical
 
 
+def test_common_almaty_misspelling_resolves() -> None:
+    # "Алмата" is a frequent misspelling of Алматы; kept as an explicit alias.
+    assert LOCATIONS.canonical_city("Алмата") == "Almaty"
+    assert LOCATIONS.canonical_city("Алма-Ата") == "Almaty"
+
+
+@pytest.mark.parametrize(
+    ("typo", "canonical"),
+    [
+        ("Алмата", "Almaty"),
+        ("Астанна", "Astana"),
+        ("Шымкнт", "Shymkent"),
+        ("Караганада", "Karaganda"),
+        ("Кустанай", "Kostanay"),
+        ("Павладар", "Pavlodar"),
+        ("Атырак", "Atyrau"),
+    ],
+)
+def test_fuzzy_city_corrects_typos(typo: str, canonical: str) -> None:
+    assert LOCATIONS.fuzzy_city(typo) == canonical
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["Москва", "Брррр", "Ак", "Шу", ""],
+)
+def test_fuzzy_city_rejects_unknown_or_too_short(text: str) -> None:
+    # Foreign / gibberish / too-short tokens must not be force-mapped to a KZ city.
+    assert LOCATIONS.fuzzy_city(text) is None
+
+
 def test_district_lookup_is_scoped_to_city() -> None:
     assert LOCATIONS.canonical_district("Алматинский район", "Astana") == "Almaty"
     assert LOCATIONS.canonical_district("Алмалинский район", "Almaty") == "Almaly"

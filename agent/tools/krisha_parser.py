@@ -251,7 +251,7 @@ class KrishaParser:
                 )
                 raise
             else:
-                if self._apartment_matches_district(apartment, criteria):
+                if self._apartment_matches_criteria(apartment, criteria):
                     apartments.append(apartment)
                 else:
                     await self._release_preview(
@@ -465,6 +465,37 @@ class KrishaParser:
             criteria.city,
         ) or canonical_district(apartment.address, criteria.city)
         return found in wanted if found is not None else False
+
+    @staticmethod
+    def _apartment_matches_criteria(
+        apartment: Apartment,
+        criteria: SearchCriteria,
+    ) -> bool:
+        """Re-validate the enriched detail apartment against the full criteria.
+
+        The preview filter treats missing rooms/price/area (``None``) as a match,
+        and krisha injects promoted/VIP listings that ignore its own ``das[]``
+        filter. Such a listing can reach the detail fetch with a sparse card and
+        turn out to violate rooms/price (e.g. a 5-room at 160M on a "2-room ≤45M"
+        search). The detail page carries the real values, so enforce them here
+        (``None`` still tolerated) before delivering, then confirm the district.
+        """
+        rooms = apartment.rooms
+        if criteria.rooms and rooms is not None and rooms not in criteria.rooms:
+            return False
+        price = apartment.price_kzt
+        if price is not None:
+            if criteria.min_price_kzt is not None and price < criteria.min_price_kzt:
+                return False
+            if criteria.max_price_kzt is not None and price > criteria.max_price_kzt:
+                return False
+        area = apartment.area_m2
+        if area is not None:
+            if criteria.min_area_m2 is not None and area < criteria.min_area_m2:
+                return False
+            if criteria.max_area_m2 is not None and area > criteria.max_area_m2:
+                return False
+        return KrishaParser._apartment_matches_district(apartment, criteria)
 
     def _dedup_key(self, *, user_id: int, external_id: str) -> str:
         if self._dedup_namespace == "search":

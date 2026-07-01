@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import random
 from typing import Any
 
 import httpx
@@ -57,13 +59,17 @@ class DeepSeekApartmentScorer:
             timeout=self._timeout_seconds,
             transport=self._transport,
         ) as client:
-            for _ in range(self._max_retries + 1):
+            for attempt in range(self._max_retries + 1):
                 try:
                     response = await client.post(self._endpoint, headers=headers, json=payload)
                     response.raise_for_status()
                     content = self._extract_content(response.json())
                     return self._parse_scores(content, count=len(apartments))
                 except (httpx.HTTPError, json.JSONDecodeError, ValueError):
+                    if attempt < self._max_retries:
+                        # Backoff + jitter so a rate-limit/transient error isn't hit
+                        # again immediately on retry.
+                        await asyncio.sleep(min(4.0, 0.5 * (2**attempt)) + random.uniform(0, 0.5))
                     continue
 
         # DeepSeek has no strict JSON schema, so on persistent failure degrade

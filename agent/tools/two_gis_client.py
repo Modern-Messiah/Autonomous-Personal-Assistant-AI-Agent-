@@ -8,6 +8,8 @@ from typing import Protocol
 
 import httpx
 
+from agent.tools.http_retry import request_with_retry
+
 logger = logging.getLogger(__name__)
 
 
@@ -101,8 +103,9 @@ class TwoGISClient:
                 timeout=self._timeout_seconds,
                 transport=self._transport,
             ) as client:
-                response = await client.get(self._geocode_url, params=params)
-                response.raise_for_status()
+                response = await request_with_retry(
+                    lambda: client.get(self._geocode_url, params=params)
+                )
         except httpx.HTTPError:
             return None
 
@@ -165,8 +168,9 @@ class TwoGISClient:
                 timeout=self._timeout_seconds,
                 transport=self._transport,
             ) as client:
-                response = await client.get(self._items_url, params=params)
-                response.raise_for_status()
+                response = await request_with_retry(
+                    lambda: client.get(self._items_url, params=params)
+                )
         except httpx.HTTPError:
             logger.warning("2GIS nearby count request failed query=%s", query)
             return None

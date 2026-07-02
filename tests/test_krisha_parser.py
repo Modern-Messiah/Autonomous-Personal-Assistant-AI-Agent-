@@ -181,6 +181,57 @@ async def test_search_parses_listing_and_detail_pages() -> None:
     ]
 
 
+def test_listing_url_drops_tracking_query() -> None:
+    # Promoted "hot block" cards carry tracking params that redirect-loop the
+    # detail page; the parser must keep only the canonical /a/show/<id> path.
+    parser = KrishaParser(redis_client=FakeRedis(), min_delay_seconds=0, max_delay_seconds=0)
+    card = (
+        '<div class="a-card">'
+        '<a class="a-card__title" '
+        'href="/a/show/123?srchid=abc&srchtype=hot_block_filter&srchpos=2&source=search_advert">'
+        "2-комнатная квартира · 60 м² · 3/9 этаж</a>"
+        '<div class="a-card__price">40 000 000 〒</div>'
+        "</div>"
+    )
+    previews = parser.parse_listing_page(f"<html><body>{card}</body></html>")
+
+    assert previews
+    assert previews[0].url == "https://krisha.kz/a/show/123"
+    assert previews[0].external_id == "123"
+
+
+@pytest.mark.asyncio
+async def test_search_skips_listing_when_detail_fetch_fails() -> None:
+    # A single listing whose detail page fails to load (e.g. redirect loop) must
+    # be skipped, not sink the whole search.
+    cards = "".join(
+        f'<div class="a-card">'
+        f'<a class="a-card__title" href="/a/show/{external_id}">'
+        f"2-комнатная квартира · 60 м² · 3/9 этаж</a>"
+        f'<div class="a-card__price">40 000 000 〒</div>'
+        f"</div>"
+        for external_id in ("1", "2")
+    )
+    listing_html = f"<html><body>{cards}</body></html>"
+    detail_html = load_fixture("detail_123456789.html")
+    redis = FakeRedis()
+    parser = KrishaParser(redis_client=redis, min_delay_seconds=0, max_delay_seconds=0)
+    criteria = build_criteria(page_limit=1)
+    listing_url = parser._build_listing_urls(criteria)[0]
+    context = FakeBrowserContext(
+        {
+            listing_url: (200, listing_html),
+            "https://krisha.kz/a/show/1": RuntimeError("net::ERR_TOO_MANY_REDIRECTS"),
+            "https://krisha.kz/a/show/2": (200, detail_html),
+        }
+    )
+
+    apartments = await parser.search(context, criteria)
+
+    assert [apartment.external_id for apartment in apartments] == ["2"]
+    assert "krisha:seen:1:1" in redis.deleted_keys  # skipped listing's claim released
+
+
 @pytest.mark.asyncio
 async def test_search_raises_on_captcha_page() -> None:
     captcha_html = load_fixture("captcha_page.html")

@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit, urlunsplit
 
 from bs4 import BeautifulSoup
 
@@ -273,7 +273,13 @@ class KrishaHtmlParser:
 
     @staticmethod
     def _normalize_url(href: str) -> str:
-        return urljoin(BASE_URL, href)
+        # Drop tracking query/fragment (e.g. ?srchid=...&srchtype=hot_block_filter
+        # &srchpos=2&source=search_advert). On promoted "hot block" adverts those
+        # params send the detail page into a redirect loop (ERR_TOO_MANY_REDIRECTS);
+        # the bare /a/show/<id> path is the canonical, fetchable URL.
+        absolute = urljoin(BASE_URL, href)
+        split = urlsplit(absolute)
+        return urlunsplit((split.scheme, split.netloc, split.path, "", ""))
 
     @staticmethod
     def _extract_external_id(href: str) -> str | None:

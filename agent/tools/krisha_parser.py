@@ -7,6 +7,7 @@ browser I/O, deduplication, criteria filtering, and orchestration.
 from __future__ import annotations
 
 import asyncio
+import logging
 import random
 from enum import StrEnum
 from importlib import import_module
@@ -30,6 +31,8 @@ from agent.tools.krisha_html import (
 
 if TYPE_CHECKING:
     from playwright.async_api import Browser, BrowserContext
+
+logger = logging.getLogger(__name__)
 
 # Re-export the parsing types that used to live here so existing imports of
 # `agent.tools.krisha_parser` keep working after the HTML parser was split out.
@@ -245,11 +248,18 @@ class KrishaParser:
                     external_id=preview.external_id,
                 )
             except Exception:
+                # One bad listing (redirect loop, malformed detail page, transient
+                # network error) must not sink the whole search — skip it and move
+                # on. Release the dedup claim so it can be retried in a later run.
+                logger.warning(
+                    "Skipping listing %s: detail fetch/parse failed",
+                    preview.external_id,
+                    exc_info=True,
+                )
                 await self._release_preview(
                     user_id=criteria.user_id,
                     external_id=preview.external_id,
                 )
-                raise
             else:
                 if self._apartment_matches_criteria(apartment, criteria):
                     apartments.append(apartment)

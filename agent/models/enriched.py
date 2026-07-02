@@ -14,6 +14,10 @@ class EnrichedApartment(BaseModel):
     nearby_schools: int | None = Field(default=None, ge=0)
     nearby_parks: int | None = Field(default=None, ge=0)
     nearby_metro: int | None = Field(default=None, ge=0)
+    # Straight-line distance (meters) to the nearest object of each category.
+    nearby_school_m: int | None = Field(default=None, ge=0)
+    nearby_park_m: int | None = Field(default=None, ge=0)
+    nearby_metro_m: int | None = Field(default=None, ge=0)
     mortgage_monthly_payment_kzt: int | None = Field(default=None, ge=0)
     mortgage_total_overpayment_kzt: int | None = Field(default=None, ge=0)
 

@@ -72,6 +72,9 @@ class EnrichNode:
             nearby_schools=None if nearby is None else nearby.schools,
             nearby_parks=None if nearby is None else nearby.parks,
             nearby_metro=None if nearby is None else nearby.metro,
+            nearby_school_m=None if nearby is None else nearby.schools_nearest_m,
+            nearby_park_m=None if nearby is None else nearby.parks_nearest_m,
+            nearby_metro_m=None if nearby is None else nearby.metro_nearest_m,
             mortgage_monthly_payment_kzt=monthly_payment,
             mortgage_total_overpayment_kzt=overpayment,
         )

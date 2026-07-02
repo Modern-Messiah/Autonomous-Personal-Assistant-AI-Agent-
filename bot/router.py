@@ -28,10 +28,23 @@ from bot.keyboards import (
     DELETE_SAVED_PREFIX,
     LIST_CALLBACK_DATA,
     PURGE_TRASH_PREFIX,
+    REFINE_BACK,
     REFINE_CALLBACK_DATA,
+    REFINE_CITY_OTHER,
+    REFINE_DISTRICT_CLEAR,
+    REFINE_FIELD_PREFIX,
+    REFINE_RUN,
+    REFINE_SET_CITY_PREFIX,
+    REFINE_SET_DEAL_PREFIX,
+    REFINE_SET_DISTRICT_PREFIX,
     RESTORE_TRASH_PREFIX,
     SEARCH_MORE_CALLBACK_DATA,
     build_apartment_actions_keyboard,
+    build_refine_back_keyboard,
+    build_refine_city_keyboard,
+    build_refine_deal_keyboard,
+    build_refine_district_keyboard,
+    build_refine_menu_keyboard,
     build_saved_item_keyboard,
     build_search_followup_keyboard,
     build_trashed_item_keyboard,
@@ -47,6 +60,16 @@ from bot.service import (
     SearchExecutionError,
 )
 from bot.states import SearchDialogStates
+
+# Prompts for the typed fields of the guided refine menu, keyed by field name
+# stored in FSM data under "refine_field".
+REFINE_VALUE_PROMPTS = {
+    "rooms": "🚪 Напишите число комнат — например: 2, 2-3 или «двухкомнатная».",
+    "budget": "💰 Напишите бюджет — например: «до 45 млн» или «от 20 до 45 млн».",
+    "area": "📐 Напишите площадь — например: «от 50 м²» или «от 50 до 80 м²».",
+    "city": "🏙 Напишите город — например: Павлодар.",
+}
+REFINE_MENU_HINT = "🔧 Что изменить? Выбирай кнопками или введи значение, потом жми «Искать»."
 
 
 def create_bot_router(service: SearchBotService) -> Router:
@@ -64,6 +87,33 @@ def create_bot_router(service: SearchBotService) -> Router:
             return
         async with ChatActionSender.typing(bot=message.bot, chat_id=message.chat.id):
             yield
+
+    async def show_refine_menu(
+        target: Message,
+        telegram_user_id: int,
+        *,
+        edit: bool,
+    ) -> bool:
+        """Render the guided-refine menu (current criteria + field buttons).
+
+        Edits the message in place when ``edit`` is True (button navigation),
+        otherwise sends a new message. Returns False if there are no active
+        criteria yet.
+        """
+        criteria = await service.get_active_criteria(telegram_user_id=telegram_user_id)
+        if criteria is None:
+            await target.answer(
+                "Активные критерии не найдены. Сначала выполни поиск через /search."
+            )
+            return False
+        text = f"{REFINE_MENU_HINT}\n\n{format_criteria(criteria)}"
+        markup = build_refine_menu_keyboard(criteria.city)
+        if edit:
+            with contextlib.suppress(Exception):
+                await target.edit_text(text, reply_markup=markup)
+                return True
+        await target.answer(text, reply_markup=markup)
+        return True
 
     async def send_search_execution(
         message: Message,
@@ -225,20 +275,10 @@ def create_bot_router(service: SearchBotService) -> Router:
 
         query = (command.args or "").strip()
         if not query:
-            criteria = await service.get_active_criteria(
-                telegram_user_id=message.from_user.id,
-            )
-            if criteria is None:
-                await message.answer(
-                    "Активные критерии не найдены. Сначала выполни поиск через /search."
-                )
-                return
-            await state.set_state(SearchDialogStates.waiting_for_refinement)
-            await message.answer(
-                "Напиши, что изменить в критериях, например:\n"
-                "только 3 комнаты и до 35 млн\n\n"
-                "Для выхода из режима уточнения используй /cancel."
-            )
+            # No text: open the guided menu (buttons for city/deal/district,
+            # typed values for rooms/budget/area) instead of a blank free-text ask.
+            await state.clear()
+            await show_refine_menu(message, message.from_user.id, edit=False)
             return
 
         await message.answer("Уточняю критерии и запускаю поиск заново...")
@@ -455,28 +495,142 @@ def create_bot_router(service: SearchBotService) -> Router:
 
     @router.callback_query(F.data == REFINE_CALLBACK_DATA)
     async def handle_refine_callback(callback: CallbackQuery, state: FSMContext) -> None:
-        if callback.from_user is None:
+        if callback.from_user is None or not isinstance(callback.message, Message):
             await callback.answer()
             return
+        await state.clear()
+        await show_refine_menu(callback.message, callback.from_user.id, edit=False)
+        await callback.answer()
 
-        criteria = await service.get_active_criteria(
-            telegram_user_id=callback.from_user.id,
-        )
-        if criteria is None:
-            if callback.message is not None:
-                await callback.message.answer(
-                    "Активные критерии не найдены. Сначала выполни поиск через /search."
+    @router.callback_query(F.data.startswith(REFINE_FIELD_PREFIX))
+    async def handle_refine_field_callback(callback: CallbackQuery, state: FSMContext) -> None:
+        if callback.from_user is None or not isinstance(callback.message, Message):
+            await callback.answer()
+            return
+        field = (callback.data or "")[len(REFINE_FIELD_PREFIX):]
+        message = callback.message
+        if field == "city":
+            with contextlib.suppress(Exception):
+                await message.edit_text(
+                    "🏙 Выберите город:", reply_markup=build_refine_city_keyboard()
                 )
+        elif field == "deal":
+            with contextlib.suppress(Exception):
+                await message.edit_text("🤝 Тип сделки:", reply_markup=build_refine_deal_keyboard())
+        elif field == "district":
+            criteria = await service.get_active_criteria(telegram_user_id=callback.from_user.id)
+            if criteria is None:
+                await callback.answer("Сначала выполни поиск через /search.")
+                return
+            with contextlib.suppress(Exception):
+                await message.edit_text(
+                    "📍 Выберите район:",
+                    reply_markup=build_refine_district_keyboard(criteria.city),
+                )
+        elif field in REFINE_VALUE_PROMPTS:
+            await state.set_state(SearchDialogStates.waiting_for_refine_value)
+            await state.update_data(refine_field=field)
+            with contextlib.suppress(Exception):
+                await message.edit_text(
+                    REFINE_VALUE_PROMPTS[field],
+                    reply_markup=build_refine_back_keyboard(),
+                )
+        await callback.answer()
+
+    @router.callback_query(F.data.startswith(REFINE_SET_CITY_PREFIX))
+    async def handle_refine_set_city_callback(callback: CallbackQuery, state: FSMContext) -> None:
+        if callback.from_user is None or not isinstance(callback.message, Message):
             await callback.answer()
             return
+        canonical = (callback.data or "")[len(REFINE_SET_CITY_PREFIX):]
+        await service.set_active_city(
+            telegram_user_id=callback.from_user.id,
+            username=callback.from_user.username,
+            city_text=canonical,
+        )
+        await state.clear()
+        await show_refine_menu(callback.message, callback.from_user.id, edit=True)
+        await callback.answer("Город обновлён")
 
-        await state.set_state(SearchDialogStates.waiting_for_refinement)
-        if callback.message is not None:
-            await callback.message.answer(
-                "Опиши уточнение свободным текстом. Пример:\n"
-                "добавь район Медеу и бюджет до 50 млн"
+    @router.callback_query(F.data == REFINE_CITY_OTHER)
+    async def handle_refine_city_other_callback(callback: CallbackQuery, state: FSMContext) -> None:
+        if callback.from_user is None or not isinstance(callback.message, Message):
+            await callback.answer()
+            return
+        await state.set_state(SearchDialogStates.waiting_for_refine_value)
+        await state.update_data(refine_field="city")
+        with contextlib.suppress(Exception):
+            await callback.message.edit_text(
+                REFINE_VALUE_PROMPTS["city"], reply_markup=build_refine_back_keyboard()
             )
         await callback.answer()
+
+    @router.callback_query(F.data.startswith(REFINE_SET_DEAL_PREFIX))
+    async def handle_refine_set_deal_callback(callback: CallbackQuery, state: FSMContext) -> None:
+        if callback.from_user is None or not isinstance(callback.message, Message):
+            await callback.answer()
+            return
+        deal_type = (callback.data or "")[len(REFINE_SET_DEAL_PREFIX):]
+        await service.set_active_deal_type(
+            telegram_user_id=callback.from_user.id,
+            username=callback.from_user.username,
+            deal_type=deal_type,
+        )
+        await state.clear()
+        await show_refine_menu(callback.message, callback.from_user.id, edit=True)
+        await callback.answer("Сделка обновлена")
+
+    @router.callback_query(F.data.startswith(REFINE_SET_DISTRICT_PREFIX))
+    async def handle_refine_set_district_callback(
+        callback: CallbackQuery, state: FSMContext
+    ) -> None:
+        if callback.from_user is None or not isinstance(callback.message, Message):
+            await callback.answer()
+            return
+        value = (callback.data or "")[len(REFINE_SET_DISTRICT_PREFIX):]
+        district = None if value == REFINE_DISTRICT_CLEAR else value
+        await service.set_active_district(
+            telegram_user_id=callback.from_user.id,
+            username=callback.from_user.username,
+            district=district,
+        )
+        await state.clear()
+        await show_refine_menu(callback.message, callback.from_user.id, edit=True)
+        await callback.answer("Район обновлён" if district else "Ищу по всему городу")
+
+    @router.callback_query(F.data == REFINE_BACK)
+    async def handle_refine_back_callback(callback: CallbackQuery, state: FSMContext) -> None:
+        if callback.from_user is None or not isinstance(callback.message, Message):
+            await callback.answer()
+            return
+        await state.clear()
+        await show_refine_menu(callback.message, callback.from_user.id, edit=True)
+        await callback.answer()
+
+    @router.callback_query(F.data == REFINE_RUN)
+    async def handle_refine_run_callback(callback: CallbackQuery, state: FSMContext) -> None:
+        if callback.from_user is None or not isinstance(callback.message, Message):
+            await callback.answer()
+            return
+        await callback.answer()
+        await state.clear()
+        target = callback.message
+        await target.answer("Ищу по обновлённым критериям…")
+        try:
+            async with typing(target):
+                result = await service.rerun_active_search(
+                    telegram_user_id=callback.from_user.id,
+                    username=callback.from_user.username,
+                )
+        except ActiveCriteriaNotFoundError:
+            await target.answer(
+                "Активные критерии не найдены. Сначала выполни поиск через /search."
+            )
+            return
+        except (LocationInputError, SearchExecutionError) as exc:
+            await target.answer(exc.user_message)
+            return
+        await send_search_execution(target, state, result)
 
     @router.callback_query(F.data.startswith(APT_SAVE_PREFIX))
     async def handle_apartment_save_callback(callback: CallbackQuery) -> None:
@@ -576,6 +730,43 @@ def create_bot_router(service: SearchBotService) -> Router:
         await callback.answer(
             "🗑 Удалено навсегда — больше не покажу" if purged else "Уже удалено"
         )
+
+    @router.message(SearchDialogStates.waiting_for_refine_value)
+    async def handle_refine_value_message(message: Message, state: FSMContext) -> None:
+        if message.from_user is None:
+            return
+        text = (message.text or "").strip()
+        if not text:
+            await message.answer("Введите значение или нажмите «← Назад».")
+            return
+        data = await state.get_data()
+        field = data.get("refine_field")
+        try:
+            if field == "city":
+                _, resolved = await service.set_active_city(
+                    telegram_user_id=message.from_user.id,
+                    username=message.from_user.username,
+                    city_text=text,
+                )
+                if not resolved:
+                    await message.answer(
+                        "Город не распознан. Попробуйте ещё раз, например: Павлодар."
+                    )
+                    return  # stay in the value state so the user can retry
+            else:
+                await service.apply_refinement_value(
+                    telegram_user_id=message.from_user.id,
+                    username=message.from_user.username,
+                    message=text,
+                )
+        except ActiveCriteriaNotFoundError:
+            await state.clear()
+            await message.answer(
+                "Активные критерии не найдены. Сначала выполни поиск через /search."
+            )
+            return
+        await state.clear()
+        await show_refine_menu(message, message.from_user.id, edit=False)
 
     @router.message(SearchDialogStates.waiting_for_refinement)
     async def handle_refinement_message(message: Message, state: FSMContext) -> None:

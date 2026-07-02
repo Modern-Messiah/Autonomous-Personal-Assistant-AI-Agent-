@@ -8,3 +8,6 @@ class SearchDialogStates(StatesGroup):
 
     waiting_for_refinement = State()
     waiting_for_feedback = State()
+    # Guided-refine menu is waiting for a typed value (rooms / budget / area /
+    # a free-text city); which field is stored in FSM data under "refine_field".
+    waiting_for_refine_value = State()

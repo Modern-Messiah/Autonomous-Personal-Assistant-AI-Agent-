@@ -12,6 +12,7 @@ from typing import Literal, Protocol
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from agent.graph import run_search_graph
+from agent.locations import LOCATIONS
 from agent.models.criteria import SearchCriteria
 from agent.models.enriched import EnrichedApartment
 from agent.nodes.intent_node import IntentNode
@@ -208,6 +209,102 @@ class SearchBotService:
             telegram_user_id=telegram_user_id,
             username=username,
             criteria=criteria,
+        )
+
+    async def _save_active_criteria(
+        self,
+        *,
+        telegram_user_id: int,
+        username: str | None,
+        criteria: SearchCriteria,
+    ) -> SearchCriteria:
+        """Persist updated active criteria without running a search."""
+        async with self._session_factory() as session:
+            user = await upsert_telegram_user(
+                session, telegram_user_id=telegram_user_id, username=username
+            )
+            await replace_active_search_criteria(
+                session,
+                user_id=user.id,
+                criteria_payload=criteria.model_dump(mode="json"),
+            )
+            await session.commit()
+        return criteria
+
+    async def _require_active_criteria(self, *, telegram_user_id: int) -> SearchCriteria:
+        active = await self.get_active_criteria(telegram_user_id=telegram_user_id)
+        if active is None:
+            msg = "active criteria not found"
+            raise ActiveCriteriaNotFoundError(msg)
+        return active
+
+    async def set_active_city(
+        self,
+        *,
+        telegram_user_id: int,
+        username: str | None,
+        city_text: str,
+    ) -> tuple[SearchCriteria, bool]:
+        """Set the active city from a canonical name or free text (typo-tolerant).
+
+        Changing the city clears districts (they are city-specific). Returns the
+        (possibly unchanged) criteria and whether the city resolved.
+        """
+        active = await self._require_active_criteria(telegram_user_id=telegram_user_id)
+        canonical = LOCATIONS.canonical_city(city_text) or LOCATIONS.fuzzy_city(city_text)
+        if canonical is None:
+            return active, False
+        updated = active.model_copy(update={"city": canonical, "districts": None})
+        saved = await self._save_active_criteria(
+            telegram_user_id=telegram_user_id, username=username, criteria=updated
+        )
+        return saved, True
+
+    async def set_active_deal_type(
+        self,
+        *,
+        telegram_user_id: int,
+        username: str | None,
+        deal_type: str,
+    ) -> SearchCriteria:
+        """Set the active deal type (sale/rent)."""
+        active = await self._require_active_criteria(telegram_user_id=telegram_user_id)
+        updated = active.model_copy(update={"deal_type": deal_type})
+        return await self._save_active_criteria(
+            telegram_user_id=telegram_user_id, username=username, criteria=updated
+        )
+
+    async def set_active_district(
+        self,
+        *,
+        telegram_user_id: int,
+        username: str | None,
+        district: str | None,
+    ) -> SearchCriteria:
+        """Set (or clear, when district is None) the active district."""
+        active = await self._require_active_criteria(telegram_user_id=telegram_user_id)
+        districts = [district] if district is not None else None
+        updated = active.model_copy(update={"districts": districts})
+        return await self._save_active_criteria(
+            telegram_user_id=telegram_user_id, username=username, criteria=updated
+        )
+
+    async def apply_refinement_value(
+        self,
+        *,
+        telegram_user_id: int,
+        username: str | None,
+        message: str,
+    ) -> SearchCriteria:
+        """Merge a typed value (rooms/budget/area/city) into active criteria.
+
+        Reuses the intent refiner so "до 45 млн", "2-3 комнаты", "от 50 м²" etc.
+        parse the same as a free-form refinement. Persists but does not search.
+        """
+        active = await self._require_active_criteria(telegram_user_id=telegram_user_id)
+        refined = await self._intent_node.refine(criteria=active, message=message)
+        return await self._save_active_criteria(
+            telegram_user_id=telegram_user_id, username=username, criteria=refined
         )
 
     async def _message_has_search_signal(

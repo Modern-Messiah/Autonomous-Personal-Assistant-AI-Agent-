@@ -983,6 +983,123 @@ async def test_refine_rejects_unrecognized_message(monkeypatch: pytest.MonkeyPat
 
 
 @pytest.mark.asyncio
+async def test_set_active_city_resolves_typo_and_clears_districts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    active = SearchCriteria(
+        user_id=77, city="Almaty", deal_type="sale", property_type="apartment",
+        districts=["Medeu"], rooms=[2], page_limit=3,
+    )
+    service = SearchBotService(
+        session_factory=FakeSessionFactory(), search_runner=fake_search_runner
+    )
+    _patch_refine_db(monkeypatch, active)
+
+    updated, ok = await service.set_active_city(
+        telegram_user_id=77, username="t", city_text="Астанна"  # typo -> Astana
+    )
+
+    assert ok is True
+    assert updated.city == "Astana"
+    assert updated.districts is None  # districts are city-specific -> cleared
+
+
+@pytest.mark.asyncio
+async def test_set_active_city_rejects_unknown_city(monkeypatch: pytest.MonkeyPatch) -> None:
+    active = _active_criteria()
+    service = SearchBotService(
+        session_factory=FakeSessionFactory(), search_runner=fake_search_runner
+    )
+    _patch_refine_db(monkeypatch, active)
+
+    updated, ok = await service.set_active_city(
+        telegram_user_id=77, username="t", city_text="Москва"
+    )
+
+    assert ok is False
+    assert updated.city == "Almaty"  # unchanged
+
+
+@pytest.mark.asyncio
+async def test_set_active_deal_and_district(monkeypatch: pytest.MonkeyPatch) -> None:
+    active = _active_criteria()
+    service = SearchBotService(
+        session_factory=FakeSessionFactory(), search_runner=fake_search_runner
+    )
+    _patch_refine_db(monkeypatch, active)
+
+    deal = await service.set_active_deal_type(telegram_user_id=77, username="t", deal_type="rent")
+    assert deal.deal_type == "rent"
+
+    with_district = await service.set_active_district(
+        telegram_user_id=77, username="t", district="Medeu"
+    )
+    assert with_district.districts == ["Medeu"]
+
+    cleared = await service.set_active_district(
+        telegram_user_id=77, username="t", district=None
+    )
+    assert cleared.districts is None
+
+
+@pytest.mark.asyncio
+async def test_apply_refinement_value_merges_typed_field(monkeypatch: pytest.MonkeyPatch) -> None:
+    active = _active_criteria()
+    refined = active.model_copy(update={"max_price_kzt": 40_000_000})
+    parsed = ParsedIntent(criteria=refined, defaulted_city=False)
+    service = SearchBotService(
+        session_factory=FakeSessionFactory(),
+        intent_node=_FakeIntentNode(refined, parsed),
+        search_runner=fake_search_runner,
+    )
+    _patch_refine_db(monkeypatch, active)
+
+    result = await service.apply_refinement_value(
+        telegram_user_id=77, username="t", message="до 40 млн"
+    )
+
+    assert result.max_price_kzt == 40_000_000
+
+
+def test_refine_menu_keyboard_shows_district_only_when_city_has_them() -> None:
+    from bot.keyboards import (
+        REFINE_FIELD_PREFIX,
+        REFINE_RUN,
+        build_refine_menu_keyboard,
+    )
+
+    def datas(city: str) -> list[str]:
+        return [
+            b.callback_data
+            for row in build_refine_menu_keyboard(city).inline_keyboard
+            for b in row
+        ]
+
+    almaty = datas("Almaty")
+    assert f"{REFINE_FIELD_PREFIX}district" in almaty
+    assert f"{REFINE_FIELD_PREFIX}city" in almaty
+    assert REFINE_RUN in almaty
+
+    assert f"{REFINE_FIELD_PREFIX}district" not in datas("Konaev")  # Konaev has no districts
+
+
+def test_refine_district_keyboard_lists_city_districts_and_clear() -> None:
+    from bot.keyboards import (
+        REFINE_DISTRICT_CLEAR,
+        REFINE_SET_DISTRICT_PREFIX,
+        build_refine_district_keyboard,
+    )
+
+    datas = [
+        b.callback_data
+        for row in build_refine_district_keyboard("Almaty").inline_keyboard
+        for b in row
+    ]
+    assert f"{REFINE_SET_DISTRICT_PREFIX}Medeu" in datas
+    assert f"{REFINE_SET_DISTRICT_PREFIX}{REFINE_DISTRICT_CLEAR}" in datas
+
+
+@pytest.mark.asyncio
 async def test_search_bot_service_reruns_active_criteria(monkeypatch: pytest.MonkeyPatch) -> None:
     session_factory = FakeSessionFactory()
     service = SearchBotService(session_factory=session_factory, search_runner=fake_search_runner)

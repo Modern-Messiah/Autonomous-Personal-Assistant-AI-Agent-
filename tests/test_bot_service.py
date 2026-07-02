@@ -13,7 +13,7 @@ from agent.models.apartment import Apartment
 from agent.models.criteria import SearchCriteria
 from agent.models.enriched import EnrichedApartment
 from agent.models.score import ApartmentScore
-from agent.nodes.intent_node import IntentNode
+from agent.nodes.intent_node import IntentNode, ParsedIntent
 from agent.tools.krisha_parser import AntiBotBlockedError
 from bot.formatters import (
     clean_listing_url,
@@ -38,6 +38,7 @@ from bot.service import (
     SEARCH_BLOCKED_MESSAGE,
     SEARCH_EXECUTION_ERROR_MESSAGE,
     ActiveCriteriaNotFoundError,
+    CriteriaUnchangedError,
     NoPreferencesError,
     SearchBotService,
     SearchExecutionError,
@@ -878,6 +879,107 @@ async def test_search_bot_service_refine_requires_active_criteria(
             username="tester",
             message="до 35 млн",
         )
+
+
+class _FakeIntentNode:
+    """Intent node stub with controllable refine + parse_with_metadata."""
+
+    def __init__(self, refined: SearchCriteria, parsed: ParsedIntent) -> None:
+        self._refined = refined
+        self._parsed = parsed
+
+    async def refine(self, *, criteria: SearchCriteria, message: str) -> SearchCriteria:
+        del criteria, message
+        return self._refined
+
+    async def parse_with_metadata(self, *, user_id: int, message: str) -> ParsedIntent:
+        del user_id, message
+        return self._parsed
+
+
+def _active_criteria() -> SearchCriteria:
+    return SearchCriteria(
+        user_id=77,
+        city="Almaty",
+        deal_type="sale",
+        property_type="apartment",
+        max_price_kzt=45_000_000,
+        rooms=[2],
+        page_limit=3,
+    )
+
+
+def _patch_refine_db(monkeypatch: pytest.MonkeyPatch, active: SearchCriteria) -> None:
+    async def fake_get_record(session, *, telegram_user_id: int):
+        del session, telegram_user_id
+        return SimpleNamespace(criteria=active.model_dump(mode="json"))
+
+    async def fake_upsert(session, *, telegram_user_id: int, username: str | None):
+        del session, telegram_user_id, username
+        return SimpleNamespace(id=123)
+
+    async def fake_replace(session, *, user_id: int, criteria_payload):
+        del session, user_id, criteria_payload
+
+    async def fake_upsert_apartments(session, *, apartments: list[EnrichedApartment]):
+        del session
+        return [SimpleNamespace(id="apt") for _ in apartments]
+
+    async def fake_mark_seen(session, *, user_id: int, apartments):
+        del session, user_id, apartments
+
+    async def fake_feedback_map(session, *, user_id: int, apartments):
+        del session, user_id, apartments
+        return {}
+
+    monkeypatch.setattr("bot.service.get_active_search_criteria_record", fake_get_record)
+    monkeypatch.setattr("bot.service.upsert_telegram_user", fake_upsert)
+    monkeypatch.setattr("bot.service.replace_active_search_criteria", fake_replace)
+    monkeypatch.setattr("bot.service.upsert_apartment_records", fake_upsert_apartments)
+    monkeypatch.setattr("bot.service.mark_apartments_seen", fake_mark_seen)
+    monkeypatch.setattr("bot.service.get_apartment_feedback_map", fake_feedback_map)
+
+
+@pytest.mark.asyncio
+async def test_refine_reruns_when_message_restates_same_criteria(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # User re-types a full query identical to the active criteria while in refine
+    # mode: no delta, but it's a recognizable search -> run it, don't error.
+    active = _active_criteria()
+    parsed = ParsedIntent(criteria=active, defaulted_city=False)
+    service = SearchBotService(
+        session_factory=FakeSessionFactory(),
+        intent_node=_FakeIntentNode(active, parsed),
+        search_runner=fake_search_runner,
+    )
+    _patch_refine_db(monkeypatch, active)
+
+    result = await service.refine_search(
+        telegram_user_id=77, username="tester", message="2-комнатная в Алматы до 45 млн"
+    )
+
+    assert result.criteria == active
+    assert len(result.apartments) == 1
+
+
+@pytest.mark.asyncio
+async def test_refine_rejects_unrecognized_message(monkeypatch: pytest.MonkeyPatch) -> None:
+    # No delta AND no recognizable criteria (e.g. "привет") -> keep refine hint.
+    active = _active_criteria()
+    empty = SearchCriteria(
+        user_id=77, city="Almaty", deal_type="sale", property_type="apartment", page_limit=3
+    )
+    parsed = ParsedIntent(criteria=empty, defaulted_city=True)
+    service = SearchBotService(
+        session_factory=FakeSessionFactory(),
+        intent_node=_FakeIntentNode(active, parsed),
+        search_runner=fake_search_runner,
+    )
+    _patch_refine_db(monkeypatch, active)
+
+    with pytest.raises(CriteriaUnchangedError):
+        await service.refine_search(telegram_user_id=77, username="tester", message="привет")
 
 
 @pytest.mark.asyncio

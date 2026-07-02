@@ -194,13 +194,44 @@ class SearchBotService:
             criteria=active_criteria,
             message=message,
         )
-        if criteria == active_criteria:
+        if criteria == active_criteria and not await self._message_has_search_signal(
+            telegram_user_id=telegram_user_id,
+            message=message,
+        ):
+            # Nothing changed AND the message carried no recognizable criteria
+            # (e.g. "привет"): keep the user in refine mode with a hint. A full
+            # restatement that happens to match the active criteria (e.g. the same
+            # "2-комнатная в Алматы до 45 млн") is treated as "search again" below.
             msg = "refinement did not change supported criteria"
             raise CriteriaUnchangedError(msg)
         return await self._persist_and_run_search(
             telegram_user_id=telegram_user_id,
             username=username,
             criteria=criteria,
+        )
+
+    async def _message_has_search_signal(
+        self,
+        *,
+        telegram_user_id: int,
+        message: str,
+    ) -> bool:
+        """True if the message names any concrete criterion (rooms/price/area/
+        district) or an explicit city — used to tell a valid restatement apart
+        from unrecognizable refinement text."""
+        parsed = await self._intent_node.parse_with_metadata(
+            user_id=telegram_user_id,
+            message=message,
+        )
+        criteria = parsed.criteria
+        return bool(
+            criteria.rooms
+            or criteria.min_price_kzt is not None
+            or criteria.max_price_kzt is not None
+            or criteria.min_area_m2 is not None
+            or criteria.max_area_m2 is not None
+            or criteria.districts
+            or not parsed.defaulted_city
         )
 
     async def rerun_active_search(

@@ -107,9 +107,19 @@ class DeepSeekApartmentScorer:
             "is nearby (0 means truly none).",
             "recommendation must be one of strong_buy, consider, skip and stay "
             "consistent with the score.",
-            "Write 2-4 short reasons per listing in Russian, naming the concrete "
-            "differentiators including distances (e.g. «метро 350 м», «дешевле "
-            "за м²», «школа рядом 200 м», «высокий этаж»).",
+            "Write 2-4 short reasons per listing in Russian. Rules:",
+            "- The FIRST reason names this listing's main differentiator versus "
+            "the OTHERS in this batch — why it ranks where it does (e.g. «самая "
+            "низкая цена за м² в подборке», «метро в 400 м — ближайшее в подборке», "
+            "«самая большая площадь — 63 м²»).",
+            "- EVERY reason must contain a concrete number (₸/м², %, метры, этаж, "
+            "м²). Banned filler: «хороший этаж», «приемлемая цена», «хорошее "
+            "окружение», «неплохой вариант» and similar vague praise.",
+            "- For every listing EXCEPT the top one, include one honest minus — "
+            "its main weakness versus the batch, with a number («дороже лидера "
+            "на 12%», «1-й этаж», «до школы 1.4 км», «метро дальше всех — 2 км+»).",
+            "- Use the batch stats below for relative claims («на 18% ниже "
+            "среднего за м²»); do not invent numbers not derivable from the data.",
             "Format money in reasons with space-separated thousands and the ₸ "
             "sign: «931 818 ₸/м²», «45 000 000 ₸» — never «931818 KZT».",
             'Respond with one JSON object: {"items": [{"index": <listing number>, '
@@ -117,6 +127,7 @@ class DeepSeekApartmentScorer:
             '"reasons": ["..."]}]}. Include every listing exactly once.',
         ]
         lines.extend(self._criteria_lines(criteria))
+        lines.extend(self._batch_stats_lines(apartments))
         lines.append("--- listings ---")
         for index, enriched in enumerate(apartments, start=1):
             lines.append(self._listing_line(index, enriched))
@@ -133,6 +144,23 @@ class DeepSeekApartmentScorer:
             "temperature": self._temperature,
             "response_format": {"type": "json_object"},
         }
+
+    @staticmethod
+    def _batch_stats_lines(apartments: list[EnrichedApartment]) -> list[str]:
+        """Aggregate batch stats so relative claims in reasons are grounded."""
+        per_m2 = [
+            item.apartment.price_kzt / item.apartment.area_m2
+            for item in apartments
+            if item.apartment.area_m2 and item.apartment.area_m2 > 0
+        ]
+        if len(per_m2) < 2:
+            return []
+        avg = round(sum(per_m2) / len(per_m2))
+        return [
+            "--- batch stats (this selection) ---",
+            f"listings: {len(apartments)}, "
+            f"price_per_m2 avg={avg}, min={round(min(per_m2))}, max={round(max(per_m2))}",
+        ]
 
     @staticmethod
     def _listing_line(index: int, enriched: EnrichedApartment) -> str:

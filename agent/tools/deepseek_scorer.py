@@ -110,6 +110,8 @@ class DeepSeekApartmentScorer:
             "Write 2-4 short reasons per listing in Russian, naming the concrete "
             "differentiators including distances (e.g. «метро 350 м», «дешевле "
             "за м²», «школа рядом 200 м», «высокий этаж»).",
+            "Format money in reasons with space-separated thousands and the ₸ "
+            "sign: «931 818 ₸/м²», «45 000 000 ₸» — never «931818 KZT».",
             'Respond with one JSON object: {"items": [{"index": <listing number>, '
             '"score": <0-100>, "recommendation": "strong_buy"|"consider"|"skip", '
             '"reasons": ["..."]}]}. Include every listing exactly once.',

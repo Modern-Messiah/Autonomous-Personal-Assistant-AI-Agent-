@@ -134,22 +134,30 @@ def build_refine_back_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-def build_apartment_actions_keyboard(external_id: str) -> InlineKeyboardMarkup:
-    """Per-apartment Save/Reject buttons shown under each search result card."""
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="💾 Сохранить",
-                    callback_data=f"{APT_SAVE_PREFIX}{external_id}",
-                ),
-                InlineKeyboardButton(
-                    text="🚫 Отклонить",
-                    callback_data=f"{APT_REJECT_PREFIX}{external_id}",
-                ),
-            ]
+def build_apartment_actions_keyboard(
+    external_id: str, url: str | None = None
+) -> InlineKeyboardMarkup:
+    """Open-on-Krisha link + Save/Reject buttons under each result card.
+
+    The link lives here as a button (instead of a raw 🔗 line in the caption)
+    so every card — search, /foryou, monitor — looks the same as /list and /trash.
+    """
+    rows: list[list[InlineKeyboardButton]] = []
+    if url:
+        rows.append([InlineKeyboardButton(text="🌐 Открыть на Krisha", url=url)])
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="💾 Сохранить",
+                callback_data=f"{APT_SAVE_PREFIX}{external_id}",
+            ),
+            InlineKeyboardButton(
+                text="🚫 Отклонить",
+                callback_data=f"{APT_REJECT_PREFIX}{external_id}",
+            ),
         ]
     )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def build_saved_item_keyboard(

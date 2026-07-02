@@ -143,7 +143,7 @@ def format_apartment_card(
         )
         lines.append(f"{label} · {item.score.score:.0f}/100")
         lines.extend(f"   • {reason}" for reason in item.score.reasons[:3])
-    lines.append(f"🔗 {clean_listing_url(apartment.url)}")
+    # No raw 🔗 line: the link is the "🌐 Открыть на Krisha" button on every card.
     return "\n".join(lines)
 
 

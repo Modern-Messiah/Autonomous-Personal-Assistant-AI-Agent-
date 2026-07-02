@@ -369,6 +369,10 @@ class KrishaParser:
                 params.append(("das[live.square][from]", format(criteria.min_area_m2, "g")))
             if criteria.max_area_m2 is not None:
                 params.append(("das[live.square][to]", format(criteria.max_area_m2, "g")))
+            if criteria.owner_only:
+                # krisha's "Кто разместил: от хозяев" (verified live: who=1 and
+                # who=2 partition the results with zero overlap).
+                params.append(("das[who]", "1"))
             urls.append(f"{base_url}?{urlencode(params)}")
         return urls
 

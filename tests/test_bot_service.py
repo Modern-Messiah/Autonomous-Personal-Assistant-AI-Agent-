@@ -1055,6 +1055,40 @@ async def test_set_active_deal_and_district(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 @pytest.mark.asyncio
+async def test_toggle_active_owner_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    active = _active_criteria()  # owner_only defaults to False
+    service = SearchBotService(
+        session_factory=FakeSessionFactory(), search_runner=fake_search_runner
+    )
+    _patch_refine_db(monkeypatch, active)
+
+    updated = await service.toggle_active_owner_only(telegram_user_id=77, username="t")
+    assert updated.owner_only is True
+
+
+def test_refine_menu_keyboard_shows_owner_toggle_state() -> None:
+    from bot.keyboards import REFINE_TOGGLE_OWNER, build_refine_menu_keyboard
+
+    def owner_button(owner_only: bool) -> str:
+        keyboard = build_refine_menu_keyboard("Almaty", owner_only=owner_only)
+        return next(
+            b.text
+            for row in keyboard.inline_keyboard
+            for b in row
+            if b.callback_data == REFINE_TOGGLE_OWNER
+        )
+
+    assert "✅" in owner_button(True)
+    assert "—" in owner_button(False)
+
+
+def test_format_criteria_shows_owner_only() -> None:
+    criteria = _active_criteria().model_copy(update={"owner_only": True})
+    assert "Только от хозяина: да" in format_criteria(criteria)
+    assert "от хозяина" not in format_criteria(_active_criteria())
+
+
+@pytest.mark.asyncio
 async def test_apply_refinement_value_merges_typed_field(monkeypatch: pytest.MonkeyPatch) -> None:
     active = _active_criteria()
     refined = active.model_copy(update={"max_price_kzt": 40_000_000})

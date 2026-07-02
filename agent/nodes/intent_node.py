@@ -118,6 +118,7 @@ class IntentCriteriaPatch(BaseModel):
     districts: list[str] | None = None
     min_area_m2: float | None = Field(default=None, ge=0)
     max_area_m2: float | None = Field(default=None, ge=0)
+    owner_only: bool | None = None
     page_limit: int | None = Field(default=None, ge=1, le=20)
 
     @field_validator("city", mode="before")
@@ -232,6 +233,7 @@ class IntentCriteriaPatch(BaseModel):
                 "districts",
                 "min_area_m2",
                 "max_area_m2",
+                "owner_only",
                 "page_limit",
             )
         )
@@ -309,6 +311,9 @@ class IntentNode:
         """Parse criteria and report when the configured default city was used."""
         patch = await self._parse_with_llm(message=message, existing_criteria=None)
         if patch is not None:
+            if patch.owner_only is None:
+                # Regex backstop so «от хозяина» works even if the LLM missed it.
+                patch = patch.model_copy(update={"owner_only": self._find_owner_only(message)})
             locations = resolve_locations(
                 message=message,
                 default_city=self._default_city,
@@ -340,6 +345,8 @@ class IntentNode:
         """Merge free-form refinement text into existing criteria."""
         patch = await self._parse_with_llm(message=message, existing_criteria=criteria)
         if patch is not None:
+            if patch.owner_only is None:
+                patch = patch.model_copy(update={"owner_only": self._find_owner_only(message)})
             locations = resolve_locations(
                 message=message,
                 default_city=self._default_city,
@@ -417,6 +424,7 @@ class IntentNode:
             districts=list(locations.districts) if locations.districts else None,
             min_area_m2=patch.min_area_m2,
             max_area_m2=patch.max_area_m2,
+            owner_only=bool(patch.owner_only),
             page_limit=patch.page_limit or self._default_page_limit,
         )
 
@@ -449,6 +457,7 @@ class IntentNode:
             districts=list(locations.districts) if locations.districts else None,
             min_area_m2=criteria.min_area_m2 if patch.min_area_m2 is None else patch.min_area_m2,
             max_area_m2=criteria.max_area_m2 if patch.max_area_m2 is None else patch.max_area_m2,
+            owner_only=criteria.owner_only if patch.owner_only is None else patch.owner_only,
             page_limit=criteria.page_limit if patch.page_limit is None else patch.page_limit,
         )
 
@@ -477,6 +486,7 @@ class IntentNode:
             districts=list(locations.districts) if locations.districts else None,
             min_area_m2=min_area,
             max_area_m2=max_area,
+            owner_only=bool(self._find_owner_only(normalized)),
             page_limit=page_limit,
         )
 
@@ -493,6 +503,7 @@ class IntentNode:
         min_area, max_area = self._parse_area_bounds(normalized)
         rooms = self._parse_rooms(normalized)
         page_limit = self._find_page_limit(normalized)
+        owner_only = self._find_owner_only(normalized)
 
         new_deal_type = deal_type or criteria.deal_type
         # Same rule as the LLM path: a sale<->rent switch drops the old budget
@@ -511,6 +522,7 @@ class IntentNode:
             districts=list(locations.districts) if locations.districts else None,
             min_area_m2=criteria.min_area_m2 if min_area is None else min_area,
             max_area_m2=criteria.max_area_m2 if max_area is None else max_area,
+            owner_only=criteria.owner_only if owner_only is None else owner_only,
             page_limit=criteria.page_limit if page_limit is None else page_limit,
         )
 
@@ -528,6 +540,24 @@ class IntentNode:
         sale_markers = ("куп", "покуп", "sale", "buy")
         if any(marker in text for marker in sale_markers):
             return "sale"
+        return None
+
+    @staticmethod
+    def _find_owner_only(text: str) -> bool | None:
+        """Detect the owner-only request; None when the message doesn't mention it."""
+        owner_markers = (
+            "от хозяина",
+            "от хозяев",
+            "от собственника",
+            "от собственников",
+            "без риелтор",
+            "без риэлтор",
+            "без посредник",
+            "без агент",
+        )
+        lowered = text.lower()
+        if any(marker in lowered for marker in owner_markers):
+            return True
         return None
 
     def _parse_price_bounds(self, text: str) -> tuple[int | None, int | None]:

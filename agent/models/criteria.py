@@ -18,6 +18,8 @@ class SearchCriteria(BaseModel):
     districts: list[str] | None = None
     min_area_m2: float | None = Field(default=None, ge=0)
     max_area_m2: float | None = Field(default=None, ge=0)
+    # Only listings posted by the owner (krisha's "Кто разместил: от хозяев").
+    owner_only: bool = False
     page_limit: int = Field(default=3, ge=1, le=20)
 
     @field_validator("rooms")

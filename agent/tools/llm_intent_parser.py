@@ -90,7 +90,13 @@ class LLMIntentParser:
                     '"min_price_kzt": integer|null, "max_price_kzt": integer|null, '
                     '"rooms": array<integer>|null, "districts": array<string>|null, '
                     '"min_area_m2": number|null, "max_area_m2": number|null, '
+                    '"owner_only": boolean|null, '
                     '"page_limit": integer|null}.'
+                ),
+                (
+                    "owner_only=true only when the user asks for owner-posted "
+                    "listings («от хозяина», «от собственника», «без риелторов»); "
+                    "otherwise null."
                 ),
                 "Property type is always apartment, so do not include property_type.",
                 "Use integer prices in KZT and numeric areas in square meters.",

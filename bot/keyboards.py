@@ -19,6 +19,7 @@ REFINE_SET_CITY_PREFIX = "refine:city:"     # + canonical city
 REFINE_SET_DEAL_PREFIX = "refine:deal:"     # + sale|rent
 REFINE_SET_DISTRICT_PREFIX = "refine:distr:"  # + canonical district, or "*" to clear
 REFINE_CITY_OTHER = "refine:city_other"
+REFINE_TOGGLE_OWNER = "refine:owner"
 REFINE_BACK = "refine:back"
 REFINE_RUN = "refine:run"
 REFINE_DISTRICT_CLEAR = "*"
@@ -41,10 +42,13 @@ def _rows(buttons: list[InlineKeyboardButton], per_row: int) -> list[list[Inline
     return [buttons[i : i + per_row] for i in range(0, len(buttons), per_row)]
 
 
-def build_refine_menu_keyboard(city: str | None) -> InlineKeyboardMarkup:
+def build_refine_menu_keyboard(
+    city: str | None, *, owner_only: bool = False
+) -> InlineKeyboardMarkup:
     """Guided-refine menu: pick a field to change, then search.
 
-    The district row is shown only when the current city actually has districts.
+    The district row is shown only when the current city actually has districts;
+    the owner row toggles krisha's "от хозяев" filter and shows its state.
     """
     rows: list[list[InlineKeyboardButton]] = [
         [
@@ -61,6 +65,14 @@ def build_refine_menu_keyboard(city: str | None) -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="🚪 Комнаты", callback_data=f"{REFINE_FIELD_PREFIX}rooms"),
             InlineKeyboardButton(text="💰 Бюджет", callback_data=f"{REFINE_FIELD_PREFIX}budget"),
             InlineKeyboardButton(text="📐 Площадь", callback_data=f"{REFINE_FIELD_PREFIX}area"),
+        ]
+    )
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text=f"👤 От хозяина: {'✅' if owner_only else '—'}",
+                callback_data=REFINE_TOGGLE_OWNER,
+            )
         ]
     )
     rows.append([InlineKeyboardButton(text="✅ Искать", callback_data=REFINE_RUN)])

@@ -144,6 +144,38 @@ async def test_intent_node_recognizes_rent_verb_forms(message: str) -> None:
 
 
 @pytest.mark.asyncio
+async def test_intent_node_parses_owner_only_markers() -> None:
+    node = IntentNode(llm_parser_factory=lambda: None)
+
+    owner = await node.parse(user_id=1, message="2-комнатная в Алматы от хозяина до 45 млн")
+    assert owner.owner_only is True
+    assert owner.rooms == [2]
+
+    no_realtors = await node.parse(user_id=1, message="снять двушку в Астане без риелторов")
+    assert no_realtors.owner_only is True
+
+    plain = await node.parse(user_id=1, message="2-комнатная в Алматы до 45 млн")
+    assert plain.owner_only is False
+
+
+@pytest.mark.asyncio
+async def test_refine_toggles_owner_only_and_keeps_it() -> None:
+    node = IntentNode(llm_parser_factory=lambda: None)
+    base = SearchCriteria(
+        user_id=1, city="Almaty", deal_type="sale", property_type="apartment",
+        max_price_kzt=45_000_000, rooms=[2], page_limit=3,
+    )
+
+    switched = await node.refine(criteria=base, message="только от хозяина")
+    assert switched.owner_only is True
+
+    # unrelated refinement keeps the flag
+    kept = await node.refine(criteria=switched, message="до 40 млн")
+    assert kept.owner_only is True
+    assert kept.max_price_kzt == 40_000_000
+
+
+@pytest.mark.asyncio
 async def test_refine_deal_switch_resets_stale_budget() -> None:
     node = IntentNode(llm_parser_factory=lambda: None)
     sale = SearchCriteria(

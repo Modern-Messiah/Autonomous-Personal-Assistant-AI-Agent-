@@ -303,6 +303,19 @@ class SearchBotService:
             telegram_user_id=telegram_user_id, username=username, criteria=updated
         )
 
+    async def toggle_active_owner_only(
+        self,
+        *,
+        telegram_user_id: int,
+        username: str | None,
+    ) -> SearchCriteria:
+        """Flip the owner-only filter (krisha's "от хозяев") on active criteria."""
+        active = await self._require_active_criteria(telegram_user_id=telegram_user_id)
+        updated = active.model_copy(update={"owner_only": not active.owner_only})
+        return await self._save_active_criteria(
+            telegram_user_id=telegram_user_id, username=username, criteria=updated
+        )
+
     async def apply_refinement_value(
         self,
         *,

@@ -93,16 +93,23 @@ def format_apartment_card(item: EnrichedApartment, *, index: int | None = None) 
     if item.mortgage_monthly_payment_kzt:
         payment = f"{item.mortgage_monthly_payment_kzt:,}".replace(",", " ")
         lines.append(f"🏦 Ипотека: ~{payment} ₸/мес")
-    if (
-        item.nearby_schools is not None
-        or item.nearby_parks is not None
-        or item.nearby_metro is not None
-    ):
-        lines.append(
-            f"🏫 школы: {item.nearby_schools or 0}{_nearby_distance(item.nearby_school_m)} · "
-            f"🌳 парки: {item.nearby_parks or 0}{_nearby_distance(item.nearby_park_m)} · "
-            f"🚇 метро: {item.nearby_metro or 0}{_nearby_distance(item.nearby_metro_m)}"
+    # Show only the categories we actually have data for. Metro is unknown/None in
+    # cities without a metro, so its chip is dropped there instead of "метро: 0".
+    nearby_chips: list[str] = []
+    if item.nearby_schools is not None:
+        nearby_chips.append(
+            f"🏫 школы: {item.nearby_schools}{_nearby_distance(item.nearby_school_m)}"
         )
+    if item.nearby_parks is not None:
+        nearby_chips.append(
+            f"🌳 парки: {item.nearby_parks}{_nearby_distance(item.nearby_park_m)}"
+        )
+    if item.nearby_metro is not None:
+        nearby_chips.append(
+            f"🚇 метро: {item.nearby_metro}{_nearby_distance(item.nearby_metro_m)}"
+        )
+    if nearby_chips:
+        lines.append(" · ".join(nearby_chips))
     if item.score is not None:
         label = RECOMMENDATION_LABELS.get(
             item.score.recommendation, item.score.recommendation

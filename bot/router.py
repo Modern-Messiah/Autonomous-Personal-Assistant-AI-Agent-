@@ -378,18 +378,14 @@ def create_bot_router(service: SearchBotService) -> Router:
                 rec.apartment.apartment.external_id,
                 clean_listing_url(rec.apartment.apartment.url),
             )
-            suffix = (
-                f"⭐ Почему вам: {', '.join(rec.reasons)}"
-                if rec.reasons
-                else None
-            )
+            # rec.reasons stay internal (they drive the ranking); the card is
+            # already dense and the "⭐ Почему вам" line only repeated it.
             await send_apartment_card(
                 rec.apartment,
                 index=index,
                 reply_markup=keyboard,
                 send_text=target.answer,
                 send_photo=target.answer_photo,
-                caption_suffix=suffix,
                 avg_price_per_m2=avg_price_per_m2,
             )
 

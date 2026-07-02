@@ -1028,8 +1028,20 @@ async def test_set_active_deal_and_district(monkeypatch: pytest.MonkeyPatch) -> 
     )
     _patch_refine_db(monkeypatch, active)
 
-    deal = await service.set_active_deal_type(telegram_user_id=77, username="t", deal_type="rent")
+    # sale -> rent: the purchase budget (45M) makes no sense for rent -> cleared
+    deal, budget_reset = await service.set_active_deal_type(
+        telegram_user_id=77, username="t", deal_type="rent"
+    )
     assert deal.deal_type == "rent"
+    assert budget_reset is True
+    assert deal.min_price_kzt is None and deal.max_price_kzt is None
+
+    # same deal type as stored (fixture is sale): no change -> budget kept
+    same, budget_reset_same = await service.set_active_deal_type(
+        telegram_user_id=77, username="t", deal_type="sale"
+    )
+    assert budget_reset_same is False
+    assert same.max_price_kzt == 45_000_000
 
     with_district = await service.set_active_district(
         telegram_user_id=77, username="t", district="Medeu"

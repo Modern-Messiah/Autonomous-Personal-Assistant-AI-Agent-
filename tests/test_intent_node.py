@@ -143,6 +143,31 @@ async def test_intent_node_recognizes_rent_verb_forms(message: str) -> None:
     assert criteria.deal_type == "rent"
 
 
+@pytest.mark.asyncio
+async def test_refine_deal_switch_resets_stale_budget() -> None:
+    node = IntentNode(llm_parser_factory=lambda: None)
+    sale = SearchCriteria(
+        user_id=1, city="Almaty", deal_type="sale", property_type="apartment",
+        min_price_kzt=20_000_000, max_price_kzt=45_000_000, rooms=[2], page_limit=3,
+    )
+
+    # switch to rent without naming a budget -> the purchase budget is dropped
+    switched = await node.refine(criteria=sale, message="теперь аренда")
+    assert switched.deal_type == "rent"
+    assert switched.min_price_kzt is None and switched.max_price_kzt is None
+    assert switched.rooms == [2]  # other fields survive
+
+    # switch that names a new budget in the same message -> the new one is used
+    with_budget = await node.refine(criteria=sale, message="аренда до 300 тыс")
+    assert with_budget.deal_type == "rent"
+    assert with_budget.max_price_kzt == 300_000
+
+    # no deal switch -> budget stays as before
+    same_deal = await node.refine(criteria=sale, message="только 3 комнаты")
+    assert same_deal.deal_type == "sale"
+    assert same_deal.max_price_kzt == 45_000_000
+
+
 @pytest.mark.parametrize(
     ("message", "expected_rooms"),
     [

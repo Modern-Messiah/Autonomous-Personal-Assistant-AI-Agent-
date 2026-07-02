@@ -594,11 +594,26 @@ def create_bot_router(service: SearchBotService) -> Router:
             await callback.answer()
             return
         deal_type = (callback.data or "")[len(REFINE_SET_DEAL_PREFIX):]
-        await service.set_active_deal_type(
+        _, budget_reset = await service.set_active_deal_type(
             telegram_user_id=callback.from_user.id,
             username=callback.from_user.username,
             deal_type=deal_type,
         )
+        if budget_reset:
+            # The old budget belonged to the other deal type — ask for a new one
+            # right away instead of silently searching with no budget.
+            await state.set_state(SearchDialogStates.waiting_for_refine_value)
+            await state.update_data(refine_field="budget")
+            deal_label = "аренды" if deal_type == "rent" else "покупки"
+            with contextlib.suppress(Exception):
+                await callback.message.edit_text(
+                    f"Сделка обновлена, прежний бюджет сброшен.\n"
+                    f"💰 Напишите бюджет для {deal_label} — например: "
+                    + ("«до 300 тыс»." if deal_type == "rent" else "«до 45 млн»."),
+                    reply_markup=build_refine_back_keyboard(),
+                )
+            await callback.answer("Сделка обновлена — укажите бюджет")
+            return
         await state.clear()
         await show_refine_menu(callback.message, callback.from_user.id, edit=True)
         await callback.answer("Сделка обновлена")

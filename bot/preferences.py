@@ -8,6 +8,7 @@ say *why* it fits the user's taste.
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass, field
 
 from agent.models.criteria import SearchCriteria
@@ -16,6 +17,11 @@ from agent.tools.districts import canonical_district
 
 # Tolerance around the saved budget / area range before a candidate counts as a fit.
 _RANGE_SLACK = 0.1
+# How far beyond the saved price range the /foryou candidate search still looks.
+_TASTE_BUDGET_SLACK = 0.15
+# Prices below this are monthly rents, above — purchases (KZ market heuristic;
+# the Apartment model carries no deal type, so it is inferred from saved prices).
+_RENT_PRICE_CEILING_KZT = 5_000_000
 # How much the criteria-aware objective score (0-100) weighs in the final order,
 # relative to taste-fit points. The objective score already judges fit to the
 # search criteria (budget/rooms/area), so folding it into the primary key — not
@@ -113,6 +119,49 @@ def score_candidate(
         reasons.append("похожая площадь")
 
     return score, reasons
+
+
+def build_taste_criteria(
+    profile: PreferenceProfile,
+    saved: list[EnrichedApartment],
+    *,
+    base: SearchCriteria,
+) -> SearchCriteria:
+    """Build the /foryou candidate-search criteria from the learned taste.
+
+    The active criteria reflect the LAST search (which may be a different city or
+    even rent vs purchase), so searching by them just reshuffles the last result.
+    Recommendations instead search what the user actually saves: their city,
+    inferred deal type (rents vs purchases by price magnitude), liked districts,
+    room counts, and the saved price range widened by ±15%. ``base`` supplies
+    user_id/page_limit and any field the profile has no signal for.
+    """
+    cities = Counter(item.apartment.city for item in saved)
+    city = cities.most_common(1)[0][0] if cities else base.city
+
+    deal_type = base.deal_type
+    if profile.price_hi is not None:
+        deal_type = "rent" if profile.price_hi < _RENT_PRICE_CEILING_KZT else "sale"
+
+    districts = sorted(
+        d for d in profile.liked_districts if canonical_district(d, city) is not None
+    )
+
+    min_price = max_price = None
+    if profile.price_lo is not None and profile.price_hi is not None:
+        min_price = int(profile.price_lo * (1 - _TASTE_BUDGET_SLACK))
+        max_price = int(profile.price_hi * (1 + _TASTE_BUDGET_SLACK))
+
+    return base.model_copy(
+        update={
+            "city": city,
+            "deal_type": deal_type,
+            "districts": districts or None,
+            "rooms": sorted(profile.rooms) if profile.rooms else base.rooms,
+            "min_price_kzt": min_price,
+            "max_price_kzt": max_price,
+        }
+    )
 
 
 def criteria_fit(

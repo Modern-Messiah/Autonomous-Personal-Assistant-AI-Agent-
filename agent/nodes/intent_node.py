@@ -512,7 +512,8 @@ class IntentNode:
         return self._default_deal_type
 
     def _find_deal_type(self, text: str) -> Literal["sale", "rent"] | None:
-        rent_markers = ("аренд", "снят", "rent")
+        # "снят"/"сним" cover снять/снял/сниму/снимем/снимать declensions.
+        rent_markers = ("аренд", "снят", "сним", "rent")
         if any(marker in text for marker in rent_markers):
             return "rent"
         sale_markers = ("куп", "покуп", "sale", "buy")

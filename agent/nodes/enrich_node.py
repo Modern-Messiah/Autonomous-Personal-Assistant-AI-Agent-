@@ -50,7 +50,10 @@ class EnrichNode:
                 "enriched_apartments": [],
             }
 
-        tasks = [self._enrich_apartment(apartment) for apartment in apartments]
+        tasks = [
+            self._enrich_apartment(apartment, deal_type=criteria.deal_type)
+            for apartment in apartments
+        ]
         enriched_apartments = await asyncio.gather(*tasks)
         return {
             "criteria": criteria,
@@ -58,14 +61,19 @@ class EnrichNode:
             "enriched_apartments": enriched_apartments,
         }
 
-    async def _enrich_apartment(self, apartment: Apartment) -> EnrichedApartment:
+    async def _enrich_apartment(
+        self, apartment: Apartment, *, deal_type: str = "sale"
+    ) -> EnrichedApartment:
         area_task = asyncio.create_task(
             self._load_nearby_summary(apartment.city, apartment.address)
         )
-        mortgage_task = asyncio.create_task(self._calculate_mortgage(apartment.price_kzt))
-
         nearby = await area_task
-        monthly_payment, overpayment = await mortgage_task
+        # A mortgage estimate only makes sense for a purchase — on a rental the
+        # price is a monthly rate, and "mortgage from 300 000 ₸" is nonsense.
+        monthly_payment: int | None = None
+        overpayment: int | None = None
+        if deal_type != "rent":
+            monthly_payment, overpayment = await self._calculate_mortgage(apartment.price_kzt)
 
         return EnrichedApartment(
             apartment=apartment,

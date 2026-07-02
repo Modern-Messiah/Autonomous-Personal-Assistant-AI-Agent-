@@ -145,6 +145,30 @@ async def test_deepseek_apartment_scorer_parses_structured_response() -> None:
     assert result == [expected]
 
 
+def test_scorer_prompt_includes_batch_stats_and_comparative_reason_rules() -> None:
+    scorer = DeepSeekApartmentScorer(api_key="test-key")
+    one = build_enriched_apartment()
+    two = build_enriched_apartment()
+    two = two.model_copy(
+        update={"apartment": two.apartment.model_copy(update={"price_kzt": 50_000_000})}
+    )
+
+    payload = scorer._build_payload([one, two], None)
+    prompt = payload["messages"][1]["content"]
+
+    # Aggregate stats ground the model's relative claims («на 18% ниже среднего»).
+    assert "--- batch stats (this selection) ---" in prompt
+    assert "price_per_m2 avg=" in prompt
+    # Reason quality rules: comparative first reason, no vague filler, honest minus.
+    assert "main differentiator" in prompt
+    assert "Banned filler" in prompt
+    assert "honest minus" in prompt
+
+    # A single listing has nothing to compare against -> no stats block.
+    solo_prompt = scorer._build_payload([one], None)["messages"][1]["content"]
+    assert "--- batch stats" not in solo_prompt
+
+
 @pytest.mark.asyncio
 async def test_scoring_node_attaches_scores_to_enriched_apartments() -> None:
     node = ScoringNode(scorer=FakeApartmentScorer(build_score()))

@@ -71,20 +71,43 @@ def format_criteria(criteria: SearchCriteria) -> str:
 
 
 def clean_listing_url(url: str) -> str:
-    """Drop tracking query/fragment so the link is short and clean."""
-    return url.split("?", 1)[0].split("#", 1)[0]
+    """Drop tracking query/fragment and show the canonical krisha.kz host."""
+    cleaned = url.split("?", 1)[0].split("#", 1)[0]
+    return cleaned.replace("//m.krisha.kz", "//krisha.kz")
 
 
-def format_apartment_card(item: EnrichedApartment, *, index: int | None = None) -> str:
-    """Render one apartment as a rich plain-text card (photo caption / list row)."""
+def _price_vs_batch(price_per_m2: float, avg_price_per_m2: float) -> str:
+    """One-line comparison of this listing's ₸/м² against the batch average."""
+    diff = (price_per_m2 - avg_price_per_m2) / avg_price_per_m2
+    percent = abs(round(diff * 100))
+    if percent < 3:
+        return "📊 цена за м² на уровне подборки"
+    word = "дешевле" if diff < 0 else "дороже"
+    return f"📊 на {percent}% {word} среднего за м² в этой подборке"
+
+
+def format_apartment_card(
+    item: EnrichedApartment,
+    *,
+    index: int | None = None,
+    avg_price_per_m2: float | None = None,
+) -> str:
+    """Render one apartment as a rich plain-text card (photo caption / list row).
+
+    ``avg_price_per_m2`` is the batch average ₸/м² of the current selection; when
+    provided, the card shows how this listing compares against it.
+    """
     apartment = item.apartment
     prefix = f"{index}. " if index is not None else ""
     price = f"{apartment.price_kzt:,}".replace(",", " ")
 
     lines = [f"🏠 {prefix}{_format_specs(apartment)}"]
     if apartment.area_m2 and apartment.area_m2 > 0:
-        per_m2 = f"{round(apartment.price_kzt / apartment.area_m2):,}".replace(",", " ")
+        price_per_m2 = apartment.price_kzt / apartment.area_m2
+        per_m2 = f"{round(price_per_m2):,}".replace(",", " ")
         lines.append(f"💰 {price} ₸  (≈ {per_m2} ₸/м²)")
+        if avg_price_per_m2 is not None and avg_price_per_m2 > 0:
+            lines.append(_price_vs_batch(price_per_m2, avg_price_per_m2))
     else:
         lines.append(f"💰 {price} ₸")
     lines.append(f"📍 {_format_location(apartment)}")
@@ -105,8 +128,12 @@ def format_apartment_card(item: EnrichedApartment, *, index: int | None = None) 
             f"🌳 парки: {item.nearby_parks}{_nearby_distance(item.nearby_park_m)}"
         )
     if item.nearby_metro is not None:
+        # A true zero means "checked, no station within the search radius" —
+        # say that in words instead of a cryptic "метро: 0".
         nearby_chips.append(
-            f"🚇 метро: {item.nearby_metro}{_nearby_distance(item.nearby_metro_m)}"
+            "🚇 метро: нет рядом (2 км+)"
+            if item.nearby_metro == 0
+            else f"🚇 метро: {item.nearby_metro}{_nearby_distance(item.nearby_metro_m)}"
         )
     if nearby_chips:
         lines.append(" · ".join(nearby_chips))

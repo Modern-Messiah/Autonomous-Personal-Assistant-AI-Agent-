@@ -1338,6 +1338,43 @@ def test_clean_listing_url_strips_tracking_query() -> None:
         clean_listing_url("https://krisha.kz/a/show/1?srchid=abc&srchpos=2#frag")
         == "https://krisha.kz/a/show/1"
     )
+    # mobile host is normalized to the canonical desktop one
+    assert (
+        clean_listing_url("https://m.krisha.kz/a/show/1012905312")
+        == "https://krisha.kz/a/show/1012905312"
+    )
+
+
+def test_format_apartment_card_price_vs_batch_and_metro_zero() -> None:
+    def make(price: int, area: float, metro: int | None) -> EnrichedApartment:
+        return EnrichedApartment(
+            apartment=Apartment(
+                external_id="1", source="krisha", url="https://krisha.kz/a/show/1",
+                title="t", price_kzt=price, city="Almaty", rooms=2, area_m2=area,
+                photos=[],
+            ),
+            nearby_schools=7,
+            nearby_parks=36,
+            nearby_metro=metro,
+            nearby_school_m=559,
+            nearby_park_m=51,
+        )
+
+    # ~932K/m² vs batch avg 800K/m² -> "дороже"; metro true zero -> words, not "0"
+    card = format_apartment_card(make(41_000_000, 44.0, 0), index=3, avg_price_per_m2=800_000)
+    assert "дороже среднего за м²" in card
+    assert "🚇 метро: нет рядом (2 км+)" in card
+    assert "метро: 0" not in card
+
+    # cheaper than batch average -> "дешевле"
+    card = format_apartment_card(make(30_000_000, 44.0, 1), index=1, avg_price_per_m2=800_000)
+    assert "дешевле среднего за м²" in card
+
+    # within ±3% -> neutral wording; no avg -> no comparison line at all
+    card = format_apartment_card(make(35_200_000, 44.0, 1), index=1, avg_price_per_m2=800_000)
+    assert "на уровне подборки" in card
+    card = format_apartment_card(make(41_000_000, 44.0, 1), index=1)
+    assert "📊" not in card
 
 
 def test_format_apartment_card_is_clean_and_structured() -> None:

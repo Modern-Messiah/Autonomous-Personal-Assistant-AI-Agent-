@@ -23,9 +23,10 @@ async def send_apartment_card(
     send_text: Sender,
     send_photo: Sender,
     caption_suffix: str | None = None,
+    avg_price_per_m2: float | None = None,
 ) -> None:
     """Send one photo card, falling back to text when Telegram rejects the photo."""
-    caption = format_apartment_card(item, index=index)
+    caption = format_apartment_card(item, index=index, avg_price_per_m2=avg_price_per_m2)
     if caption_suffix:
         caption = f"{caption}\n\n{caption_suffix}"
     photo = item.apartment.photos[0] if item.apartment.photos else None

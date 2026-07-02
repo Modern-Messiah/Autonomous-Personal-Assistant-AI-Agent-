@@ -266,13 +266,27 @@ class SearchBotService:
         telegram_user_id: int,
         username: str | None,
         deal_type: str,
-    ) -> SearchCriteria:
-        """Set the active deal type (sale/rent)."""
+    ) -> tuple[SearchCriteria, bool]:
+        """Set the active deal type (sale/rent).
+
+        Switching sale<->rent invalidates the old budget (45M to buy vs 300K/mo
+        to rent), so it is cleared for the user to enter a fitting one. Returns
+        the saved criteria and whether the budget was reset.
+        """
         active = await self._require_active_criteria(telegram_user_id=telegram_user_id)
-        updated = active.model_copy(update={"deal_type": deal_type})
-        return await self._save_active_criteria(
+        changed = deal_type != active.deal_type
+        update: dict[str, object] = {"deal_type": deal_type}
+        budget_reset = changed and (
+            active.min_price_kzt is not None or active.max_price_kzt is not None
+        )
+        if changed:
+            update["min_price_kzt"] = None
+            update["max_price_kzt"] = None
+        updated = active.model_copy(update=update)
+        saved = await self._save_active_criteria(
             telegram_user_id=telegram_user_id, username=username, criteria=updated
         )
+        return saved, budget_reset
 
     async def set_active_district(
         self,

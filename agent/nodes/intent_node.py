@@ -427,20 +427,23 @@ class IntentNode:
         patch: IntentCriteriaPatch,
         locations: ResolvedLocations,
     ) -> SearchCriteria:
+        deal_type = patch.deal_type or criteria.deal_type
+        # Switching sale<->rent invalidates the old budget (45M to buy vs 300K/mo
+        # to rent); unless the same message names a new one, drop it so the user
+        # sets a budget that matches the new deal type.
+        deal_changed = deal_type != criteria.deal_type
+        inherited_min = None if deal_changed else criteria.min_price_kzt
+        inherited_max = None if deal_changed else criteria.max_price_kzt
         return SearchCriteria(
             user_id=criteria.user_id,
             city=locations.city,
-            deal_type=patch.deal_type or criteria.deal_type,
+            deal_type=deal_type,
             property_type=criteria.property_type,
             min_price_kzt=(
-                criteria.min_price_kzt
-                if patch.min_price_kzt is None
-                else patch.min_price_kzt
+                inherited_min if patch.min_price_kzt is None else patch.min_price_kzt
             ),
             max_price_kzt=(
-                criteria.max_price_kzt
-                if patch.max_price_kzt is None
-                else patch.max_price_kzt
+                inherited_max if patch.max_price_kzt is None else patch.max_price_kzt
             ),
             rooms=criteria.rooms if patch.rooms is None else patch.rooms,
             districts=list(locations.districts) if locations.districts else None,
@@ -491,13 +494,19 @@ class IntentNode:
         rooms = self._parse_rooms(normalized)
         page_limit = self._find_page_limit(normalized)
 
+        new_deal_type = deal_type or criteria.deal_type
+        # Same rule as the LLM path: a sale<->rent switch drops the old budget
+        # unless this message names a new one.
+        deal_changed = new_deal_type != criteria.deal_type
+        inherited_min = None if deal_changed else criteria.min_price_kzt
+        inherited_max = None if deal_changed else criteria.max_price_kzt
         return SearchCriteria(
             user_id=criteria.user_id,
             city=locations.city,
-            deal_type=deal_type or criteria.deal_type,
+            deal_type=new_deal_type,
             property_type=criteria.property_type,
-            min_price_kzt=criteria.min_price_kzt if min_price is None else min_price,
-            max_price_kzt=criteria.max_price_kzt if max_price is None else max_price,
+            min_price_kzt=inherited_min if min_price is None else min_price,
+            max_price_kzt=inherited_max if max_price is None else max_price,
             rooms=criteria.rooms if rooms is None else rooms,
             districts=list(locations.districts) if locations.districts else None,
             min_area_m2=criteria.min_area_m2 if min_area is None else min_area,

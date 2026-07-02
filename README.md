@@ -1,5 +1,13 @@
 # Krisha Agent
 
+<p align="center">
+  <img
+    src="docs/images/krisha-agent-logo.png"
+    alt="Krisha Agent — интеллектуальный поиск квартир"
+    width="280"
+  >
+</p>
+
 Autonomous multi-agent system for apartment discovery in Kazakhstan.  
 Current scope is **Phase 0 + Phase 7 infra baseline**: foundation, parser, LangGraph search pipeline, enrichment, DeepSeek-backed scoring, checkpoint memory, Telegram bot, persistent monitor settings, ARQ scheduler runtime, Notion export, Podman stack, VPS deploy automation, tests, and CI.
 
@@ -322,3 +330,57 @@ git pull
 podman-compose build
 systemctl --user restart krisha-agent-compose.service
 ```
+
+## Демонстрация работы
+
+Ниже показаны реальные сценарии взаимодействия с Krisha Agent в Telegram:
+от знакомства с возможностями до анализа квартир и обучения на обратной связи
+пользователя.
+
+<table>
+  <tr>
+    <th width="33%">1. Знакомство с ботом</th>
+    <th width="33%">2. Поиск и оценка квартиры</th>
+    <th width="33%">3. Выбор и обратная связь</th>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <img
+        src="docs/images/telegram-onboarding.png"
+        alt="Приветствие Krisha Agent и список Telegram-команд"
+        width="260"
+      >
+    </td>
+    <td align="center" valign="top">
+      <img
+        src="docs/images/telegram-search-results-primary.png"
+        alt="Поисковый запрос, распознанные критерии и первая оценённая квартира"
+        width="260"
+      >
+    </td>
+    <td align="center" valign="top">
+      <img
+        src="docs/images/telegram-search-results-actions.png"
+        alt="Карточки квартир и кнопки сохранения или отклонения"
+        width="260"
+      >
+    </td>
+  </tr>
+  <tr>
+    <td valign="top">
+      Команда <code>/start</code> показывает основные сценарии: поиск и уточнение
+      критериев, избранное, корзину, персональную подборку и мониторинг новых
+      объявлений по всему Казахстану.
+    </td>
+    <td valign="top">
+      Пользователь описывает квартиру обычным текстом. Бот распознаёт город,
+      бюджет и комнаты, затем показывает фото, цену за м², адрес, ипотечный
+      платёж, инфраструктуру и итоговую AI-оценку с объяснением.
+    </td>
+    <td valign="top">
+      Результаты приходят отдельными карточками со ссылкой на Krisha.
+      Кнопки «Сохранить» и «Отклонить» записывают предпочтения пользователя,
+      благодаря чему команда <code>/foryou</code> формирует более точную подборку.
+    </td>
+  </tr>
+</table>

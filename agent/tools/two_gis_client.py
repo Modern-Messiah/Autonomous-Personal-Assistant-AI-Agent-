@@ -234,8 +234,15 @@ class TwoGISClient:
         total = result.get("total")
         count = total if type(total) is int and total >= 0 else None
         nearest_m = self._nearest_distance_m(result.get("items", []), lat=lat, lon=lon)
-        if count is None and nearest_m is None:
-            logger.warning("2GIS nearby count missing valid total query=%s", query)
+        if count is None:
+            # On zero matches 2GIS replies HTTP 200 with meta.code=404
+            # ("Results not found") and no result block — that is a TRUE zero
+            # ("checked, none within the radius"), not missing data.
+            meta = data.get("meta")
+            if isinstance(meta, dict) and meta.get("code") == 404:
+                return 0, None
+            if nearest_m is None:
+                logger.warning("2GIS nearby count missing valid total query=%s", query)
         return count, nearest_m
 
     @staticmethod

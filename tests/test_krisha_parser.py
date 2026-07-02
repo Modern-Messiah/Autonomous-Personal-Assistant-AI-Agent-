@@ -181,6 +181,20 @@ async def test_search_parses_listing_and_detail_pages() -> None:
     ]
 
 
+def test_build_listing_urls_adds_owner_filter() -> None:
+    parser = KrishaParser(redis_client=FakeRedis(), min_delay_seconds=0, max_delay_seconds=0)
+    base = SearchCriteria(
+        user_id=1, city="Almaty", deal_type="sale", property_type="apartment", page_limit=1
+    )
+
+    plain = parser._build_listing_urls(base)[0]
+    assert "das%5Bwho%5D=1" not in plain
+
+    owner = parser._build_listing_urls(base.model_copy(update={"owner_only": True}))[0]
+    # krisha's "Кто разместил: от хозяев" server-side filter
+    assert "das%5Bwho%5D=1" in owner
+
+
 def test_listing_url_drops_tracking_query() -> None:
     # Promoted "hot block" cards carry tracking params that redirect-loop the
     # detail page; the parser must keep only the canonical /a/show/<id> path.

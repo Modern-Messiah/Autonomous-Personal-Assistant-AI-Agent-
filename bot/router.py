@@ -38,6 +38,7 @@ from bot.keyboards import (
     REFINE_SET_CITY_PREFIX,
     REFINE_SET_DEAL_PREFIX,
     REFINE_SET_DISTRICT_PREFIX,
+    REFINE_TOGGLE_OWNER,
     RESTORE_TRASH_PREFIX,
     SEARCH_MORE_CALLBACK_DATA,
     build_apartment_actions_keyboard,
@@ -124,7 +125,7 @@ def create_bot_router(service: SearchBotService) -> Router:
             )
             return False
         text = f"{REFINE_MENU_HINT}\n\n{format_criteria(criteria)}"
-        markup = build_refine_menu_keyboard(criteria.city)
+        markup = build_refine_menu_keyboard(criteria.city, owner_only=criteria.owner_only)
         if edit:
             with contextlib.suppress(Exception):
                 await target.edit_text(text, reply_markup=markup)
@@ -637,6 +638,27 @@ def create_bot_router(service: SearchBotService) -> Router:
         await state.clear()
         await show_refine_menu(callback.message, callback.from_user.id, edit=True)
         await callback.answer("Район обновлён" if district else "Ищу по всему городу")
+
+    @router.callback_query(F.data == REFINE_TOGGLE_OWNER)
+    async def handle_refine_toggle_owner_callback(
+        callback: CallbackQuery, state: FSMContext
+    ) -> None:
+        if callback.from_user is None or not isinstance(callback.message, Message):
+            await callback.answer()
+            return
+        try:
+            updated = await service.toggle_active_owner_only(
+                telegram_user_id=callback.from_user.id,
+                username=callback.from_user.username,
+            )
+        except ActiveCriteriaNotFoundError:
+            await callback.answer("Сначала выполни поиск через /search.")
+            return
+        await state.clear()
+        await show_refine_menu(callback.message, callback.from_user.id, edit=True)
+        await callback.answer(
+            "Только объявления от хозяев" if updated.owner_only else "Любые объявления"
+        )
 
     @router.callback_query(F.data == REFINE_BACK)
     async def handle_refine_back_callback(callback: CallbackQuery, state: FSMContext) -> None:

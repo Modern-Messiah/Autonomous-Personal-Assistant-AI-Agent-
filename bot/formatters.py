@@ -66,6 +66,8 @@ def format_criteria(criteria: SearchCriteria) -> str:
         parts.append(f"Районы: {', '.join(criteria.districts)}")
     if criteria.min_area_m2 is not None or criteria.max_area_m2 is not None:
         parts.append(f"Площадь: {criteria.min_area_m2 or 0:g} - {criteria.max_area_m2 or 0:g} м2")
+    if criteria.owner_only:
+        parts.append("Только от хозяина: да")
     parts.append(f"Страниц поиска: {criteria.page_limit}")
     return "Текущие критерии:\n" + "\n".join(parts)
 

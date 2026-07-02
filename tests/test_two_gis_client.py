@@ -150,6 +150,33 @@ async def test_missing_total_is_unknown_instead_of_page_length() -> None:
 
 
 @pytest.mark.asyncio
+async def test_zero_matches_meta_404_is_true_zero() -> None:
+    # On zero matches 2GIS replies HTTP 200 + meta.code=404 "Results not found":
+    # that is a real 0 ("checked, none within radius"), not unknown — e.g. metro
+    # in Almaty's Alatau district, far from the metro line.
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "geocode" in str(request.url):
+            return httpx.Response(
+                200,
+                json={"result": {"items": [{"point": {"lat": 43.27, "lon": 76.81}}]}},
+            )
+        return httpx.Response(
+            200,
+            json={
+                "meta": {
+                    "code": 404,
+                    "error": {"message": "Results not found", "type": "itemNotFound"},
+                }
+            },
+        )
+
+    client = TwoGISClient(api_key="k", transport=httpx.MockTransport(handler))
+    summary = await client.get_nearby_summary(city="Almaty", address="Момышулы 12")
+
+    assert summary == NearbySummary(schools=0, parks=0, metro=0)
+
+
+@pytest.mark.asyncio
 async def test_metro_query_skipped_for_city_without_metro() -> None:
     from urllib.parse import parse_qs, urlparse
 

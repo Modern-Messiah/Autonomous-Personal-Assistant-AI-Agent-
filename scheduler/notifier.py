@@ -9,7 +9,7 @@ from aiogram import Bot
 from agent.models.criteria import SearchCriteria
 from agent.models.enriched import EnrichedApartment
 from bot.card_sender import send_apartment_card
-from bot.formatters import format_criteria
+from bot.formatters import clean_listing_url, format_criteria
 from bot.keyboards import build_apartment_actions_keyboard
 
 
@@ -32,7 +32,10 @@ class TelegramMonitorNotifier:
         )
         await self._bot.send_message(telegram_user_id, format_criteria(criteria))
         for index, item in enumerate(apartments, start=1):
-            keyboard = build_apartment_actions_keyboard(item.apartment.external_id)
+            keyboard = build_apartment_actions_keyboard(
+                item.apartment.external_id,
+                clean_listing_url(item.apartment.url),
+            )
             await send_apartment_card(
                 item,
                 index=index,

@@ -150,7 +150,10 @@ def create_bot_router(service: SearchBotService) -> Router:
 
         avg_price_per_m2 = _batch_avg_price_per_m2(presented_apartments)
         for index, apartment in enumerate(presented_apartments, start=1):
-            keyboard = build_apartment_actions_keyboard(apartment.apartment.external_id)
+            keyboard = build_apartment_actions_keyboard(
+                apartment.apartment.external_id,
+                clean_listing_url(apartment.apartment.url),
+            )
             await send_apartment_card(
                 apartment,
                 index=index,
@@ -371,7 +374,10 @@ def create_bot_router(service: SearchBotService) -> Router:
             [rec.apartment for rec in result.recommendations]
         )
         for index, rec in enumerate(result.recommendations, start=1):
-            keyboard = build_apartment_actions_keyboard(rec.apartment.apartment.external_id)
+            keyboard = build_apartment_actions_keyboard(
+                rec.apartment.apartment.external_id,
+                clean_listing_url(rec.apartment.apartment.url),
+            )
             suffix = (
                 f"⭐ Почему вам: {', '.join(rec.reasons)}"
                 if rec.reasons

@@ -1310,7 +1310,8 @@ def test_formatters_render_expected_content() -> None:
     assert "Алматы" not in text
     assert "Город: Almaty" in text
     assert "40 000 000 KZT" in text
-    assert "krisha.kz/a/show/900100" in results_text  # clean listing link, no tracking query
+    # Links moved to the "🌐 Открыть на Krisha" button — captions carry no raw URL.
+    assert "krisha.kz/a/show" not in results_text
     assert "31 000 000 ₸" in results_text
     assert "Сохраненные квартиры" in saved_text
     assert "Статус мониторинга" in monitor_text
@@ -1319,9 +1320,16 @@ def test_formatters_render_expected_content() -> None:
     assert keyboard.inline_keyboard[1][0].callback_data == REFINE_CALLBACK_DATA
     assert keyboard.inline_keyboard[1][1].callback_data == LIST_CALLBACK_DATA
 
-    actions = build_apartment_actions_keyboard("1013149871")
-    assert actions.inline_keyboard[0][0].callback_data == f"{APT_SAVE_PREFIX}1013149871"
-    assert actions.inline_keyboard[0][1].callback_data == f"{APT_REJECT_PREFIX}1013149871"
+    actions = build_apartment_actions_keyboard(
+        "1013149871", "https://krisha.kz/a/show/1013149871"
+    )
+    assert actions.inline_keyboard[0][0].url == "https://krisha.kz/a/show/1013149871"
+    assert actions.inline_keyboard[1][0].callback_data == f"{APT_SAVE_PREFIX}1013149871"
+    assert actions.inline_keyboard[1][1].callback_data == f"{APT_REJECT_PREFIX}1013149871"
+
+    # without a url the link row is simply absent
+    actions_no_url = build_apartment_actions_keyboard("1013149871")
+    assert actions_no_url.inline_keyboard[0][0].callback_data == f"{APT_SAVE_PREFIX}1013149871"
 
 
 @pytest.mark.asyncio
@@ -1424,8 +1432,8 @@ def test_format_apartment_card_is_clean_and_structured() -> None:
     assert "85/100" in card
     assert "школы: 5" in card
     assert "рядом школы" in card  # score reasons included
-    assert "https://krisha.kz/a/show/900100" in card
-    assert "srchid" not in card  # tracking query stripped
+    # The link lives on the "🌐 Открыть на Krisha" button, not in the caption.
+    assert "🔗" not in card and "https://" not in card
     assert "<b>" not in card and "href=" not in card  # plain text, renders without parse_mode
 
 

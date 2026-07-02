@@ -6,7 +6,12 @@ from agent.models.apartment import Apartment
 from agent.models.criteria import SearchCriteria
 from agent.models.enriched import EnrichedApartment
 from agent.models.score import ApartmentScore
-from bot.preferences import build_preference_profile, rank_by_preference, score_candidate
+from bot.preferences import (
+    build_preference_profile,
+    build_taste_criteria,
+    rank_by_preference,
+    score_candidate,
+)
 
 
 def apt(
@@ -97,6 +102,47 @@ def test_rank_breaks_ties_by_objective_score() -> None:
     high = apt(ext="21", district="Бостандыкский район", score=90.0)
     ranked = rank_by_preference([low, high], profile)
     assert ranked[0][0].apartment.external_id == "21"
+
+
+def test_taste_criteria_searches_what_the_user_saves() -> None:
+    # User saves Almaty purchases (~40M, Auezov/Alatau) but last searched RENT:
+    # /foryou must search the saved taste, not rerank the rent results.
+    saved = [
+        apt(ext="1", district="Ауэзовский район", price=40_000_000, area=60, rooms=2),
+        apt(ext="2", district="Алатауский район", price=41_000_000, area=73, rooms=2),
+    ]
+    profile = build_preference_profile(saved, [])
+    base = SearchCriteria(
+        user_id=77, city="Almaty", deal_type="rent", property_type="apartment",
+        max_price_kzt=500_000, rooms=[2], page_limit=3,
+    )
+
+    taste = build_taste_criteria(profile, saved, base=base)
+
+    assert taste.city == "Almaty"
+    assert taste.deal_type == "sale"  # inferred: 41M is a purchase, not a rent
+    assert sorted(taste.districts or []) == ["Alatau", "Auezov"]
+    assert taste.rooms == [2]
+    assert taste.min_price_kzt == int(40_000_000 * 0.85)
+    assert taste.max_price_kzt == int(41_000_000 * 1.15)
+    assert taste.user_id == 77 and taste.page_limit == 3  # anchored to base
+
+
+def test_taste_criteria_infers_rent_and_falls_back_to_base() -> None:
+    # Saved rentals (300K/mo, no district) -> rent inferred, districts fall back.
+    saved = [apt(ext="1", district=None, price=300_000, area=45, rooms=1)]
+    profile = build_preference_profile(saved, [])
+    base = SearchCriteria(
+        user_id=1, city="Astana", deal_type="sale", property_type="apartment",
+        page_limit=3,
+    )
+
+    taste = build_taste_criteria(profile, saved, base=base)
+
+    assert taste.deal_type == "rent"
+    assert taste.districts is None  # no liked districts -> whole city
+    assert taste.rooms == [1]
+    assert taste.min_price_kzt == int(300_000 * 0.85)
 
 
 def test_rank_uses_active_criteria_district_and_budget() -> None:

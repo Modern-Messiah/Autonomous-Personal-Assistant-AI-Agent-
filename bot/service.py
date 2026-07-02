@@ -18,7 +18,7 @@ from agent.models.enriched import EnrichedApartment
 from agent.nodes.intent_node import IntentNode
 from agent.tools.krisha_parser import AntiBotBlockedError
 from bot.monitoring import DEFAULT_MONITOR_INTERVAL_MINUTES
-from bot.preferences import build_preference_profile, rank_by_preference
+from bot.preferences import build_preference_profile, build_taste_criteria, rank_by_preference
 from db import (
     ApartmentDecision,
     clear_apartment_feedback,
@@ -526,16 +526,21 @@ class SearchBotService:
             msg = "no saved apartments to learn from"
             raise NoPreferencesError(msg)
 
+        # Search by the learned taste, not by the volatile last-search criteria:
+        # the user may have last searched a different city or rent vs purchase,
+        # and reranking that result is not a recommendation. Candidates come from
+        # the districts/rooms/price range of what the user actually saves.
+        profile = build_preference_profile(saved, rejected)
+        search_criteria = build_taste_criteria(profile, saved, base=criteria)
         candidates = await self._run_search_graph(
             telegram_user_id=telegram_user_id,
             user_id=user_id,
-            criteria=criteria,
+            criteria=search_criteria,
             dedup_namespace="foryou",
         )
-        profile = build_preference_profile(saved, rejected)
-        ranked = rank_by_preference(candidates, profile, criteria=criteria)[:limit]
+        ranked = rank_by_preference(candidates, profile, criteria=search_criteria)[:limit]
         return RecommendationResult(
-            criteria=criteria,
+            criteria=search_criteria,
             recommendations=[
                 Recommendation(apartment=item, reasons=reasons) for item, reasons in ranked
             ],

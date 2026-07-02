@@ -92,21 +92,24 @@ class DeepSeekApartmentScorer:
             "Score each on overall value/quality from 0 to 100 and DIFFERENTIATE: "
             "use the full range, the best clearly higher than the weakest, and do "
             "not give several listings the same score.",
-            "Reward lower price per m², a mid floor (not 1st or last), more nearby "
-            "schools/parks/metro, more area for the price, a better district.",
-            "'nearest Nm' is the distance to the closest such object — a CLOSER "
-            "metro/school/park is clearly better than a far one, even at the same "
-            "count (e.g. metro 300m beats metro 1500m). Weigh proximity, not just "
-            "counts.",
-            "Penalize 1st or last floor, high price per m², no metro/parks nearby, "
-            "a cramped area.",
-            "A nearby count of 'unknown' means the data is unavailable — treat it "
-            "neutrally, do NOT penalize it as if nothing is nearby (0 means truly "
-            "none).",
+            "Judge each listing on these factors: (1) price per m², (2) floor "
+            "(mid is best, 1st/last worst), (3) area for the price, (4) district, "
+            "and (5) LOCATION QUALITY — walking proximity to metro/schools/parks.",
+            "Location quality is a first-class factor, weigh it like price/floor: "
+            "'nearest Nm' is the distance to the closest such object, and a CLOSER "
+            "metro/school/park is clearly better than a far one even at the same "
+            "count (e.g. metro 300m beats metro 1500m; 'metro 1 (nearest 350m)' is "
+            "a strong plus). Weigh distance, not just the count.",
+            "Penalize 1st or last floor, high price per m², a far or absent metro, "
+            "few amenities nearby, a cramped area.",
+            "A nearby count of 'unknown' means the data is unavailable (e.g. a city "
+            "with no metro) — treat it neutrally, do NOT penalize it as if nothing "
+            "is nearby (0 means truly none).",
             "recommendation must be one of strong_buy, consider, skip and stay "
             "consistent with the score.",
             "Write 2-4 short reasons per listing in Russian, naming the concrete "
-            "differentiators (e.g. cheaper per m², top floor, many schools).",
+            "differentiators including distances (e.g. «метро 350 м», «дешевле "
+            "за м²», «школа рядом 200 м», «высокий этаж»).",
             'Respond with one JSON object: {"items": [{"index": <listing number>, '
             '"score": <0-100>, "recommendation": "strong_buy"|"consider"|"skip", '
             '"reasons": ["..."]}]}. Include every listing exactly once.',

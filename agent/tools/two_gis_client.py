@@ -13,6 +13,10 @@ from agent.tools.http_retry import request_with_retry
 
 logger = logging.getLogger(__name__)
 
+# Cities (canonical/RU, lowercased) that actually have a metro system. Elsewhere
+# the "metro station" lookup returns nothing, so it is skipped to save quota.
+_METRO_CITIES = {"almaty", "алматы"}
+
 
 def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Great-circle distance between two lat/lon points, in meters."""
@@ -83,7 +87,12 @@ class TwoGISClient:
 
         schools, schools_m = await self._count_nearby(query="school", lat=lat, lon=lon)
         parks, parks_m = await self._count_nearby(query="park", lat=lat, lon=lon)
-        metro, metro_m = await self._count_nearby(query="metro station", lat=lat, lon=lon)
+        # Only Almaty has a metro in Kazakhstan; querying "metro station" anywhere
+        # else just wastes a 2GIS call and returns no data (which then looked like
+        # a misleading "метро: 0"). Skip it for cities without a metro system.
+        metro, metro_m = (None, None)
+        if city.strip().lower() in _METRO_CITIES:
+            metro, metro_m = await self._count_nearby(query="metro station", lat=lat, lon=lon)
         return NearbySummary(
             schools=schools,
             parks=parks,

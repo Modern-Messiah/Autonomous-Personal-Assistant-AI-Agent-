@@ -150,6 +150,31 @@ async def test_missing_total_is_unknown_instead_of_page_length() -> None:
 
 
 @pytest.mark.asyncio
+async def test_metro_query_skipped_for_city_without_metro() -> None:
+    from urllib.parse import parse_qs, urlparse
+
+    queries: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if "geocode" in url:
+            return httpx.Response(
+                200,
+                json={"result": {"items": [{"point": {"lat": 43.24, "lon": 76.95}}]}},
+            )
+        queries.append(parse_qs(urlparse(url).query).get("q", [""])[0])
+        return httpx.Response(200, json={"result": {"total": 3}})
+
+    client = TwoGISClient(api_key="k", transport=httpx.MockTransport(handler))
+    summary = await client.get_nearby_summary(city="Taraz", address="Толе би 40")
+
+    assert summary.schools == 3
+    assert summary.parks == 3
+    assert summary.metro is None and summary.metro_nearest_m is None
+    assert "metro station" not in queries  # not even requested (saves quota)
+
+
+@pytest.mark.asyncio
 async def test_nearby_summary_reports_distance_to_nearest() -> None:
     from agent.tools.two_gis_client import _haversine_m
 

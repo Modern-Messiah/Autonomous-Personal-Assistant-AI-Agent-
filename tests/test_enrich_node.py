@@ -129,6 +129,24 @@ async def test_enrich_node_adds_area_and_mortgage_data() -> None:
 
 
 @pytest.mark.asyncio
+async def test_enrich_node_skips_mortgage_for_rent() -> None:
+    # A rental price is a monthly rate; a "mortgage" estimate from it is nonsense.
+    apartment = build_apartment(with_address=True)
+    node = EnrichNode(
+        area_client=FakeAreaClient(NearbySummary(schools=8, parks=5, metro=2)),
+        interest_rate_provider=FakeRateProvider(annual_rate=15.0),
+    )
+    rent_criteria = build_criteria().model_copy(update={"deal_type": "rent"})
+
+    result = await node({"criteria": rent_criteria, "apartments": [apartment]})
+    enriched = result["enriched_apartments"][0]
+
+    assert enriched.mortgage_monthly_payment_kzt is None
+    assert enriched.mortgage_total_overpayment_kzt is None
+    assert enriched.nearby_schools == 8  # nearby enrichment still applies
+
+
+@pytest.mark.asyncio
 async def test_enrich_node_falls_back_on_provider_errors() -> None:
     apartment = build_apartment(with_address=True)
     node = EnrichNode(

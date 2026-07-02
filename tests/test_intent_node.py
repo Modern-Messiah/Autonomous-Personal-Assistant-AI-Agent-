@@ -128,6 +128,22 @@ async def test_intent_node_parses_rent_message() -> None:
 
 
 @pytest.mark.parametrize(
+    "message",
+    [
+        "сниму 1 ком в Алматы до 250 тыс",
+        "снимем двушку в Астане",
+        "снять квартиру в Таразе",
+        "аренда в Шымкенте",
+    ],
+)
+@pytest.mark.asyncio
+async def test_intent_node_recognizes_rent_verb_forms(message: str) -> None:
+    node = IntentNode(llm_parser_factory=lambda: None)
+    criteria = await node.parse(user_id=1, message=message)
+    assert criteria.deal_type == "rent"
+
+
+@pytest.mark.parametrize(
     ("message", "expected_rooms"),
     [
         ("2-комнатная в Павлодаре до 45 млн", [2]),

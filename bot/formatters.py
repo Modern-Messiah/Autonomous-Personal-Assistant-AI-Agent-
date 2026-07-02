@@ -17,6 +17,15 @@ RECOMMENDATION_LABELS = {
 }
 
 
+def _nearby_distance(distance_m: int | None) -> str:
+    """Render the distance to the nearest object, e.g. ' (480 м)' or ' (1.2 км)'."""
+    if distance_m is None:
+        return ""
+    if distance_m >= 1000:
+        return f" ({distance_m / 1000:.1f} км)"
+    return f" ({distance_m} м)"
+
+
 def format_start_message() -> str:
     """Return onboarding message for `/start`."""
     return (
@@ -90,9 +99,9 @@ def format_apartment_card(item: EnrichedApartment, *, index: int | None = None) 
         or item.nearby_metro is not None
     ):
         lines.append(
-            f"🏫 школы: {item.nearby_schools or 0} · "
-            f"🌳 парки: {item.nearby_parks or 0} · "
-            f"🚇 метро: {item.nearby_metro or 0}"
+            f"🏫 школы: {item.nearby_schools or 0}{_nearby_distance(item.nearby_school_m)} · "
+            f"🌳 парки: {item.nearby_parks or 0}{_nearby_distance(item.nearby_park_m)} · "
+            f"🚇 метро: {item.nearby_metro or 0}{_nearby_distance(item.nearby_metro_m)}"
         )
     if item.score is not None:
         label = RECOMMENDATION_LABELS.get(

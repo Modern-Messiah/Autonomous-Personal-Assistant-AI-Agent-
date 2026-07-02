@@ -129,7 +129,7 @@ async def test_valid_zero_is_cached_in_versioned_namespace() -> None:
     summary = await client.get_nearby_summary(city="Almaty", address="Абая 10")
 
     assert summary == NearbySummary(schools=0, parks=0, metro=0)
-    assert len([key for key in cache.store if key.startswith("2gis:cnt:v2:")]) == 3
+    assert len([key for key in cache.store if key.startswith("2gis:cnt:v3:")]) == 3
 
 
 @pytest.mark.asyncio
@@ -147,3 +147,38 @@ async def test_missing_total_is_unknown_instead_of_page_length() -> None:
     assert await client.get_nearby_summary(
         city="Almaty", address="Абая 10"
     ) == NearbySummary(schools=None, parks=None, metro=None)
+
+
+@pytest.mark.asyncio
+async def test_nearby_summary_reports_distance_to_nearest() -> None:
+    from agent.tools.two_gis_client import _haversine_m
+
+    listing_lat, listing_lon = 43.240, 76.950
+    near_lat, near_lon = 43.244, 76.950  # closest of the returned items
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "geocode" in str(request.url):
+            return httpx.Response(
+                200,
+                json={"result": {"items": [{"point": {"lat": listing_lat, "lon": listing_lon}}]}},
+            )
+        return httpx.Response(
+            200,
+            json={
+                "result": {
+                    "total": 4,
+                    "items": [
+                        {"point": {"lat": near_lat, "lon": near_lon}},
+                        {"point": {"lat": 43.300, "lon": 76.990}},  # farther away
+                    ],
+                }
+            },
+        )
+
+    client = TwoGISClient(api_key="k", transport=httpx.MockTransport(handler))
+    summary = await client.get_nearby_summary(city="Almaty", address="Абая 10")
+
+    expected_m = round(_haversine_m(listing_lat, listing_lon, near_lat, near_lon))
+    assert summary.metro == 4
+    assert summary.metro_nearest_m == expected_m
+    assert summary.schools_nearest_m == expected_m  # nearest of the two items

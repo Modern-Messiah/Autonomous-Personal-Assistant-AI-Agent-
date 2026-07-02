@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -13,13 +14,30 @@ from agent.tools.http_retry import request_with_retry
 logger = logging.getLogger(__name__)
 
 
+def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Great-circle distance between two lat/lon points, in meters."""
+    radius = 6_371_000.0
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    d_phi = math.radians(lat2 - lat1)
+    d_lambda = math.radians(lon2 - lon1)
+    a = math.sin(d_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(d_lambda / 2) ** 2
+    return 2 * radius * math.asin(math.sqrt(a))
+
+
 @dataclass(slots=True, frozen=True)
 class NearbySummary:
-    """Nearby infrastructure counts around listing location."""
+    """Nearby infrastructure around a listing: counts + distance to the nearest.
+
+    ``*_nearest_m`` is the straight-line distance (meters) to the closest object of
+    that category, or None when unknown/none within the search radius.
+    """
 
     schools: int | None
     parks: int | None
     metro: int | None
+    schools_nearest_m: int | None = None
+    parks_nearest_m: int | None = None
+    metro_nearest_m: int | None = None
 
 
 class NearbyCacheProtocol(Protocol):
@@ -63,10 +81,17 @@ class TwoGISClient:
             return None
         lat, lon = point
 
-        schools = await self._count_nearby(query="school", lat=lat, lon=lon)
-        parks = await self._count_nearby(query="park", lat=lat, lon=lon)
-        metro = await self._count_nearby(query="metro station", lat=lat, lon=lon)
-        return NearbySummary(schools=schools, parks=parks, metro=metro)
+        schools, schools_m = await self._count_nearby(query="school", lat=lat, lon=lon)
+        parks, parks_m = await self._count_nearby(query="park", lat=lat, lon=lon)
+        metro, metro_m = await self._count_nearby(query="metro station", lat=lat, lon=lon)
+        return NearbySummary(
+            schools=schools,
+            parks=parks,
+            metro=metro,
+            schools_nearest_m=schools_m,
+            parks_nearest_m=parks_m,
+            metro_nearest_m=metro_m,
+        )
 
     async def _geocode(self, *, city: str, address: str) -> tuple[float, float] | None:
         cache_key = f"2gis:geo:{city.strip().lower()}|{address.strip().lower()}"
@@ -133,34 +158,50 @@ class TwoGISClient:
 
     async def _count_nearby(
         self, *, query: str, lat: float, lon: float
-    ) -> int | None:
-        # Place counts around a point change slowly, so cache them per
-        # query+coordinate (rounded ~11m) to cut repeat 2GIS requests.
-        cache_key = f"2gis:cnt:v2:{query}:{lat:.4f}:{lon:.4f}:{self._radius_meters}"
+    ) -> tuple[int | None, int | None]:
+        """Return (count, distance-to-nearest-in-meters) for a category near a point."""
+        # Counts + nearest distance around a point change slowly, so cache them per
+        # query+coordinate (rounded ~11m) to cut repeat 2GIS requests. Cached as
+        # "count,dist" where either side may be empty for "unknown".
+        cache_key = f"2gis:cnt:v3:{query}:{lat:.4f}:{lon:.4f}:{self._radius_meters}"
         if self._cache is not None:
             cached = await self._cache.get(cache_key)
             if cached is not None:
-                try:
-                    return int(cached)
-                except ValueError:
-                    pass
+                decoded = self._decode_cached_count(cached)
+                if decoded is not None:
+                    return decoded
 
-        count = await self._count_nearby_api(query=query, lat=lat, lon=lon)
+        count, nearest_m = await self._count_nearby_api(query=query, lat=lat, lon=lon)
 
         if self._cache is not None and count is not None:
-            await self._cache.set(cache_key, str(count), ex=self._counts_ttl_seconds)
-        return count
+            payload = f"{count},{nearest_m if nearest_m is not None else ''}"
+            await self._cache.set(cache_key, payload, ex=self._counts_ttl_seconds)
+        return count, nearest_m
+
+    @staticmethod
+    def _decode_cached_count(cached: str) -> tuple[int | None, int | None] | None:
+        count_str, _, dist_str = cached.partition(",")
+        try:
+            count = int(count_str)
+        except ValueError:
+            return None
+        nearest_m = int(dist_str) if dist_str else None
+        return count, nearest_m
 
     async def _count_nearby_api(
         self, *, query: str, lat: float, lon: float
-    ) -> int | None:
+    ) -> tuple[int | None, int | None]:
+        # Ask for the closest items (sorted by distance) and their coordinates so
+        # the SAME request yields both the total count and the nearest object's
+        # distance — no extra 2GIS quota beyond what the count already costs.
         params: dict[str, str | int] = {
             "q": query,
             "point": f"{lon},{lat}",
             "radius": self._radius_meters,
-            "page_size": 1,
+            "page_size": 10,
+            "sort": "distance",
             "type": "branch",
-            "fields": "items.id",
+            "fields": "items.point",
             "key": self._api_key,
         }
         try:
@@ -173,15 +214,33 @@ class TwoGISClient:
                 )
         except httpx.HTTPError:
             logger.warning("2GIS nearby count request failed query=%s", query)
-            return None
+            return None, None
 
         try:
             data = response.json()
         except ValueError:
             logger.warning("2GIS nearby count returned invalid JSON query=%s", query)
+            return None, None
+        result = data.get("result", {})
+        total = result.get("total")
+        count = total if type(total) is int and total >= 0 else None
+        nearest_m = self._nearest_distance_m(result.get("items", []), lat=lat, lon=lon)
+        if count is None and nearest_m is None:
+            logger.warning("2GIS nearby count missing valid total query=%s", query)
+        return count, nearest_m
+
+    @staticmethod
+    def _nearest_distance_m(
+        items: object, *, lat: float, lon: float
+    ) -> int | None:
+        if not isinstance(items, list):
             return None
-        total = data.get("result", {}).get("total")
-        if type(total) is int and total >= 0:
-            return total
-        logger.warning("2GIS nearby count missing valid total query=%s", query)
-        return None
+        distances: list[float] = []
+        for item in items:
+            point = item.get("point") if isinstance(item, dict) else None
+            if not isinstance(point, dict):
+                continue
+            plat, plon = point.get("lat"), point.get("lon")
+            if isinstance(plat, int | float) and isinstance(plon, int | float):
+                distances.append(_haversine_m(lat, lon, float(plat), float(plon)))
+        return round(min(distances)) if distances else None

@@ -21,6 +21,11 @@ def _or_unknown(value: int | None) -> int | str:
     return value if value is not None else "unknown"
 
 
+def _nearest(distance_m: int | None) -> str:
+    """Append the distance to the nearest object, e.g. ' (nearest 480m)'."""
+    return f" (nearest {distance_m}m)" if distance_m is not None else ""
+
+
 class DeepSeekApartmentScorer:
     """Scores a whole shortlist in one call so scores are comparative, not uniform."""
 
@@ -89,6 +94,10 @@ class DeepSeekApartmentScorer:
             "not give several listings the same score.",
             "Reward lower price per m², a mid floor (not 1st or last), more nearby "
             "schools/parks/metro, more area for the price, a better district.",
+            "'nearest Nm' is the distance to the closest such object — a CLOSER "
+            "metro/school/park is clearly better than a far one, even at the same "
+            "count (e.g. metro 300m beats metro 1500m). Weigh proximity, not just "
+            "counts.",
             "Penalize 1st or last floor, high price per m², no metro/parks nearby, "
             "a cramped area.",
             "A nearby count of 'unknown' means the data is unavailable — treat it "
@@ -131,9 +140,9 @@ class DeepSeekApartmentScorer:
             f"rooms={apartment.rooms or 'unknown'}, area_m2={apartment.area_m2 or 'unknown'}, "
             f"floor={apartment.floor or 'unknown'}, "
             f"district={apartment.district or 'unknown'}, "
-            f"schools={_or_unknown(enriched.nearby_schools)}, "
-            f"parks={_or_unknown(enriched.nearby_parks)}, "
-            f"metro={_or_unknown(enriched.nearby_metro)}, "
+            f"schools={_or_unknown(enriched.nearby_schools)}{_nearest(enriched.nearby_school_m)}, "
+            f"parks={_or_unknown(enriched.nearby_parks)}{_nearest(enriched.nearby_park_m)}, "
+            f"metro={_or_unknown(enriched.nearby_metro)}{_nearest(enriched.nearby_metro_m)}, "
             f"mortgage_monthly_kzt={enriched.mortgage_monthly_payment_kzt or 'unknown'}"
         )
 

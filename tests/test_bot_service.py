@@ -1082,6 +1082,28 @@ def test_refine_menu_keyboard_shows_owner_toggle_state() -> None:
     assert "—" in owner_button(False)
 
 
+def test_format_apartment_card_shows_poster() -> None:
+    owner_item = build_apartment()
+    owner_item = owner_item.model_copy(
+        update={"apartment": owner_item.apartment.model_copy(update={"posted_by": "owner"})}
+    )
+    assert "👤 От хозяина" in format_apartment_card(owner_item, index=1)
+
+    agent_item = build_apartment()
+    agent_item = agent_item.model_copy(
+        update={
+            "apartment": agent_item.apartment.model_copy(
+                update={"posted_by": "agent", "agency_name": "Top City"}
+            )
+        }
+    )
+    assert "🏢 От риелтора (Top City)" in format_apartment_card(agent_item, index=1)
+
+    # unknown -> no poster line at all
+    plain_card = format_apartment_card(build_apartment(), index=1)
+    assert "От хозяина" not in plain_card and "От риелтора" not in plain_card
+
+
 def test_format_criteria_shows_owner_only() -> None:
     criteria = _active_criteria().model_copy(update={"owner_only": True})
     assert "Только от хозяина: да" in format_criteria(criteria)

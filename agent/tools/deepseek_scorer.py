@@ -102,6 +102,8 @@ class DeepSeekApartmentScorer:
             "a strong plus). Weigh distance, not just the count.",
             "Penalize 1st or last floor, high price per m², a far or absent metro, "
             "few amenities nearby, a cramped area.",
+            "posted_by=owner (от хозяина, no agency commission) is a modest plus "
+            "over posted_by=agent; 'unknown' is neutral.",
             "A nearby count of 'unknown' means the data is unavailable (e.g. a city "
             "with no metro) — treat it neutrally, do NOT penalize it as if nothing "
             "is nearby (0 means truly none).",
@@ -176,6 +178,7 @@ class DeepSeekApartmentScorer:
             f"schools={_or_unknown(enriched.nearby_schools)}{_nearest(enriched.nearby_school_m)}, "
             f"parks={_or_unknown(enriched.nearby_parks)}{_nearest(enriched.nearby_park_m)}, "
             f"metro={_or_unknown(enriched.nearby_metro)}{_nearest(enriched.nearby_metro_m)}, "
+            f"posted_by={apartment.posted_by or 'unknown'}, "
             f"mortgage_monthly_kzt={enriched.mortgage_monthly_payment_kzt or 'unknown'}"
         )
 

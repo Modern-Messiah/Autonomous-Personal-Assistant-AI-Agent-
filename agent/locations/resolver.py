@@ -21,6 +21,22 @@ _DISTRICT_AFTER_MARKER = re.compile(
 )
 
 
+# First words that mark the captured "district" as price/limit text, not a name
+# (e.g. «район до 45 млн» captures «до 45 млн»).
+_NON_LOCATION_LEADS = frozenset(
+    {"до", "от", "за", "по", "на", "или", "не", "около", "под"}
+)
+
+
+def _looks_like_location(candidate: str) -> bool:
+    """Filter marker-regex noise: digits or a leading preposition are not a name."""
+    stripped = candidate.strip()
+    if len(stripped) < 3 or any(ch.isdigit() for ch in stripped):
+        return False
+    first_word = stripped.split()[0].lower()
+    return first_word not in _NON_LOCATION_LEADS
+
+
 @dataclass(frozen=True, slots=True)
 class ResolvedLocations:
     """Canonical location values plus defaulting metadata."""
@@ -123,18 +139,51 @@ def resolve_locations(
             raise LocationInputError(f"Город «{llm_city}» не удалось распознать.")
 
     message_city = catalog.find_city_in_text(message_without_marker_districts)
+    if message_city is None and marker_matches:
+        # «в Медеуском районе Алматы»: the marker capture swallowed the city
+        # name. Recover it from the original message, but only when that city
+        # interpretation is coherent (some OTHER district of that city is named
+        # in the text) — a bare «в районе Алматы» stays ambiguous and keeps
+        # asking for the city.
+        fallback_city = catalog.find_city_in_text(message)
+        if fallback_city is not None and catalog.find_districts_in_text(
+            message, fallback_city
+        ):
+            message_city = fallback_city
     selected_city = explicit_city or message_city
     city_was_supplied = selected_city is not None
 
-    raw_districts = tuple(llm_districts or marker_districts)
+    llm_raw = tuple(llm_districts or ())
+    marker_candidates = tuple(
+        candidate for candidate in marker_districts if _looks_like_location(candidate)
+    )
     selected_districts: tuple[str, ...] | None = None
-    if raw_districts:
+    resolved_explicitly = False
+    if llm_raw:
+        # LLM-extracted districts are the user's explicit words — validate strictly.
         selected_city, selected_districts = _resolve_explicit_districts(
             catalog=catalog,
-            raw_districts=raw_districts,
+            raw_districts=llm_raw,
             city=selected_city,
         )
         city_was_supplied = True
+        resolved_explicitly = True
+    elif marker_candidates:
+        # The «район <X>» capture is a heuristic; when it grabbed noise (budget
+        # tail, city name, ...), fall back to scanning the message instead of
+        # failing the whole search.
+        try:
+            selected_city, selected_districts = _resolve_explicit_districts(
+                catalog=catalog,
+                raw_districts=marker_candidates,
+                city=selected_city,
+            )
+            city_was_supplied = True
+            resolved_explicitly = True
+        except LocationInputError:
+            resolved_explicitly = False
+    if resolved_explicitly:
+        pass
     elif selected_city is not None:
         found = catalog.find_districts_in_text(message, selected_city)
         selected_districts = found or None
@@ -176,7 +225,8 @@ def resolve_locations(
         existing_city is not None
         and selected_city == existing_city
         and selected_districts is None
-        and not raw_districts
+        and not llm_raw
+        and not marker_candidates
     ):
         selected_districts = (
             tuple(existing_districts) if existing_districts is not None else None

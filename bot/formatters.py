@@ -118,6 +118,8 @@ def format_apartment_card(
     elif apartment.posted_by == "agent":
         agency = f" ({apartment.agency_name})" if apartment.agency_name else ""
         lines.append(f"🏢 От риелтора{agency}")
+    elif apartment.posted_by == "developer":
+        lines.append("🏗 От застройщика")
     if apartment.published_at is not None:
         lines.append(f"📅 Опубликовано: {apartment.published_at:%d.%m.%Y}")
     if item.mortgage_monthly_payment_kzt:

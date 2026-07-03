@@ -37,11 +37,12 @@ TITLE_ADDRESS_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-# The advert-author block is SSR and tells who posted the listing: its first
-# child div carries class "owner" (Хозяин недвижимости) or "company" (agency),
-# and advert-author-title holds the agency name for companies.
+# The advert-author block tells who posted the listing: its first child div
+# carries class "owner" (Хозяин недвижимости), "company" (agency) or "builder"
+# (developer / new construction); advert-author-title holds the agency name for
+# companies (builders usually have no title).
 AUTHOR_KIND_PATTERN = re.compile(
-    r'data-testid="advert-author"[^>]*>\s*<div\s+class="(owner|company)[\s"]',
+    r'data-testid="advert-author"[^>]*>\s*<div\s+class="(owner|company|builder)[\s"]',
     re.IGNORECASE,
 )
 AUTHOR_TITLE_PATTERN = re.compile(
@@ -255,13 +256,18 @@ class KrishaHtmlParser:
         )
 
     @staticmethod
-    def _extract_author(html: str) -> tuple[Literal["owner", "agent"] | None, str | None]:
-        """Return (posted_by, agency_name) from the SSR advert-author block."""
+    def _extract_author(
+        html: str,
+    ) -> tuple[Literal["owner", "agent", "developer"] | None, str | None]:
+        """Return (posted_by, agency_name) from the advert-author block."""
         kind_match = AUTHOR_KIND_PATTERN.search(html)
         if kind_match is None:
             return None, None
-        if kind_match.group(1).lower() == "owner":
+        kind = kind_match.group(1).lower()
+        if kind == "owner":
             return "owner", None
+        if kind == "builder":
+            return "developer", None
         title_match = AUTHOR_TITLE_PATTERN.search(html)
         agency = title_match.group(1).strip() if title_match else None
         return "agent", agency or None

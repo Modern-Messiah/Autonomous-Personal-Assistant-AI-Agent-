@@ -21,9 +21,10 @@ class Apartment(BaseModel):
     area_m2: float | None = Field(default=None, gt=0)
     floor: str | None = None
     rooms: int | None = Field(default=None, gt=0)
-    # Who posted the listing — the owner ("Хозяин недвижимости" block) or an
-    # agent/agency (company block); None when the detail page didn't say.
-    posted_by: Literal["owner", "agent"] | None = None
+    # Who posted the listing — the owner ("Хозяин недвижимости"), an agent/agency
+    # (company block), or a developer (builder block on new-construction ads);
+    # None when the detail page didn't say.
+    posted_by: Literal["owner", "agent", "developer"] | None = None
     # Agency name when posted_by == "agent" (e.g. "Top City").
     agency_name: str | None = None
     photos: list[str]

@@ -210,6 +210,18 @@ def test_detail_page_extracts_author_kind() -> None:
     assert agent.posted_by == "agent"
     assert agent.agency_name == "Top City"
 
+    builder_block = (
+        '<div data-testid="advert-author" class="a-page__block">'
+        '<div class="builder" data-v-c2af3d64="">'
+        '<div class="builder__header">ЖК Пример</div></div></div>'
+    )
+    developer = parser.parse_detail_page(
+        base_html.replace("</body>", builder_block + "</body>"),
+        preview=preview, city="Almaty",
+    )
+    assert developer.posted_by == "developer"
+    assert developer.agency_name is None
+
     # no author block on the page -> both stay None
     plain = parser.parse_detail_page(base_html, preview=preview, city="Almaty")
     assert plain.posted_by is None

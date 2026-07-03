@@ -373,6 +373,12 @@ class KrishaParser:
                 # krisha's "Кто разместил: от хозяев" (verified live: who=1 and
                 # who=2 partition the results with zero overlap).
                 params.append(("das[who]", "1"))
+            if criteria.deal_type == "rent" and criteria.rent_period in ("daily", "hourly"):
+                # krisha's rent term (verified live via page titles):
+                # 1 = посуточно, 2 = помесячно (default), 4 = по часам.
+                params.append(
+                    ("das[rent.period]", "1" if criteria.rent_period == "daily" else "4")
+                )
             urls.append(f"{base_url}?{urlencode(params)}")
         return urls
 

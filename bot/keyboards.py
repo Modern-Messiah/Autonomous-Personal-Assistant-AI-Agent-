@@ -101,15 +101,26 @@ def build_refine_city_keyboard() -> InlineKeyboardMarkup:
 
 
 def build_refine_deal_keyboard() -> InlineKeyboardMarkup:
-    """Deal-type picker."""
+    """Deal-type picker with krisha's rent terms (помесячно/посуточно/по часам)."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
                     text="🛒 Купить", callback_data=f"{REFINE_SET_DEAL_PREFIX}sale"
                 ),
+            ],
+            [
                 InlineKeyboardButton(
-                    text="🔑 Снять", callback_data=f"{REFINE_SET_DEAL_PREFIX}rent"
+                    text="🔑 Снять помесячно",
+                    callback_data=f"{REFINE_SET_DEAL_PREFIX}rent:monthly",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🌙 Посуточно", callback_data=f"{REFINE_SET_DEAL_PREFIX}rent:daily"
+                ),
+                InlineKeyboardButton(
+                    text="⏰ По часам", callback_data=f"{REFINE_SET_DEAL_PREFIX}rent:hourly"
                 ),
             ],
             [InlineKeyboardButton(text="← Назад", callback_data=REFINE_BACK)],

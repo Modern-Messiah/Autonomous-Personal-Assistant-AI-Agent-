@@ -228,6 +228,28 @@ def test_detail_page_extracts_author_kind() -> None:
     assert plain.agency_name is None
 
 
+def test_build_listing_urls_adds_rent_period() -> None:
+    parser = KrishaParser(redis_client=FakeRedis(), min_delay_seconds=0, max_delay_seconds=0)
+    rent = SearchCriteria(
+        user_id=1, city="Almaty", deal_type="rent", property_type="apartment", page_limit=1
+    )
+
+    # monthly is krisha's default -> no param
+    assert "rent.period" not in parser._build_listing_urls(rent)[0]
+    monthly = rent.model_copy(update={"rent_period": "monthly"})
+    assert "rent.period" not in parser._build_listing_urls(monthly)[0]
+
+    daily = rent.model_copy(update={"rent_period": "daily"})
+    assert "das%5Brent.period%5D=1" in parser._build_listing_urls(daily)[0]
+
+    hourly = rent.model_copy(update={"rent_period": "hourly"})
+    assert "das%5Brent.period%5D=4" in parser._build_listing_urls(hourly)[0]
+
+    # a sale never carries the rent param even if the field is set
+    sale = rent.model_copy(update={"deal_type": "sale", "rent_period": "daily"})
+    assert "rent.period" not in parser._build_listing_urls(sale)[0]
+
+
 def test_build_listing_urls_adds_owner_filter() -> None:
     parser = KrishaParser(redis_client=FakeRedis(), min_delay_seconds=0, max_delay_seconds=0)
     base = SearchCriteria(

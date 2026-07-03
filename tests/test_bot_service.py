@@ -1030,9 +1030,10 @@ async def test_set_active_deal_and_district(monkeypatch: pytest.MonkeyPatch) -> 
 
     # sale -> rent: the purchase budget (45M) makes no sense for rent -> cleared
     deal, budget_reset = await service.set_active_deal_type(
-        telegram_user_id=77, username="t", deal_type="rent"
+        telegram_user_id=77, username="t", deal_type="rent", rent_period="monthly"
     )
     assert deal.deal_type == "rent"
+    assert deal.rent_period == "monthly"
     assert budget_reset is True
     assert deal.min_price_kzt is None and deal.max_price_kzt is None
 
@@ -1042,6 +1043,7 @@ async def test_set_active_deal_and_district(monkeypatch: pytest.MonkeyPatch) -> 
     )
     assert budget_reset_same is False
     assert same.max_price_kzt == 45_000_000
+    assert same.rent_period is None  # sale never carries a rent period
 
     with_district = await service.set_active_district(
         telegram_user_id=77, username="t", district="Medeu"
@@ -1108,6 +1110,30 @@ def test_format_criteria_shows_owner_only() -> None:
     criteria = _active_criteria().model_copy(update={"owner_only": True})
     assert "Только от хозяина: да" in format_criteria(criteria)
     assert "от хозяина" not in format_criteria(_active_criteria())
+
+
+def test_format_criteria_shows_rent_period() -> None:
+    rent = _active_criteria().model_copy(update={"deal_type": "rent"})
+    assert "Сделка: аренда (помесячно)" in format_criteria(rent)
+    daily = rent.model_copy(update={"rent_period": "daily"})
+    assert "Сделка: аренда (посуточно)" in format_criteria(daily)
+    hourly = rent.model_copy(update={"rent_period": "hourly"})
+    assert "Сделка: аренда (по часам)" in format_criteria(hourly)
+    assert "Сделка: покупка" in format_criteria(_active_criteria())
+
+
+def test_refine_deal_keyboard_offers_rent_periods() -> None:
+    from bot.keyboards import REFINE_SET_DEAL_PREFIX, build_refine_deal_keyboard
+
+    datas = [
+        b.callback_data
+        for row in build_refine_deal_keyboard().inline_keyboard
+        for b in row
+    ]
+    assert f"{REFINE_SET_DEAL_PREFIX}sale" in datas
+    assert f"{REFINE_SET_DEAL_PREFIX}rent:monthly" in datas
+    assert f"{REFINE_SET_DEAL_PREFIX}rent:daily" in datas
+    assert f"{REFINE_SET_DEAL_PREFIX}rent:hourly" in datas
 
 
 @pytest.mark.asyncio

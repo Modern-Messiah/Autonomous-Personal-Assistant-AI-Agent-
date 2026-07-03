@@ -11,6 +11,9 @@ class SearchCriteria(BaseModel):
     user_id: int = Field(gt=0)
     city: str = Field(min_length=1)
     deal_type: Literal["sale", "rent"]
+    # Rent term (krisha's «Помесячно / Посуточно / По часам»); None means the
+    # default monthly and is ignored for sales.
+    rent_period: Literal["monthly", "daily", "hourly"] | None = None
     property_type: Literal["apartment"] = "apartment"
     min_price_kzt: int | None = Field(default=None, ge=0)
     max_price_kzt: int | None = Field(default=None, ge=0)

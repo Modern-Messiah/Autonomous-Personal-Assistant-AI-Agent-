@@ -596,23 +596,30 @@ def create_bot_router(service: SearchBotService) -> Router:
         if callback.from_user is None or not isinstance(callback.message, Message):
             await callback.answer()
             return
-        deal_type = (callback.data or "")[len(REFINE_SET_DEAL_PREFIX):]
+        raw = (callback.data or "")[len(REFINE_SET_DEAL_PREFIX):]
+        deal_type, _, rent_period = raw.partition(":")
         _, budget_reset = await service.set_active_deal_type(
             telegram_user_id=callback.from_user.id,
             username=callback.from_user.username,
             deal_type=deal_type,
+            rent_period=rent_period or None,
         )
         if budget_reset:
-            # The old budget belonged to the other deal type — ask for a new one
+            # The old budget belonged to the other terms — ask for a new one
             # right away instead of silently searching with no budget.
             await state.set_state(SearchDialogStates.waiting_for_refine_value)
             await state.update_data(refine_field="budget")
-            deal_label = "аренды" if deal_type == "rent" else "покупки"
+            labels = {
+                "sale": ("покупки", "«до 45 млн»"),
+                "rent:monthly": ("аренды помесячно", "«до 300 тыс»"),
+                "rent:daily": ("аренды посуточно", "«до 20 тыс»"),
+                "rent:hourly": ("аренды по часам", "«до 5 тыс»"),
+            }
+            deal_label, example = labels.get(raw, ("аренды", "«до 300 тыс»"))
             with contextlib.suppress(Exception):
                 await callback.message.edit_text(
                     f"Сделка обновлена, прежний бюджет сброшен.\n"
-                    f"💰 Напишите бюджет для {deal_label} — например: "
-                    + ("«до 300 тыс»." if deal_type == "rent" else "«до 45 млн»."),
+                    f"💰 Напишите бюджет для {deal_label} — например: {example}.",
                     reply_markup=build_refine_back_keyboard(),
                 )
             await callback.answer("Сделка обновлена — укажите бюджет")

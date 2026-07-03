@@ -51,9 +51,15 @@ def format_start_message() -> str:
 
 def format_criteria(criteria: SearchCriteria) -> str:
     """Render persisted search criteria for bot reply."""
+    if criteria.deal_type == "rent":
+        period_labels = {"daily": "посуточно", "hourly": "по часам"}
+        period = period_labels.get(criteria.rent_period or "", "помесячно")
+        deal_label = f"аренда ({period})"
+    else:
+        deal_label = "покупка"
     parts = [
         f"Город: {criteria.city}",
-        f"Сделка: {'аренда' if criteria.deal_type == 'rent' else 'покупка'}",
+        f"Сделка: {deal_label}",
         f"Тип: {criteria.property_type}",
     ]
     if criteria.min_price_kzt is not None or criteria.max_price_kzt is not None:

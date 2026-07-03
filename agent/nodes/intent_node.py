@@ -23,7 +23,9 @@ PRICE_VALUE_PATTERN = re.compile(
 )
 PRICE_RANGE_PATTERN = re.compile(
     rf"(?:от\s+)?(\d+(?:[.,]\d+)?)\s*"
-    rf"({PRICE_UNIT_MILLION}|{PRICE_UNIT_THOUSAND}|{PRICE_UNIT_TENGE})\s*"
+    # The first bound's unit may be omitted («от 30 до 50 млн») — it then
+    # inherits the second bound's unit in _parse_price_bounds.
+    rf"({PRICE_UNIT_MILLION}|{PRICE_UNIT_THOUSAND}|{PRICE_UNIT_TENGE})?\s*"
     rf"(?:-|\u2013|до|to)\s*"
     rf"(\d+(?:[.,]\d+)?)\s*({PRICE_UNIT_MILLION}|{PRICE_UNIT_THOUSAND}|{PRICE_UNIT_TENGE})",
     re.IGNORECASE,
@@ -614,7 +616,9 @@ class IntentNode:
     def _parse_price_bounds(self, text: str) -> tuple[int | None, int | None]:
         range_match = PRICE_RANGE_PATTERN.search(text)
         if range_match is not None:
-            range_min = self._to_kzt(range_match.group(1), range_match.group(2))
+            # «от 30 до 50 млн»: the first bound has no unit — use the second's.
+            min_unit = range_match.group(2) or range_match.group(4)
+            range_min = self._to_kzt(range_match.group(1), min_unit)
             range_max = self._to_kzt(range_match.group(3), range_match.group(4))
             if range_min is not None and range_max is not None and range_min <= range_max:
                 return range_min, range_max

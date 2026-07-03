@@ -144,6 +144,40 @@ async def test_intent_node_recognizes_rent_verb_forms(message: str) -> None:
 
 
 @pytest.mark.asyncio
+async def test_district_followed_by_budget_does_not_crash() -> None:
+    # «...Бостандыкский район до 45 млн»: the «район <X>» capture grabs the
+    # budget tail; that heuristic noise must not fail the whole search.
+    node = IntentNode(llm_parser_factory=lambda: None)
+    criteria = await node.parse(
+        user_id=1, message="2 ком в Алматы Бостандыкский район до 45 млн"
+    )
+    assert criteria.city == "Almaty"
+    assert criteria.districts == ["Bostandyk"]
+    assert criteria.max_price_kzt == 45_000_000
+
+
+@pytest.mark.asyncio
+async def test_city_after_district_marker_is_recovered() -> None:
+    # «в Медеуском районе Алматы»: the marker capture swallows the city name.
+    node = IntentNode(llm_parser_factory=lambda: None)
+    criteria = await node.parse(user_id=1, message="квартира в Медеуском районе Алматы")
+    assert criteria.city == "Almaty"
+    assert criteria.districts == ["Medeu"]
+
+
+@pytest.mark.asyncio
+async def test_price_range_first_unit_optional() -> None:
+    # «от 30 до 50 млн»: the first bound inherits the second bound's unit.
+    node = IntentNode(llm_parser_factory=lambda: None)
+    criteria = await node.parse(
+        user_id=1, message="2-3 комнатная в Алматы от 30 до 50 млн"
+    )
+    assert criteria.min_price_kzt == 30_000_000
+    assert criteria.max_price_kzt == 50_000_000
+    assert criteria.rooms == [2, 3]
+
+
+@pytest.mark.asyncio
 async def test_intent_node_parses_rent_period() -> None:
     node = IntentNode(llm_parser_factory=lambda: None)
 

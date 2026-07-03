@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from agent.models.apartment import Apartment
 from agent.models.criteria import SearchCriteria
 from agent.models.enriched import EnrichedApartment
@@ -86,25 +88,39 @@ def clean_listing_url(url: str) -> str:
     return cleaned.replace("//m.krisha.kz", "//krisha.kz")
 
 
-def _price_vs_batch(price_per_m2: float, avg_price_per_m2: float) -> str:
-    """One-line comparison of this listing's ₸/м² against the batch average."""
-    diff = (price_per_m2 - avg_price_per_m2) / avg_price_per_m2
+@dataclass(slots=True, frozen=True)
+class BatchPriceStats:
+    """₸/м² statistics of the currently presented batch of listings."""
+
+    avg_price_per_m2: float
+    count: int
+
+
+def _price_vs_batch(price_per_m2: float, stats: BatchPriceStats) -> str:
+    """One-line comparison of this listing's ₸/м² against the batch average.
+
+    Names what it compares against — the average over the N listings the user
+    is looking at right now — so «среднее» is not mistaken for a market-wide one.
+    """
+    avg = f"{round(stats.avg_price_per_m2):,}".replace(",", " ")
+    context = f"по {stats.count} вариантам (среднее {avg} ₸/м²)"
+    diff = (price_per_m2 - stats.avg_price_per_m2) / stats.avg_price_per_m2
     percent = abs(round(diff * 100))
     if percent < 3:
-        return "📊 цена за м² на уровне подборки"
+        return f"📊 цена за м² на уровне среднего {context}"
     word = "дешевле" if diff < 0 else "дороже"
-    return f"📊 на {percent}% {word} среднего за м² в этой подборке"
+    return f"📊 на {percent}% {word} среднего за м² {context}"
 
 
 def format_apartment_card(
     item: EnrichedApartment,
     *,
     index: int | None = None,
-    avg_price_per_m2: float | None = None,
+    price_stats: BatchPriceStats | None = None,
 ) -> str:
     """Render one apartment as a rich plain-text card (photo caption / list row).
 
-    ``avg_price_per_m2`` is the batch average ₸/м² of the current selection; when
+    ``price_stats`` carries the ₸/м² average of the current selection; when
     provided, the card shows how this listing compares against it.
     """
     apartment = item.apartment
@@ -116,8 +132,8 @@ def format_apartment_card(
         price_per_m2 = apartment.price_kzt / apartment.area_m2
         per_m2 = f"{round(price_per_m2):,}".replace(",", " ")
         lines.append(f"💰 {price} ₸  (≈ {per_m2} ₸/м²)")
-        if avg_price_per_m2 is not None and avg_price_per_m2 > 0:
-            lines.append(_price_vs_batch(price_per_m2, avg_price_per_m2))
+        if price_stats is not None and price_stats.avg_price_per_m2 > 0:
+            lines.append(_price_vs_batch(price_per_m2, price_stats))
     else:
         lines.append(f"💰 {price} ₸")
     lines.append(f"📍 {_format_location(apartment)}")

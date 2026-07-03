@@ -17,6 +17,7 @@ from bot.card_sender import send_apartment_card
 from bot.dialog_agent import DialogAgent, DialogTurnResult
 from bot.formatters import (
     DEFAULT_SEARCH_RESULTS_LIMIT,
+    BatchPriceStats,
     clean_listing_url,
     format_criteria,
     format_monitor_status,
@@ -76,8 +77,8 @@ REFINE_VALUE_PROMPTS = {
 REFINE_MENU_HINT = "🔧 Что изменить? Выбирай кнопками или введи значение, потом жми «Искать»."
 
 
-def _batch_avg_price_per_m2(apartments: list[EnrichedApartment]) -> float | None:
-    """Average ₸/м² across the batch, for the per-card price comparison.
+def _batch_price_stats(apartments: list[EnrichedApartment]) -> BatchPriceStats | None:
+    """₸/м² average + size of the batch, for the per-card price comparison.
 
     Needs at least two listings with known price and area — otherwise a
     comparison against "the batch" is meaningless and the line is omitted.
@@ -89,7 +90,7 @@ def _batch_avg_price_per_m2(apartments: list[EnrichedApartment]) -> float | None
     ]
     if len(values) < 2:
         return None
-    return sum(values) / len(values)
+    return BatchPriceStats(avg_price_per_m2=sum(values) / len(values), count=len(values))
 
 
 def create_bot_router(service: SearchBotService) -> Router:
@@ -155,7 +156,7 @@ def create_bot_router(service: SearchBotService) -> Router:
             await message.answer(empty_message or format_search_results([]))
             return
 
-        avg_price_per_m2 = _batch_avg_price_per_m2(presented_apartments)
+        price_stats = _batch_price_stats(presented_apartments)
         for index, apartment in enumerate(presented_apartments, start=1):
             keyboard = build_apartment_actions_keyboard(
                 apartment.apartment.external_id,
@@ -167,7 +168,7 @@ def create_bot_router(service: SearchBotService) -> Router:
                 reply_markup=keyboard,
                 send_text=message.answer,
                 send_photo=message.answer_photo,
-                avg_price_per_m2=avg_price_per_m2,
+                price_stats=price_stats,
             )
 
         await message.answer(
@@ -377,7 +378,7 @@ def create_bot_router(service: SearchBotService) -> Router:
         await target.answer(
             f"⭐ Подобрал под ваши предпочтения ({len(result.recommendations)}):"
         )
-        avg_price_per_m2 = _batch_avg_price_per_m2(
+        price_stats = _batch_price_stats(
             [rec.apartment for rec in result.recommendations]
         )
         for index, rec in enumerate(result.recommendations, start=1):
@@ -393,7 +394,7 @@ def create_bot_router(service: SearchBotService) -> Router:
                 reply_markup=keyboard,
                 send_text=target.answer,
                 send_photo=target.answer_photo,
-                avg_price_per_m2=avg_price_per_m2,
+                price_stats=price_stats,
             )
 
     @router.message(Command("foryou"))

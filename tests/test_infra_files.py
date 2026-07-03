@@ -34,8 +34,10 @@ def test_podman_compose_contains_core_services() -> None:
     assert 'command: ["python", "-m", "bot"]' in text
     assert 'command: ["python", "-m", "scheduler"]' in text
     assert 'command: ["arq", "scheduler.arq_worker.WorkerSettings"]' in text
-    assert '"127.0.0.1:5432:5432"' in text
-    assert '"127.0.0.1:6379:6379"' in text
+    # Postgres/Redis must not be published to the host at all — the app talks to
+    # them over the compose network, and host bindings caused port conflicts on
+    # the server (bindings removed in d6ef9f2; stricter than the old loopback).
+    assert "ports:" not in text
     assert "--requirepass" in text
     assert "condition: service_healthy" in text
     assert 'max-size: "10mb"' in text

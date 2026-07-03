@@ -1,0 +1,48 @@
+name: CD
+
+# Push to main: run the full test suite and build+smoke+push the image in
+# parallel; only when BOTH succeed, update the server over SSH. The server
+# pulls the freshly pushed GHCR image (podman-compose.prod.yml), applies
+# migrations, and restarts the app services.
+on:
+  push:
+    branches:
+      - main
+
+# One deploy at a time; a queued push waits instead of racing the previous one.
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  build-push:
+    uses: ./.github/workflows/container.yml
+    permissions:
+      contents: read
+      packages: write
+
+  deploy:
+    name: Deploy to server
+    needs: [test, build-push]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update stack over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          script: |
+            set -euo pipefail
+            cd "${{ secrets.DEPLOY_PATH }}"
+            git fetch origin main
+            git pull --ff-only origin main
+            docker compose -f podman-compose.yml -f podman-compose.prod.yml pull migrate bot scheduler-producer scheduler-worker
+            docker compose -f podman-compose.yml -f podman-compose.prod.yml run --rm migrate
+            docker compose -f podman-compose.yml -f podman-compose.prod.yml up -d bot scheduler-producer scheduler-worker
+            docker image prune -f
+            docker compose -f podman-compose.yml -f podman-compose.prod.yml ps

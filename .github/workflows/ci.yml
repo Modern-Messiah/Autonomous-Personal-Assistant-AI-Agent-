@@ -1,10 +1,10 @@
 name: CI
 
+# Push to main runs through cd.yml (which calls this workflow), so tests gate
+# the deploy instead of racing it.
 on:
   pull_request:
-  push:
-    branches:
-      - main
+  workflow_call:
 
 jobs:
   lint-type-test:

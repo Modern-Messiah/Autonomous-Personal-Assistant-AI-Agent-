@@ -15,9 +15,10 @@ on:
       - "db/**"
       - "scheduler/**"
       - "alembic/**"
-  push:
-    branches:
-      - main
+  # Push to main runs through cd.yml (workflow_call); the `github.event_name ==
+  # 'push'` guards below still work there because a called workflow sees the
+  # caller's event.
+  workflow_call:
 
 jobs:
   build-smoke-push:

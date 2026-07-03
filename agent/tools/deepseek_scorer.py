@@ -103,7 +103,8 @@ class DeepSeekApartmentScorer:
             "Penalize 1st or last floor, high price per m², a far or absent metro, "
             "few amenities nearby, a cramped area.",
             "posted_by=owner (от хозяина, no agency commission) is a modest plus "
-            "over posted_by=agent; 'unknown' is neutral.",
+            "over posted_by=agent; developer (новостройка от застройщика) and "
+            "'unknown' are neutral.",
             "A nearby count of 'unknown' means the data is unavailable (e.g. a city "
             "with no metro) — treat it neutrally, do NOT penalize it as if nothing "
             "is nearby (0 means truly none).",

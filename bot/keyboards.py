@@ -19,6 +19,7 @@ REFINE_SET_CITY_PREFIX = "refine:city:"     # + canonical city
 REFINE_SET_DEAL_PREFIX = "refine:deal:"     # + sale|rent
 REFINE_SET_DISTRICT_PREFIX = "refine:distr:"  # + canonical district, or "*" to clear
 REFINE_CITY_OTHER = "refine:city_other"
+REFINE_SET_PERIOD_PREFIX = "refine:period:"  # + monthly|daily|hourly
 REFINE_TOGGLE_OWNER = "refine:owner"
 REFINE_BACK = "refine:back"
 REFINE_RUN = "refine:run"
@@ -43,12 +44,13 @@ def _rows(buttons: list[InlineKeyboardButton], per_row: int) -> list[list[Inline
 
 
 def build_refine_menu_keyboard(
-    city: str | None, *, owner_only: bool = False
+    city: str | None, *, owner_only: bool = False, is_rent: bool = False
 ) -> InlineKeyboardMarkup:
     """Guided-refine menu: pick a field to change, then search.
 
     The district row is shown only when the current city actually has districts;
-    the owner row toggles krisha's "от хозяев" filter and shows its state.
+    the rent-term row only when the deal is a rent; the owner row toggles
+    krisha's "от хозяев" filter and shows its state.
     """
     rows: list[list[InlineKeyboardButton]] = [
         [
@@ -56,6 +58,14 @@ def build_refine_menu_keyboard(
             InlineKeyboardButton(text="🤝 Сделка", callback_data=f"{REFINE_FIELD_PREFIX}deal"),
         ],
     ]
+    if is_rent:
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text="⏱ Срок аренды", callback_data=f"{REFINE_FIELD_PREFIX}period"
+                )
+            ]
+        )
     if city is not None and LOCATIONS.districts_for_city(city):
         rows.append(
             [InlineKeyboardButton(text="📍 Район", callback_data=f"{REFINE_FIELD_PREFIX}district")]
@@ -101,26 +111,37 @@ def build_refine_city_keyboard() -> InlineKeyboardMarkup:
 
 
 def build_refine_deal_keyboard() -> InlineKeyboardMarkup:
-    """Deal-type picker with krisha's rent terms (помесячно/посуточно/по часам)."""
+    """Deal-type picker; choosing rent leads to the rent-term step."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
                     text="🛒 Купить", callback_data=f"{REFINE_SET_DEAL_PREFIX}sale"
                 ),
+                InlineKeyboardButton(
+                    text="🔑 Снять", callback_data=f"{REFINE_SET_DEAL_PREFIX}rent"
+                ),
             ],
+            [InlineKeyboardButton(text="← Назад", callback_data=REFINE_BACK)],
+        ]
+    )
+
+
+def build_refine_rent_period_keyboard() -> InlineKeyboardMarkup:
+    """Rent-term picker shown after «Снять» — krisha's Помесячно/Посуточно/По часам."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="🔑 Снять помесячно",
-                    callback_data=f"{REFINE_SET_DEAL_PREFIX}rent:monthly",
+                    text="📅 Помесячно", callback_data=f"{REFINE_SET_PERIOD_PREFIX}monthly"
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    text="🌙 Посуточно", callback_data=f"{REFINE_SET_DEAL_PREFIX}rent:daily"
+                    text="🌙 Посуточно", callback_data=f"{REFINE_SET_PERIOD_PREFIX}daily"
                 ),
                 InlineKeyboardButton(
-                    text="⏰ По часам", callback_data=f"{REFINE_SET_DEAL_PREFIX}rent:hourly"
+                    text="⏰ По часам", callback_data=f"{REFINE_SET_PERIOD_PREFIX}hourly"
                 ),
             ],
             [InlineKeyboardButton(text="← Назад", callback_data=REFINE_BACK)],

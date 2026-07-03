@@ -1122,18 +1122,43 @@ def test_format_criteria_shows_rent_period() -> None:
     assert "Сделка: покупка" in format_criteria(_active_criteria())
 
 
-def test_refine_deal_keyboard_offers_rent_periods() -> None:
-    from bot.keyboards import REFINE_SET_DEAL_PREFIX, build_refine_deal_keyboard
+def test_refine_deal_keyboard_is_two_step_with_periods() -> None:
+    from bot.keyboards import (
+        REFINE_FIELD_PREFIX,
+        REFINE_SET_DEAL_PREFIX,
+        REFINE_SET_PERIOD_PREFIX,
+        build_refine_deal_keyboard,
+        build_refine_menu_keyboard,
+        build_refine_rent_period_keyboard,
+    )
 
-    datas = [
+    # step 1: only Купить / Снять
+    deal_datas = [
         b.callback_data
         for row in build_refine_deal_keyboard().inline_keyboard
         for b in row
     ]
-    assert f"{REFINE_SET_DEAL_PREFIX}sale" in datas
-    assert f"{REFINE_SET_DEAL_PREFIX}rent:monthly" in datas
-    assert f"{REFINE_SET_DEAL_PREFIX}rent:daily" in datas
-    assert f"{REFINE_SET_DEAL_PREFIX}rent:hourly" in datas
+    assert f"{REFINE_SET_DEAL_PREFIX}sale" in deal_datas
+    assert f"{REFINE_SET_DEAL_PREFIX}rent" in deal_datas
+    assert not any("rent:" in (d or "") for d in deal_datas)
+
+    # step 2 (after Снять): the krisha rent terms
+    period_datas = [
+        b.callback_data
+        for row in build_refine_rent_period_keyboard().inline_keyboard
+        for b in row
+    ]
+    assert f"{REFINE_SET_PERIOD_PREFIX}monthly" in period_datas
+    assert f"{REFINE_SET_PERIOD_PREFIX}daily" in period_datas
+    assert f"{REFINE_SET_PERIOD_PREFIX}hourly" in period_datas
+
+    # the menu shows the rent-term row only while the deal is a rent
+    def menu_datas(is_rent: bool) -> list[str]:
+        keyboard = build_refine_menu_keyboard("Almaty", is_rent=is_rent)
+        return [b.callback_data for row in keyboard.inline_keyboard for b in row]
+
+    assert f"{REFINE_FIELD_PREFIX}period" in menu_datas(True)
+    assert f"{REFINE_FIELD_PREFIX}period" not in menu_datas(False)
 
 
 @pytest.mark.asyncio

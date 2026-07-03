@@ -38,6 +38,7 @@ from bot.keyboards import (
     REFINE_SET_CITY_PREFIX,
     REFINE_SET_DEAL_PREFIX,
     REFINE_SET_DISTRICT_PREFIX,
+    REFINE_SET_PERIOD_PREFIX,
     REFINE_TOGGLE_OWNER,
     RESTORE_TRASH_PREFIX,
     SEARCH_MORE_CALLBACK_DATA,
@@ -47,6 +48,7 @@ from bot.keyboards import (
     build_refine_deal_keyboard,
     build_refine_district_keyboard,
     build_refine_menu_keyboard,
+    build_refine_rent_period_keyboard,
     build_saved_item_keyboard,
     build_search_followup_keyboard,
     build_trashed_item_keyboard,
@@ -125,7 +127,11 @@ def create_bot_router(service: SearchBotService) -> Router:
             )
             return False
         text = f"{REFINE_MENU_HINT}\n\n{format_criteria(criteria)}"
-        markup = build_refine_menu_keyboard(criteria.city, owner_only=criteria.owner_only)
+        markup = build_refine_menu_keyboard(
+            criteria.city,
+            owner_only=criteria.owner_only,
+            is_rent=criteria.deal_type == "rent",
+        )
         if edit:
             with contextlib.suppress(Exception):
                 await target.edit_text(text, reply_markup=markup)
@@ -543,6 +549,11 @@ def create_bot_router(service: SearchBotService) -> Router:
         elif field == "deal":
             with contextlib.suppress(Exception):
                 await message.edit_text("🤝 Тип сделки:", reply_markup=build_refine_deal_keyboard())
+        elif field == "period":
+            with contextlib.suppress(Exception):
+                await message.edit_text(
+                    "⏱ Срок аренды:", reply_markup=build_refine_rent_period_keyboard()
+                )
         elif field == "district":
             criteria = await service.get_active_criteria(telegram_user_id=callback.from_user.id)
             if criteria is None:
@@ -591,18 +602,22 @@ def create_bot_router(service: SearchBotService) -> Router:
             )
         await callback.answer()
 
-    @router.callback_query(F.data.startswith(REFINE_SET_DEAL_PREFIX))
-    async def handle_refine_set_deal_callback(callback: CallbackQuery, state: FSMContext) -> None:
+    async def apply_deal_choice(
+        callback: CallbackQuery,
+        state: FSMContext,
+        *,
+        deal_type: str,
+        rent_period: str | None,
+    ) -> None:
+        """Persist the deal choice; on a budget reset ask for a new budget."""
         if callback.from_user is None or not isinstance(callback.message, Message):
             await callback.answer()
             return
-        raw = (callback.data or "")[len(REFINE_SET_DEAL_PREFIX):]
-        deal_type, _, rent_period = raw.partition(":")
         _, budget_reset = await service.set_active_deal_type(
             telegram_user_id=callback.from_user.id,
             username=callback.from_user.username,
             deal_type=deal_type,
-            rent_period=rent_period or None,
+            rent_period=rent_period,
         )
         if budget_reset:
             # The old budget belonged to the other terms — ask for a new one
@@ -615,7 +630,8 @@ def create_bot_router(service: SearchBotService) -> Router:
                 "rent:daily": ("аренды посуточно", "«до 20 тыс»"),
                 "rent:hourly": ("аренды по часам", "«до 5 тыс»"),
             }
-            deal_label, example = labels.get(raw, ("аренды", "«до 300 тыс»"))
+            key = deal_type if deal_type == "sale" else f"rent:{rent_period or 'monthly'}"
+            deal_label, example = labels.get(key, ("аренды", "«до 300 тыс»"))
             with contextlib.suppress(Exception):
                 await callback.message.edit_text(
                     f"Сделка обновлена, прежний бюджет сброшен.\n"
@@ -627,6 +643,30 @@ def create_bot_router(service: SearchBotService) -> Router:
         await state.clear()
         await show_refine_menu(callback.message, callback.from_user.id, edit=True)
         await callback.answer("Сделка обновлена")
+
+    @router.callback_query(F.data.startswith(REFINE_SET_DEAL_PREFIX))
+    async def handle_refine_set_deal_callback(callback: CallbackQuery, state: FSMContext) -> None:
+        if callback.from_user is None or not isinstance(callback.message, Message):
+            await callback.answer()
+            return
+        deal_type = (callback.data or "")[len(REFINE_SET_DEAL_PREFIX):]
+        if deal_type == "rent":
+            # Rent has a term (like krisha's selector): ask it as the second step
+            # before persisting anything.
+            with contextlib.suppress(Exception):
+                await callback.message.edit_text(
+                    "⏱ Срок аренды:", reply_markup=build_refine_rent_period_keyboard()
+                )
+            await callback.answer()
+            return
+        await apply_deal_choice(callback, state, deal_type=deal_type, rent_period=None)
+
+    @router.callback_query(F.data.startswith(REFINE_SET_PERIOD_PREFIX))
+    async def handle_refine_set_period_callback(
+        callback: CallbackQuery, state: FSMContext
+    ) -> None:
+        rent_period = (callback.data or "")[len(REFINE_SET_PERIOD_PREFIX):]
+        await apply_deal_choice(callback, state, deal_type="rent", rent_period=rent_period)
 
     @router.callback_query(F.data.startswith(REFINE_SET_DISTRICT_PREFIX))
     async def handle_refine_set_district_callback(

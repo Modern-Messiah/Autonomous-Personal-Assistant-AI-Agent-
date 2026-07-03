@@ -87,11 +87,16 @@ class LLMIntentParser:
                 (
                     'Use exactly these keys: {"city": string|null, '
                     '"deal_type": "sale"|"rent"|null, '
+                    '"rent_period": "monthly"|"daily"|"hourly"|null, '
                     '"min_price_kzt": integer|null, "max_price_kzt": integer|null, '
                     '"rooms": array<integer>|null, "districts": array<string>|null, '
                     '"min_area_m2": number|null, "max_area_m2": number|null, '
                     '"owner_only": boolean|null, '
                     '"page_limit": integer|null}.'
+                ),
+                (
+                    "rent_period only for rent: «помесячно»=monthly, "
+                    "«посуточно»=daily, «по часам»=hourly; null when not stated."
                 ),
                 (
                     "owner_only=true only when the user asks for owner-posted "

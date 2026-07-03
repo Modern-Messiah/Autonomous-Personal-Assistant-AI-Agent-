@@ -112,6 +112,7 @@ class IntentCriteriaPatch(BaseModel):
 
     city: str | None = None
     deal_type: Literal["sale", "rent"] | None = None
+    rent_period: Literal["monthly", "daily", "hourly"] | None = None
     min_price_kzt: int | None = Field(default=None, ge=0)
     max_price_kzt: int | None = Field(default=None, ge=0)
     rooms: list[int] | None = None
@@ -227,6 +228,7 @@ class IntentCriteriaPatch(BaseModel):
             for field_name in (
                 "city",
                 "deal_type",
+                "rent_period",
                 "min_price_kzt",
                 "max_price_kzt",
                 "rooms",
@@ -311,9 +313,12 @@ class IntentNode:
         """Parse criteria and report when the configured default city was used."""
         patch = await self._parse_with_llm(message=message, existing_criteria=None)
         if patch is not None:
+            # Regex backstops so «от хозяина» / «посуточно» work even if the LLM
+            # missed them.
             if patch.owner_only is None:
-                # Regex backstop so «от хозяина» works even if the LLM missed it.
                 patch = patch.model_copy(update={"owner_only": self._find_owner_only(message)})
+            if patch.rent_period is None:
+                patch = patch.model_copy(update={"rent_period": self._find_rent_period(message)})
             locations = resolve_locations(
                 message=message,
                 default_city=self._default_city,
@@ -347,6 +352,8 @@ class IntentNode:
         if patch is not None:
             if patch.owner_only is None:
                 patch = patch.model_copy(update={"owner_only": self._find_owner_only(message)})
+            if patch.rent_period is None:
+                patch = patch.model_copy(update={"rent_period": self._find_rent_period(message)})
             locations = resolve_locations(
                 message=message,
                 default_city=self._default_city,
@@ -413,10 +420,15 @@ class IntentNode:
         patch: IntentCriteriaPatch,
         locations: ResolvedLocations,
     ) -> SearchCriteria:
+        deal_type = patch.deal_type or self._default_deal_type
+        # A mentioned rent term («посуточно») implies rent even without the word.
+        if patch.rent_period is not None and patch.deal_type is None:
+            deal_type = "rent"
         return SearchCriteria(
             user_id=user_id,
             city=locations.city,
-            deal_type=patch.deal_type or self._default_deal_type,
+            deal_type=deal_type,
+            rent_period=patch.rent_period if deal_type == "rent" else None,
             property_type="apartment",
             min_price_kzt=patch.min_price_kzt,
             max_price_kzt=patch.max_price_kzt,
@@ -436,16 +448,27 @@ class IntentNode:
         locations: ResolvedLocations,
     ) -> SearchCriteria:
         deal_type = patch.deal_type or criteria.deal_type
-        # Switching sale<->rent invalidates the old budget (45M to buy vs 300K/mo
-        # to rent); unless the same message names a new one, drop it so the user
-        # sets a budget that matches the new deal type.
+        # A mentioned rent term («посуточно») implies rent even without the word.
+        if patch.rent_period is not None and patch.deal_type is None:
+            deal_type = "rent"
+        rent_period = patch.rent_period
+        if rent_period is None and deal_type == "rent":
+            rent_period = criteria.rent_period
+        if deal_type != "rent":
+            rent_period = None
+        # Switching sale<->rent — or the rent term (300K/мес vs 15K/сутки) —
+        # invalidates the old budget; unless the same message names a new one,
+        # drop it so the user sets a budget that matches the new terms.
         deal_changed = deal_type != criteria.deal_type
-        inherited_min = None if deal_changed else criteria.min_price_kzt
-        inherited_max = None if deal_changed else criteria.max_price_kzt
+        period_changed = deal_type == "rent" and rent_period != criteria.rent_period
+        budget_stale = deal_changed or period_changed
+        inherited_min = None if budget_stale else criteria.min_price_kzt
+        inherited_max = None if budget_stale else criteria.max_price_kzt
         return SearchCriteria(
             user_id=criteria.user_id,
             city=locations.city,
             deal_type=deal_type,
+            rent_period=rent_period,
             property_type=criteria.property_type,
             min_price_kzt=(
                 inherited_min if patch.min_price_kzt is None else patch.min_price_kzt
@@ -470,6 +493,9 @@ class IntentNode:
     ) -> SearchCriteria:
         normalized = message.strip().lower()
         deal_type = self._parse_deal_type(normalized)
+        rent_period = self._find_rent_period(normalized)
+        if rent_period is not None:
+            deal_type = "rent"
         min_price, max_price = self._parse_price_bounds(normalized)
         min_area, max_area = self._parse_area_bounds(normalized)
         rooms = self._parse_rooms(normalized)
@@ -479,6 +505,7 @@ class IntentNode:
             user_id=user_id,
             city=locations.city,
             deal_type=deal_type,
+            rent_period=rent_period,
             property_type="apartment",
             min_price_kzt=min_price,
             max_price_kzt=max_price,
@@ -499,6 +526,9 @@ class IntentNode:
     ) -> SearchCriteria:
         normalized = message.strip().lower()
         deal_type = self._find_deal_type(normalized)
+        found_period = self._find_rent_period(normalized)
+        if found_period is not None and deal_type is None:
+            deal_type = "rent"
         min_price, max_price = self._parse_price_bounds(normalized)
         min_area, max_area = self._parse_area_bounds(normalized)
         rooms = self._parse_rooms(normalized)
@@ -506,15 +536,24 @@ class IntentNode:
         owner_only = self._find_owner_only(normalized)
 
         new_deal_type = deal_type or criteria.deal_type
-        # Same rule as the LLM path: a sale<->rent switch drops the old budget
-        # unless this message names a new one.
+        rent_period = found_period
+        if rent_period is None and new_deal_type == "rent":
+            rent_period = criteria.rent_period
+        if new_deal_type != "rent":
+            rent_period = None
+        # Same rule as the LLM path: switching sale<->rent — or the rent term
+        # (месяц vs сутки vs час) — drops the old budget unless this message
+        # names a new one.
         deal_changed = new_deal_type != criteria.deal_type
-        inherited_min = None if deal_changed else criteria.min_price_kzt
-        inherited_max = None if deal_changed else criteria.max_price_kzt
+        period_changed = new_deal_type == "rent" and rent_period != criteria.rent_period
+        budget_stale = deal_changed or period_changed
+        inherited_min = None if budget_stale else criteria.min_price_kzt
+        inherited_max = None if budget_stale else criteria.max_price_kzt
         return SearchCriteria(
             user_id=criteria.user_id,
             city=locations.city,
             deal_type=new_deal_type,
+            rent_period=rent_period,
             property_type=criteria.property_type,
             min_price_kzt=inherited_min if min_price is None else min_price,
             max_price_kzt=inherited_max if max_price is None else max_price,
@@ -540,6 +579,18 @@ class IntentNode:
         sale_markers = ("куп", "покуп", "sale", "buy")
         if any(marker in text for marker in sale_markers):
             return "sale"
+        return None
+
+    @staticmethod
+    def _find_rent_period(text: str) -> Literal["monthly", "daily", "hourly"] | None:
+        """Detect the rent term; a mentioned term also implies deal_type=rent."""
+        lowered = text.lower()
+        if "посуточ" in lowered or "на сутки" in lowered:
+            return "daily"
+        if "по часам" in lowered or "почасов" in lowered:
+            return "hourly"
+        if "помесяч" in lowered or "на месяц" in lowered or "долгосрочн" in lowered:
+            return "monthly"
         return None
 
     @staticmethod

@@ -144,6 +144,62 @@ async def test_intent_node_recognizes_rent_verb_forms(message: str) -> None:
 
 
 @pytest.mark.asyncio
+async def test_intent_node_parses_rent_period() -> None:
+    node = IntentNode(llm_parser_factory=lambda: None)
+
+    # «посуточно» implies rent even without the word "аренда"
+    daily = await node.parse(user_id=1, message="посуточно 1-комнатную в Алматы до 20 тыс")
+    assert daily.deal_type == "rent"
+    assert daily.rent_period == "daily"
+    assert daily.max_price_kzt == 20_000
+
+    hourly = await node.parse(user_id=1, message="снять квартиру по часам в Астане")
+    assert hourly.rent_period == "hourly"
+
+    monthly = await node.parse(user_id=1, message="аренда помесячно в Алматы до 300 тыс")
+    assert monthly.rent_period == "monthly"
+
+    # plain rent -> no explicit period (krisha defaults to monthly)
+    plain = await node.parse(user_id=1, message="аренда 2-комнатной в Алматы")
+    assert plain.deal_type == "rent"
+    assert plain.rent_period is None
+
+    # sale never carries a period
+    sale = await node.parse(user_id=1, message="куплю 2-комнатную в Алматы")
+    assert sale.rent_period is None
+
+
+@pytest.mark.asyncio
+async def test_refine_rent_period_switch_resets_budget() -> None:
+    node = IntentNode(llm_parser_factory=lambda: None)
+    monthly = SearchCriteria(
+        user_id=1, city="Almaty", deal_type="rent", rent_period="monthly",
+        property_type="apartment", max_price_kzt=300_000, rooms=[1], page_limit=3,
+    )
+
+    # month -> daily without a new budget: the monthly budget is dropped
+    daily = await node.refine(criteria=monthly, message="теперь посуточно")
+    assert daily.rent_period == "daily"
+    assert daily.max_price_kzt is None
+    assert daily.rooms == [1]
+
+    # month -> daily naming a new budget in the same message
+    with_budget = await node.refine(criteria=monthly, message="посуточно до 20 тыс")
+    assert with_budget.rent_period == "daily"
+    assert with_budget.max_price_kzt == 20_000
+
+    # unrelated refinement keeps the period and budget
+    same = await node.refine(criteria=monthly, message="только 2 комнаты")
+    assert same.rent_period == "monthly"
+    assert same.max_price_kzt == 300_000
+
+    # switching to sale clears the period
+    sale = await node.refine(criteria=monthly, message="куплю")
+    assert sale.deal_type == "sale"
+    assert sale.rent_period is None
+
+
+@pytest.mark.asyncio
 async def test_intent_node_parses_owner_only_markers() -> None:
     node = IntentNode(llm_parser_factory=lambda: None)
 

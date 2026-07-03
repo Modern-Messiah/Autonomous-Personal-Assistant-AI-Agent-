@@ -1487,19 +1487,25 @@ def test_format_apartment_card_price_vs_batch_and_metro_zero() -> None:
             nearby_park_m=51,
         )
 
+    from bot.formatters import BatchPriceStats
+
+    stats = BatchPriceStats(avg_price_per_m2=800_000, count=6)
+
     # ~932K/m² vs batch avg 800K/m² -> "дороже"; metro true zero -> words, not "0"
-    card = format_apartment_card(make(41_000_000, 44.0, 0), index=3, avg_price_per_m2=800_000)
+    card = format_apartment_card(make(41_000_000, 44.0, 0), index=3, price_stats=stats)
     assert "дороже среднего за м²" in card
+    # names what it compares against: the 6-listing batch and its average
+    assert "по 6 вариантам (среднее 800 000 ₸/м²)" in card
     assert "🚇 метро: нет рядом (2 км+)" in card
     assert "метро: 0" not in card
 
     # cheaper than batch average -> "дешевле"
-    card = format_apartment_card(make(30_000_000, 44.0, 1), index=1, avg_price_per_m2=800_000)
+    card = format_apartment_card(make(30_000_000, 44.0, 1), index=1, price_stats=stats)
     assert "дешевле среднего за м²" in card
 
-    # within ±3% -> neutral wording; no avg -> no comparison line at all
-    card = format_apartment_card(make(35_200_000, 44.0, 1), index=1, avg_price_per_m2=800_000)
-    assert "на уровне подборки" in card
+    # within ±3% -> neutral wording; no stats -> no comparison line at all
+    card = format_apartment_card(make(35_200_000, 44.0, 1), index=1, price_stats=stats)
+    assert "на уровне среднего по 6 вариантам" in card
     card = format_apartment_card(make(41_000_000, 44.0, 1), index=1)
     assert "📊" not in card
 

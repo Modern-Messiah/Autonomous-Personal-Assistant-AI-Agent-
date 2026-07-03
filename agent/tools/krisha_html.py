@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Literal
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
 from bs4 import BeautifulSoup
@@ -33,6 +34,18 @@ PUBLISHED_PATTERN = re.compile(r"(\d{2}\.\d{2}\.\d{4})")
 # 2GIS geocodes (the in-page address node is JS-hydrated and often missing).
 TITLE_ADDRESS_PATTERN = re.compile(
     r"№\d+:\s*(?P<addr>.+?)\s*[\u2014\u2013-]\s*за\s",
+    re.IGNORECASE,
+)
+
+# The advert-author block is SSR and tells who posted the listing: its first
+# child div carries class "owner" (Хозяин недвижимости) or "company" (agency),
+# and advert-author-title holds the agency name for companies.
+AUTHOR_KIND_PATTERN = re.compile(
+    r'data-testid="advert-author"[^>]*>\s*<div\s+class="(owner|company)[\s"]',
+    re.IGNORECASE,
+)
+AUTHOR_TITLE_PATTERN = re.compile(
+    r'data-testid="advert-author-title"[^>]*>([^<]{1,80})<',
     re.IGNORECASE,
 )
 
@@ -221,6 +234,7 @@ class KrishaHtmlParser:
 
         photo_urls = self._extract_photo_urls(html)
         published_at = self._extract_published_at(soup)
+        posted_by, agency_name = self._extract_author(html)
 
         return Apartment(
             external_id=preview.external_id,
@@ -234,9 +248,23 @@ class KrishaHtmlParser:
             area_m2=area_m2,
             floor=floor,
             rooms=rooms,
+            posted_by=posted_by,
+            agency_name=agency_name,
             photos=photo_urls,
             published_at=published_at,
         )
+
+    @staticmethod
+    def _extract_author(html: str) -> tuple[Literal["owner", "agent"] | None, str | None]:
+        """Return (posted_by, agency_name) from the SSR advert-author block."""
+        kind_match = AUTHOR_KIND_PATTERN.search(html)
+        if kind_match is None:
+            return None, None
+        if kind_match.group(1).lower() == "owner":
+            return "owner", None
+        title_match = AUTHOR_TITLE_PATTERN.search(html)
+        agency = title_match.group(1).strip() if title_match else None
+        return "agent", agency or None
 
     def _deduplicate_previews(self, previews: list[ListingPreview]) -> list[ListingPreview]:
         unique: list[ListingPreview] = []

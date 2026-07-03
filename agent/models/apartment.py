@@ -21,6 +21,11 @@ class Apartment(BaseModel):
     area_m2: float | None = Field(default=None, gt=0)
     floor: str | None = None
     rooms: int | None = Field(default=None, gt=0)
+    # Who posted the listing — the owner ("Хозяин недвижимости" block) or an
+    # agent/agency (company block); None when the detail page didn't say.
+    posted_by: Literal["owner", "agent"] | None = None
+    # Agency name when posted_by == "agent" (e.g. "Top City").
+    agency_name: str | None = None
     photos: list[str]
     published_at: datetime | None = None
     scraped_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

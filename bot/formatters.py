@@ -113,6 +113,11 @@ def format_apartment_card(
     else:
         lines.append(f"💰 {price} ₸")
     lines.append(f"📍 {_format_location(apartment)}")
+    if apartment.posted_by == "owner":
+        lines.append("👤 От хозяина")
+    elif apartment.posted_by == "agent":
+        agency = f" ({apartment.agency_name})" if apartment.agency_name else ""
+        lines.append(f"🏢 От риелтора{agency}")
     if apartment.published_at is not None:
         lines.append(f"📅 Опубликовано: {apartment.published_at:%d.%m.%Y}")
     if item.mortgage_monthly_payment_kzt:

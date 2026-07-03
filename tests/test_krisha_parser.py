@@ -181,6 +181,41 @@ async def test_search_parses_listing_and_detail_pages() -> None:
     ]
 
 
+def test_detail_page_extracts_author_kind() -> None:
+    parser = KrishaParser(redis_client=FakeRedis(), min_delay_seconds=0, max_delay_seconds=0)
+    base_html = load_fixture("detail_123456789.html")
+    preview = make_preview(external_id="123456789", price_kzt=35_000_000)
+
+    owner_block = (
+        '<div data-testid="advert-author" class="a-page__block">'
+        '<div class="owner" data-v-b16dc70c="">'
+        '<h2 data-testid="advert-author-title">Хозяин недвижимости</h2></div></div>'
+    )
+    owner = parser.parse_detail_page(
+        base_html.replace("</body>", owner_block + "</body>"),
+        preview=preview, city="Almaty",
+    )
+    assert owner.posted_by == "owner"
+    assert owner.agency_name is None
+
+    company_block = (
+        '<div data-testid="advert-author" class="a-page__block">'
+        '<div class="company" data-v-7106868f="">'
+        '<h2 data-testid="advert-author-title">Top City</h2></div></div>'
+    )
+    agent = parser.parse_detail_page(
+        base_html.replace("</body>", company_block + "</body>"),
+        preview=preview, city="Almaty",
+    )
+    assert agent.posted_by == "agent"
+    assert agent.agency_name == "Top City"
+
+    # no author block on the page -> both stay None
+    plain = parser.parse_detail_page(base_html, preview=preview, city="Almaty")
+    assert plain.posted_by is None
+    assert plain.agency_name is None
+
+
 def test_build_listing_urls_adds_owner_filter() -> None:
     parser = KrishaParser(redis_client=FakeRedis(), min_delay_seconds=0, max_delay_seconds=0)
     base = SearchCriteria(

@@ -512,9 +512,9 @@ class SearchBotService:
         *,
         telegram_user_id: int,
         username: str | None,
-        # Match the /search presentation: a short, high-confidence top-3 instead
-        # of a long tail the user has to scroll through.
-        limit: int = 3,
+        # Match the /search presentation: everything the taste search fetches
+        # (PARSER__MAX_RESULTS caps the pipeline at 6).
+        limit: int = 6,
     ) -> RecommendationResult:
         """Recommend fresh listings ranked by the user's saved/rejected taste.
 

@@ -8,7 +8,9 @@ from agent.models.enriched import EnrichedApartment
 from bot.monitoring import format_monitor_interval
 from bot.service import MonitorStatus
 
-DEFAULT_SEARCH_RESULTS_LIMIT = 3
+# Show everything the pipeline fetches and scores (PARSER__MAX_RESULTS caps the
+# fetch at 6), instead of cutting the presentation to a shorter top.
+DEFAULT_SEARCH_RESULTS_LIMIT = 6
 
 RECOMMENDATION_LABELS = {
     "strong_buy": "🟢 Брать",

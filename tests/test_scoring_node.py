@@ -169,6 +169,35 @@ def test_scorer_prompt_includes_batch_stats_and_comparative_reason_rules() -> No
     assert "--- batch stats" not in solo_prompt
 
 
+def test_scorer_prompt_includes_description_and_market() -> None:
+    scorer = DeepSeekApartmentScorer(api_key="test-key")
+    item = build_enriched_apartment()
+    item = item.model_copy(
+        update={
+            "apartment": item.apartment.model_copy(
+                update={
+                    "description": "Свежий ремонт, тёплая.\nТорг.",  # noqa: RUF001
+                    "market_diff_percent": -9.2,
+                    "build_year": 2019,
+                    "building_type": "монолитный",
+                    "furnished": "частично",
+                }
+            )
+        }
+    )
+
+    prompt = scorer._build_payload([item], None)["messages"][1]["content"]
+
+    # the full description reaches the model on its own line (newlines collapsed)
+    assert "описание: Свежий ремонт, тёплая. Торг." in prompt  # noqa: RUF001
+    assert "vs_city_market=9% cheaper than city" in prompt
+    assert "build_year=2019" in prompt
+    assert "furnished=частично" in prompt
+    # guidance to weigh condition + krisha's benchmark
+    assert "CONDITION" in prompt
+    assert "vs_city_market is krisha's own verdict" in prompt
+
+
 @pytest.mark.asyncio
 async def test_scoring_node_attaches_scores_to_enriched_apartments() -> None:
     node = ScoringNode(scorer=FakeApartmentScorer(build_score()))

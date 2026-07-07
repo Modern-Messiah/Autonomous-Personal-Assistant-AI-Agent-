@@ -101,6 +101,9 @@ class DistrictMatch(StrEnum):
     UNKNOWN = "unknown"
 
 
+_MOBILE_UA_MARKERS = ("Mobile", "Android", "iPhone", "iPad", "iPod")
+
+
 class UserAgentProvider:
     """Returns randomized user-agent values."""
 
@@ -125,10 +128,17 @@ class UserAgentProvider:
             self._generator = None
 
     def get(self) -> str:
-        """Return one randomized UA string."""
+        """Return one randomized DESKTOP user-agent.
+
+        krisha serves a structurally different mobile page (m.krisha.kz) to mobile
+        UAs, where the description/params/market selectors don't apply — so any
+        mobile UA from the generator is rejected in favour of the desktop pool.
+        """
         if self._generator is not None:
             try:
-                return str(self._generator.random)
+                candidate = str(self._generator.random)
+                if not any(marker in candidate for marker in _MOBILE_UA_MARKERS):
+                    return candidate
             except Exception:
                 pass
         return random.choice(self._fallback_pool)
@@ -166,9 +176,17 @@ class KrishaParser:
         self._html = KrishaHtmlParser()
 
     async def create_browser_context(self, browser: Browser) -> BrowserContext:
-        """Create Playwright context with randomized user-agent."""
+        """Create Playwright context with a randomized desktop user-agent.
+
+        A desktop viewport + UA keep krisha on the desktop site (krisha.kz), whose
+        markup the parser targets, instead of the mobile one (m.krisha.kz).
+        """
         user_agent = self._user_agent_provider.get()
-        return await browser.new_context(user_agent=user_agent, locale="ru-RU")
+        return await browser.new_context(
+            user_agent=user_agent,
+            locale="ru-RU",
+            viewport={"width": 1366, "height": 900},
+        )
 
     def parse_listing_page(self, html: str) -> list[ListingPreview]:
         """Delegate to the pure HTML parser (kept for the public/test surface)."""

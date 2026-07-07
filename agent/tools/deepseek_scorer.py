@@ -26,6 +26,22 @@ def _nearest(distance_m: int | None) -> str:
     return f" (nearest {distance_m}m)" if distance_m is not None else ""
 
 
+def _market(diff_percent: float | None) -> str:
+    """krisha's price-vs-city verdict for the prompt, e.g. '9% cheaper than city'."""
+    if diff_percent is None:
+        return "unknown"
+    if abs(diff_percent) < 1:
+        return "at city market"
+    return f"{abs(round(diff_percent))}% {'cheaper' if diff_percent < 0 else 'pricier'} than city"
+
+
+def _clean_description(description: str | None) -> str | None:
+    """Collapse whitespace so the description sits on one prompt line."""
+    if not description:
+        return None
+    return " ".join(description.split())
+
+
 class DeepSeekApartmentScorer:
     """Scores a whole shortlist in one call so scores are comparative, not uniform."""
 
@@ -105,6 +121,18 @@ class DeepSeekApartmentScorer:
             "posted_by=owner (от хозяина, no agency commission) is a modest plus "
             "over posted_by=agent; developer (новостройка от застройщика) and "
             "'unknown' are neutral.",
+            "Read each listing's «описание» line and weigh it heavily: it reveals "
+            "CONDITION (свежий ремонт vs требуется ремонт / старый / без ремонта — "
+            "a flat needing renovation is worth clearly less at the same price), "
+            "layout (распашонка, изолированные, угловая), furniture, and extras "
+            "(тёплая, застеклённый балкон, торг, документы на руках). Name concrete "
+            "facts from it in reasons.",
+            "vs_city_market is krisha's own verdict against the whole city for "
+            "similar flats — a strong benchmark; 'X% cheaper than city' is a real "
+            "plus, 'pricier than city' needs justification (better condition/floor/"
+            "location) or it is a minus. build_year (new vs old stock), "
+            "building_type (монолит/кирпич warmer than панель), ceiling_m (3m > "
+            "2.5m) and furnished also matter.",
             "A nearby count of 'unknown' means the data is unavailable (e.g. a city "
             "with no metro) — treat it neutrally, do NOT penalize it as if nothing "
             "is nearby (0 means truly none).",
@@ -171,7 +199,7 @@ class DeepSeekApartmentScorer:
         price_per_m2 = "unknown"
         if apartment.area_m2 and apartment.area_m2 > 0:
             price_per_m2 = str(round(apartment.price_kzt / apartment.area_m2))
-        return (
+        line = (
             f"[{index}] price_kzt={apartment.price_kzt}, price_per_m2={price_per_m2}, "
             f"rooms={apartment.rooms or 'unknown'}, area_m2={apartment.area_m2 or 'unknown'}, "
             f"floor={apartment.floor or 'unknown'}, "
@@ -180,8 +208,17 @@ class DeepSeekApartmentScorer:
             f"parks={_or_unknown(enriched.nearby_parks)}{_nearest(enriched.nearby_park_m)}, "
             f"metro={_or_unknown(enriched.nearby_metro)}{_nearest(enriched.nearby_metro_m)}, "
             f"posted_by={apartment.posted_by or 'unknown'}, "
+            f"build_year={apartment.build_year or 'unknown'}, "
+            f"building_type={apartment.building_type or 'unknown'}, "
+            f"ceiling_m={apartment.ceiling_height_m or 'unknown'}, "
+            f"furnished={apartment.furnished or 'unknown'}, "
+            f"vs_city_market={_market(apartment.market_diff_percent)}, "
             f"mortgage_monthly_kzt={enriched.mortgage_monthly_payment_kzt or 'unknown'}"
         )
+        description = _clean_description(apartment.description)
+        if description:
+            line = f"{line}\n    описание: {description}"
+        return line
 
     @staticmethod
     def _criteria_lines(criteria: SearchCriteria | None) -> list[str]:

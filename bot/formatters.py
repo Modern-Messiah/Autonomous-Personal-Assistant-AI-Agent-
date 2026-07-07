@@ -171,8 +171,15 @@ def format_apartment_card(
     features = _format_features(apartment)
     if features:
         lines.append(features)
-    if apartment.published_at is not None:
-        lines.append(f"📅 Опубликовано: {apartment.published_at:%d.%m.%Y}")
+    published = apartment.published_at
+    if published is not None:
+        line = f"📅 Опубликовано {published:%d.%m.%Y}"
+        days = apartment.days_on_market()
+        if days == 0:
+            line += " · 🆕 сегодня"
+        elif days is not None:
+            line += f" · висит {days} {_plural_days(days)}"
+        lines.append(line)
     if item.mortgage_monthly_payment_kzt:
         payment = f"{item.mortgage_monthly_payment_kzt:,}".replace(",", " ")
         lines.append(f"🏦 Ипотека: ~{payment} ₸/мес")
@@ -224,6 +231,18 @@ def _format_features(apartment: Apartment) -> str | None:
     if apartment.furnished:
         parts.append(f"🛋 {apartment.furnished}")
     return "🏗 " + " · ".join(parts) if parts else None
+
+
+def _plural_days(count: int) -> str:
+    """Russian plural for «день» — 1 день, 2 дня, 5 дней, 21 день, 112 дней."""
+    if 11 <= count % 100 <= 14:
+        return "дней"
+    last = count % 10
+    if last == 1:
+        return "день"
+    if 2 <= last <= 4:
+        return "дня"
+    return "дней"
 
 
 def _description_snippet(description: str | None, *, limit: int = 160) -> str | None:

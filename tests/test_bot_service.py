@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -1137,6 +1138,32 @@ def test_format_apartment_card_shows_poster() -> None:
     # unknown -> no poster line at all
     plain_card = format_apartment_card(build_apartment(), index=1)
     assert "От хозяина" not in plain_card and "От риелтора" not in plain_card
+
+
+def test_format_apartment_card_shows_days_on_market() -> None:
+    from bot.formatters import _plural_days
+
+    def with_published(published: datetime) -> EnrichedApartment:
+        base = build_apartment()
+        return base.model_copy(
+            update={"apartment": base.apartment.model_copy(update={"published_at": published})}
+        )
+
+    stale = with_published(datetime.now(UTC) - timedelta(days=120))
+    assert "висит 120 дней" in format_apartment_card(stale, index=1)
+
+    fresh = with_published(datetime.now(UTC))
+    assert "🆕 сегодня" in format_apartment_card(fresh, index=1)
+
+    # no publish date -> no dedicated line at all
+    assert "висит" not in format_apartment_card(build_apartment(), index=1)
+
+    # Russian plural agreement for «день»
+    assert _plural_days(1) == "день"
+    assert _plural_days(3) == "дня"
+    assert _plural_days(5) == "дней"
+    assert _plural_days(21) == "день"
+    assert _plural_days(112) == "дней"
 
 
 def test_format_criteria_shows_owner_only() -> None:

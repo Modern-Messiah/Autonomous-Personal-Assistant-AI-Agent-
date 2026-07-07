@@ -44,6 +44,20 @@ class Apartment(BaseModel):
     published_at: datetime | None = None
     scraped_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
+    def days_on_market(self, *, now: datetime | None = None) -> int | None:
+        """Whole days the listing has been live (from ``published_at``).
+
+        None when the publish date is unknown; clamped at 0 so clock skew or a
+        same-day timestamp never reads as a negative age.
+        """
+        if self.published_at is None:
+            return None
+        published = self.published_at
+        if published.tzinfo is None:
+            published = published.replace(tzinfo=UTC)
+        reference = now or datetime.now(UTC)
+        return max((reference - published).days, 0)
+
     @field_validator("url")
     @classmethod
     def validate_url(cls, value: str) -> str:

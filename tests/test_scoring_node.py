@@ -193,6 +193,9 @@ def test_scorer_prompt_includes_description_and_market() -> None:
     assert "vs_city_market=9% cheaper than city" in prompt
     assert "build_year=2019" in prompt
     assert "furnished=частично" in prompt
+    # days-on-market reaches the model as a fact and as scoring guidance
+    assert "days_on_market=" in prompt
+    assert "days_on_market is how many days the listing has been live" in prompt
     # guidance to weigh condition + krisha's benchmark
     assert "CONDITION" in prompt
     assert "vs_city_market is krisha's own verdict" in prompt

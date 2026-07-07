@@ -69,6 +69,29 @@ def test_apartment_score_bounds() -> None:
         ApartmentScore(score=101, reasons=["too high"], recommendation="skip")
 
 
+def test_apartment_days_on_market() -> None:
+    def make(published: datetime | None) -> Apartment:
+        return Apartment(
+            external_id="kr-1",
+            source="krisha",
+            url="https://krisha.kz/a/show/1",
+            title="Cozy apartment",
+            price_kzt=25_000_000,
+            city="Almaty",
+            photos=[],
+            published_at=published,
+        )
+
+    now = datetime(2026, 5, 1, 12, 0, tzinfo=UTC)
+    assert make(datetime(2026, 1, 1, tzinfo=UTC)).days_on_market(now=now) == 120
+    assert make(datetime(2026, 5, 1, tzinfo=UTC)).days_on_market(now=now) == 0
+    # naive publish timestamp is treated as UTC, not rejected
+    assert make(datetime(2026, 4, 21)).days_on_market(now=now) == 10
+    # a future timestamp (clock skew) clamps to 0 rather than going negative
+    assert make(datetime(2026, 6, 1, tzinfo=UTC)).days_on_market(now=now) == 0
+    assert make(None).days_on_market(now=now) is None
+
+
 def test_apartment_defaults_scraped_at() -> None:
     apartment = Apartment(
         external_id="kr-1",

@@ -138,6 +138,12 @@ class DeepSeekApartmentScorer:
             "location) or it is a minus. build_year (new vs old stock), "
             "building_type (монолит/кирпич warmer than панель), ceiling_m (3m > "
             "2.5m) and furnished also matter.",
+            "days_on_market is how many days the listing has been live: a high "
+            "value (60+ days) suggests the flat is overpriced or has a problem and "
+            "the seller is likely to negotiate — a mild minus and a bargaining "
+            "signal worth naming («висит N дней — есть простор для торга»); a fresh "
+            "listing (a few days) is neutral-to-slight-plus (not yet picked over). "
+            "'unknown' is neutral.",
             "A nearby count of 'unknown' means the data is unavailable (e.g. a city "
             "with no metro) — treat it neutrally, do NOT penalize it as if nothing "
             "is nearby (0 means truly none).",
@@ -219,6 +225,7 @@ class DeepSeekApartmentScorer:
             f"furnished={apartment.furnished or 'unknown'}, "
             f"condition={apartment.condition or 'unknown'}, "
             f"vs_city_market={_market(apartment.market_diff_percent)}, "
+            f"days_on_market={_or_unknown(apartment.days_on_market())}, "
             f"mortgage_monthly_kzt={enriched.mortgage_monthly_payment_kzt or 'unknown'}"
         )
         description = _clean_description(apartment.description)

@@ -23,6 +23,9 @@ AREA_PATTERN = re.compile(
     re.IGNORECASE,
 )
 FLOOR_PATTERN = re.compile(r"(\d+\s*/\s*\d+)")
+# Tallest residential building in KZ is ~50 floors; anything above is a building
+# number or parse noise, not a floor.
+MAX_PLAUSIBLE_FLOOR = 60
 ROOMS_PATTERN = re.compile(r"(\d+)\s*[- ]?ком")
 ROOMS_WORD_PATTERN = re.compile(
     r"\u043a\u043e\u043c\u043d\u0430\u0442\w*\s*[:\-]?\s*(\d+)",
@@ -469,12 +472,19 @@ class KrishaHtmlParser:
 
     @staticmethod
     def _extract_floor(text: str | None) -> str | None:
+        """Return "floor/total", ignoring implausible «N/M» (e.g. a building number
+        like «535/2» leaking from the address — floor 535 of 2 is impossible)."""
         if text is None:
             return None
-        match = FLOOR_PATTERN.search(text)
-        if match is None:
-            return None
-        return match.group(1).replace(" ", "")
+        for match in FLOOR_PATTERN.finditer(text):
+            current_str, _, total_str = match.group(1).replace(" ", "").partition("/")
+            try:
+                current, total = int(current_str), int(total_str)
+            except ValueError:
+                continue
+            if 1 <= current <= total <= MAX_PLAUSIBLE_FLOOR:
+                return f"{current}/{total}"
+        return None
 
     @staticmethod
     def _extract_district(text: str | None) -> str | None:

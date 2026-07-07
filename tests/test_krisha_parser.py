@@ -228,6 +228,22 @@ def test_detail_page_extracts_author_kind() -> None:
     assert plain.agency_name is None
 
 
+def test_extract_floor_rejects_implausible_values() -> None:
+    from agent.tools.krisha_html import KrishaHtmlParser
+
+    extract = KrishaHtmlParser._extract_floor
+    # normal floors survive
+    assert extract("2-комнатная · 60 м² · этаж 5/12") == "5/12"
+    assert extract("6/9 этаж") == "6/9"
+    # a building number «535/2» (floor 535 of 2) is not a floor -> skipped, and the
+    # real floor later in the text is used instead
+    assert extract("Герцена 535/2 · этаж 4/7") == "4/7"
+    # no plausible floor at all -> None (was: leaked «535/2»)
+    assert extract("Герцена 535/2") is None
+    assert extract("120/240") is None  # both above the plausible ceiling
+    assert extract("9/5") is None  # current above total
+
+
 def test_detail_page_extracts_description_params_and_market() -> None:
     parser = KrishaParser(redis_client=FakeRedis(), min_delay_seconds=0, max_delay_seconds=0)
     base = load_fixture("detail_123456789.html")

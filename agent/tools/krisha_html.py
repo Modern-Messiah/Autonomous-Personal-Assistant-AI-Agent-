@@ -269,6 +269,7 @@ class KrishaHtmlParser:
             building_type=self._param_value(params, "тип дома"),
             ceiling_height_m=self._param_float(params, "высота потолков"),
             furnished=self._param_value(params, "меблирова"),
+            condition=self._param_value(params, "состояние"),
             photos=photo_urls,
             published_at=published_at,
         )
@@ -363,14 +364,52 @@ class KrishaHtmlParser:
         return "agent", agency or None
 
     def _deduplicate_previews(self, previews: list[ListingPreview]) -> list[ListingPreview]:
-        unique: list[ListingPreview] = []
+        """Drop exact id repeats AND collapse the same flat re-posted by different
+        agents (same building+rooms+area+floor under different ids), keeping the
+        cheapest listing so clones don't pad the shortlist or skew the average."""
+        result: list[ListingPreview] = []
         seen_ids: set[str] = set()
+        fingerprint_index: dict[tuple[int, float, str, str], int] = {}
         for preview in previews:
             if preview.external_id in seen_ids:
                 continue
-            unique.append(preview)
             seen_ids.add(preview.external_id)
-        return unique
+            fingerprint = self._listing_fingerprint(preview)
+            if fingerprint is not None and fingerprint in fingerprint_index:
+                position = fingerprint_index[fingerprint]
+                if self._price_sort_key(preview) < self._price_sort_key(result[position]):
+                    result[position] = preview
+                continue
+            if fingerprint is not None:
+                fingerprint_index[fingerprint] = len(result)
+            result.append(preview)
+        return result
+
+    @staticmethod
+    def _listing_fingerprint(
+        preview: ListingPreview,
+    ) -> tuple[int, float, str, str] | None:
+        """Identity of the flat itself, independent of who posted it. None when a
+        component is missing OR the address has no house number — a street-only
+        address ("Абая, Алматы") could match two different buildings, so we would
+        rather keep both than risk hiding a distinct flat."""
+        if (
+            preview.rooms is None
+            or preview.area_m2 is None
+            or not preview.floor
+            or not preview.address
+            or not any(char.isdigit() for char in preview.address)
+        ):
+            return None
+        address = " ".join(preview.address.lower().split())
+        return (preview.rooms, round(preview.area_m2, 1), preview.floor.replace(" ", ""), address)
+
+    @staticmethod
+    def _price_sort_key(preview: ListingPreview) -> tuple[int, int]:
+        """Cheapest first; a known price beats an unknown one."""
+        if preview.price_kzt is None:
+            return (1, 0)
+        return (0, preview.price_kzt)
 
     def _resolve_card_container(self, link: object) -> object:
         node = link

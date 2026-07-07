@@ -251,7 +251,8 @@ def test_detail_page_extracts_description_params_and_market() -> None:
         '<dl><dt>Год постройки</dt><dd>2019</dd>'
         "<dt>Тип дома</dt><dd>монолитный</dd>"
         "<dt>Высота потолков</dt><dd>2.7 м</dd>"
-        "<dt>Квартира меблирована</dt><dd>частично</dd></dl>"
+        "<dt>Квартира меблирована</dt><dd>частично</dd>"
+        "<dt>Состояние квартиры</dt><dd>требует ремонта</dd></dl>"
         '<div class="offer__bio-title">Описание</div>'
         '<div class="text"><div class="js-description a-text">'
         "Тёплая квартира, свежий ремонт.\n\nТорг. Документы на руках.</div></div>"  # noqa: RUF001
@@ -271,6 +272,7 @@ def test_detail_page_extracts_description_params_and_market() -> None:
     assert apt.building_type == "монолитный"
     assert apt.ceiling_height_m == 2.7
     assert apt.furnished == "частично"
+    assert apt.condition == "требует ремонта"
     assert apt.market_diff_percent == -9.2  # «дешевле» -> negative
 
     # a page without these blocks leaves everything None
@@ -278,6 +280,34 @@ def test_detail_page_extracts_description_params_and_market() -> None:
     assert plain.description is None
     assert plain.build_year is None
     assert plain.market_diff_percent is None
+
+
+def test_deduplicate_previews_collapses_same_flat_clones() -> None:
+    parser = KrishaParser(redis_client=FakeRedis(), min_delay_seconds=0, max_delay_seconds=0)
+
+    def prev(
+        ext: str, price: int | None, *, addr: str | None = "Абая 10, Алматы",
+        area: float | None = 55.5, floor: str | None = "5/9", rooms: int | None = 2,
+    ) -> ListingPreview:
+        return ListingPreview(
+            external_id=ext, url=f"https://krisha.kz/a/show/{ext}", title="t",
+            price_kzt=price, rooms=rooms, area_m2=area, floor=floor,
+            district=None, address=addr,
+        )
+
+    previews = [
+        prev("1", 45_000_000),  # same flat via agent A (pricier)
+        prev("2", 43_000_000),  # same flat via agent B (cheaper) -> representative
+        prev("3", 40_000_000, addr="Достык 5, Алматы"),  # a different flat
+        prev("1", 45_000_000),  # exact id repeat -> dropped
+        prev("4", 30_000_000, floor=None),  # no floor -> not fingerprinted, kept
+    ]
+
+    result = parser._deduplicate_previews(previews)
+
+    # the clone collapses to the cheapest listing; order and other flats preserved
+    assert [p.external_id for p in result] == ["2", "3", "4"]
+    assert result[0].price_kzt == 43_000_000
 
 
 def test_build_listing_urls_adds_rent_period() -> None:

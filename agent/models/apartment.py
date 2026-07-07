@@ -37,6 +37,9 @@ class Apartment(BaseModel):
     building_type: str | None = None  # монолитный / панельный / кирпичный / …
     ceiling_height_m: float | None = Field(default=None, gt=0)
     furnished: str | None = None  # «Квартира меблирована»: да / частично / нет
+    # «Состояние квартиры»: черновая / требует ремонта / свежий ремонт / … — the
+    # single biggest comparison axis (renovation state ≈ ±30% of real value).
+    condition: str | None = None
     photos: list[str]
     published_at: datetime | None = None
     scraped_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

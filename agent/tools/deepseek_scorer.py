@@ -121,9 +121,14 @@ class DeepSeekApartmentScorer:
             "posted_by=owner (от хозяина, no agency commission) is a modest plus "
             "over posted_by=agent; developer (новостройка от застройщика) and "
             "'unknown' are neutral.",
+            "CONDITION is the biggest value axis: the structured 'condition' field "
+            "(черновая / требует ремонта / средний / свежий ремонт / евроремонт) "
+            "plus the «описание» decide it. At the SAME ₸/м², a renovated flat is "
+            "clearly better than one needing repair (renovation ≈ ±30% of value); "
+            "«черновая»/«требует ремонта» means budget for repairs on top of price.",
             "Read each listing's «описание» line and weigh it heavily: it reveals "
-            "CONDITION (свежий ремонт vs требуется ремонт / старый / без ремонта — "
-            "a flat needing renovation is worth clearly less at the same price), "
+            "condition, layout, furniture and extras that the structured fields miss "
+            "(a flat needing renovation is worth clearly less at the same price), "
             "layout (распашонка, изолированные, угловая), furniture, and extras "
             "(тёплая, застеклённый балкон, торг, документы на руках). Name concrete "
             "facts from it in reasons.",
@@ -212,6 +217,7 @@ class DeepSeekApartmentScorer:
             f"building_type={apartment.building_type or 'unknown'}, "
             f"ceiling_m={apartment.ceiling_height_m or 'unknown'}, "
             f"furnished={apartment.furnished or 'unknown'}, "
+            f"condition={apartment.condition or 'unknown'}, "
             f"vs_city_market={_market(apartment.market_diff_percent)}, "
             f"mortgage_monthly_kzt={enriched.mortgage_monthly_payment_kzt or 'unknown'}"
         )

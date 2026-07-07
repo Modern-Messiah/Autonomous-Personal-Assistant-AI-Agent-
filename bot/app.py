@@ -10,10 +10,11 @@ from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.types import BotCommand
 
 from agent.tools import NotionClient
+from bot.middlewares import AllowlistMiddleware, ThrottleMiddleware
 from bot.router import create_bot_router
 from bot.service import SearchBotService
 from config.observability import configure_observability
-from config.settings import get_settings
+from config.settings import TelegramSettings, get_settings
 from db.session import get_session_factory
 
 BOT_COMMANDS = [
@@ -48,9 +49,25 @@ def create_dispatcher(
 ) -> Dispatcher:
     """Create dispatcher with project routes."""
     dispatcher = Dispatcher(storage=storage if storage is not None else create_fsm_storage())
+    # Real bootstrap (service is None) reads settings anyway; only then guard the
+    # dispatcher with the allowlist + throttle. Tests inject a service and skip it.
+    if service is None:
+        register_guard_middlewares(dispatcher, get_settings().telegram)
     active_service = service or create_search_service()
     dispatcher.include_router(create_bot_router(active_service))
     return dispatcher
+
+
+def register_guard_middlewares(dispatcher: Dispatcher, telegram: TelegramSettings) -> None:
+    """Attach the allowlist + per-user throttle as outer middlewares.
+
+    Outer so they run before FSM/handler resolution on both messages and taps.
+    """
+    allowlist = AllowlistMiddleware(telegram.allowed_ids)
+    throttle = ThrottleMiddleware(telegram.rate_limit_per_minute)
+    for observer in (dispatcher.message, dispatcher.callback_query):
+        observer.outer_middleware(allowlist)
+        observer.outer_middleware(throttle)
 
 
 def create_search_service() -> SearchBotService:

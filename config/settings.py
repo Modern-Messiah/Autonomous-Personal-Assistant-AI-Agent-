@@ -66,6 +66,20 @@ class TelegramSettings(BaseModel):
     """Telegram bot settings."""
 
     bot_token: SecretStr
+    # Comma-separated Telegram user ids allowed to use the bot. Empty = open to
+    # everyone (dev default); set TELEGRAM__ALLOWED_USER_IDS to lock it down. Kept
+    # as a plain str so pydantic-settings doesn't try to JSON-decode the env value.
+    allowed_user_ids: str = ""
+    # Per-user command budget: at most this many actions per 60s window.
+    rate_limit_per_minute: int = Field(default=20, ge=1)
+
+    @property
+    def allowed_ids(self) -> frozenset[int]:
+        return frozenset(
+            int(part)
+            for part in self.allowed_user_ids.replace(";", ",").split(",")
+            if part.strip()
+        )
 
 
 class APISettings(BaseModel):

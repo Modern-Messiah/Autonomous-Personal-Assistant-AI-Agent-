@@ -219,6 +219,8 @@ def _format_features(apartment: Apartment) -> str | None:
         parts.append(apartment.building_type)
     if apartment.ceiling_height_m is not None:
         parts.append(f"потолки {apartment.ceiling_height_m:g} м")
+    if apartment.condition:
+        parts.append(f"🔨 {apartment.condition}")
     if apartment.furnished:
         parts.append(f"🛋 {apartment.furnished}")
     return "🏗 " + " · ".join(parts) if parts else None

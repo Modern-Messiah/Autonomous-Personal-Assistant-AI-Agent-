@@ -96,6 +96,29 @@ class BatchPriceStats:
     count: int
 
 
+def _market_or_batch_line(
+    apartment: Apartment, price_per_m2: float, stats: BatchPriceStats | None
+) -> str | None:
+    """Price context: prefer krisha's city-market verdict, fall back to the batch.
+
+    krisha gives a signed «на X% дешевле/дороже рынка города»; the city average
+    ₸/м² is derived from this listing's own ₸/м² and that percent.
+    """
+    diff = apartment.market_diff_percent
+    if diff is not None:
+        factor = 1 + diff / 100
+        avg = f"{round(price_per_m2 / factor):,}".replace(",", " ") if factor > 0 else None
+        percent = abs(round(diff))
+        if percent < 1:
+            return "🏙 цена за м² на уровне рынка города"
+        word = "дешевле" if diff < 0 else "дороже"
+        tail = f" (сред. {avg} ₸/м²)" if avg else ""
+        return f"🏙 на {percent}% {word} рынка города{tail}"
+    if stats is not None and stats.avg_price_per_m2 > 0:
+        return _price_vs_batch(price_per_m2, stats)
+    return None
+
+
 def _price_vs_batch(price_per_m2: float, stats: BatchPriceStats) -> str:
     """One-line comparison of this listing's ₸/м² against the batch average.
 
@@ -132,8 +155,9 @@ def format_apartment_card(
         price_per_m2 = apartment.price_kzt / apartment.area_m2
         per_m2 = f"{round(price_per_m2):,}".replace(",", " ")
         lines.append(f"💰 {price} ₸  (≈ {per_m2} ₸/м²)")
-        if price_stats is not None and price_stats.avg_price_per_m2 > 0:
-            lines.append(_price_vs_batch(price_per_m2, price_stats))
+        context = _market_or_batch_line(apartment, price_per_m2, price_stats)
+        if context is not None:
+            lines.append(context)
     else:
         lines.append(f"💰 {price} ₸")
     lines.append(f"📍 {_format_location(apartment)}")
@@ -144,6 +168,9 @@ def format_apartment_card(
         lines.append(f"🏢 От риелтора{agency}")
     elif apartment.posted_by == "developer":
         lines.append("🏗 От застройщика")
+    features = _format_features(apartment)
+    if features:
+        lines.append(features)
     if apartment.published_at is not None:
         lines.append(f"📅 Опубликовано: {apartment.published_at:%d.%m.%Y}")
     if item.mortgage_monthly_payment_kzt:
@@ -176,8 +203,33 @@ def format_apartment_card(
         )
         lines.append(f"{label} · {item.score.score:.0f}/100")
         lines.extend(f"   • {reason}" for reason in item.score.reasons[:3])
+    snippet = _description_snippet(apartment.description)
+    if snippet:
+        lines.append(f"📝 {snippet}")
     # No raw 🔗 line: the link is the "🌐 Открыть на Krisha" button on every card.
     return "\n".join(lines)
+
+
+def _format_features(apartment: Apartment) -> str | None:
+    """One compact features line: year, building type, ceiling, furniture."""
+    parts: list[str] = []
+    if apartment.build_year is not None:
+        parts.append(str(apartment.build_year))
+    if apartment.building_type:
+        parts.append(apartment.building_type)
+    if apartment.ceiling_height_m is not None:
+        parts.append(f"потолки {apartment.ceiling_height_m:g} м")
+    if apartment.furnished:
+        parts.append(f"🛋 {apartment.furnished}")
+    return "🏗 " + " · ".join(parts) if parts else None
+
+
+def _description_snippet(description: str | None, *, limit: int = 160) -> str | None:
+    """One-line teaser of the description; the full text goes to the AI scorer."""
+    if not description:
+        return None
+    flat = " ".join(description.split())
+    return flat if len(flat) <= limit else flat[:limit].rstrip() + "…"
 
 
 def format_search_results(

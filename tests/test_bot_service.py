@@ -1084,6 +1084,39 @@ def test_refine_menu_keyboard_shows_owner_toggle_state() -> None:
     assert "—" in owner_button(False)
 
 
+def test_format_apartment_card_market_features_description() -> None:
+    from bot.formatters import BatchPriceStats
+
+    def make(**over: object) -> EnrichedApartment:
+        base = build_apartment()
+        return base.model_copy(
+            update={"apartment": base.apartment.model_copy(update=over)}
+        )
+
+    # krisha market verdict preferred over the batch line; avg derived from ₸/м²
+    item = make(
+        price_kzt=35_343_990, area_m2=55.5, market_diff_percent=-9.2,
+        build_year=2019, building_type="монолитный", ceiling_height_m=2.7,
+        furnished="частично",
+        description="Тёплая, свежий ремонт, распашонка. Торг. " * 6,  # noqa: RUF001
+    )
+    stats = BatchPriceStats(avg_price_per_m2=700_000, count=6)
+    card = format_apartment_card(item, index=1, price_stats=stats)
+
+    assert "🏙 на 9% дешевле рынка города" in card
+    assert "среднего за м²" not in card  # batch line suppressed when krisha present
+    assert "🏗 2019 · монолитный · потолки 2.7 м · 🛋 частично" in card
+    assert "📝 Тёплая, свежий ремонт" in card
+    assert card.count("📝") == 1  # description is a single snippet line
+
+    # no krisha verdict -> fall back to the batch line
+    fallback = format_apartment_card(
+        make(price_kzt=41_000_000, area_m2=44.0), index=1, price_stats=stats
+    )
+    assert "среднего за м²" in fallback
+    assert "🏙" not in fallback
+
+
 def test_format_apartment_card_shows_poster() -> None:
     owner_item = build_apartment()
     owner_item = owner_item.model_copy(

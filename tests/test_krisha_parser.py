@@ -228,6 +228,42 @@ def test_detail_page_extracts_author_kind() -> None:
     assert plain.agency_name is None
 
 
+def test_detail_page_extracts_description_params_and_market() -> None:
+    parser = KrishaParser(redis_client=FakeRedis(), min_delay_seconds=0, max_delay_seconds=0)
+    base = load_fixture("detail_123456789.html")
+    extra = (
+        '<dl><dt>Год постройки</dt><dd>2019</dd>'
+        "<dt>Тип дома</dt><dd>монолитный</dd>"
+        "<dt>Высота потолков</dt><dd>2.7 м</dd>"
+        "<dt>Квартира меблирована</dt><dd>частично</dd></dl>"
+        '<div class="offer__bio-title">Описание</div>'
+        '<div class="text"><div class="js-description a-text">'
+        "Тёплая квартира, свежий ремонт.\n\nТорг. Документы на руках.</div></div>"  # noqa: RUF001
+        '<div class="offer__advert-analytics">Цена м² в похожих квартирах '
+        "На 9.2% дешевле, чем в других похожих предложениях в этом городе</div>"  # noqa: RUF001
+    )
+    preview = make_preview(external_id="123456789", price_kzt=35_000_000)
+
+    apt = parser.parse_detail_page(
+        base.replace("</body>", extra + "</body>"), preview=preview, city="Almaty"
+    )
+
+    assert apt.description is not None
+    assert "свежий ремонт" in apt.description
+    assert "Торг" in apt.description  # noqa: RUF001
+    assert apt.build_year == 2019
+    assert apt.building_type == "монолитный"
+    assert apt.ceiling_height_m == 2.7
+    assert apt.furnished == "частично"
+    assert apt.market_diff_percent == -9.2  # «дешевле» -> negative
+
+    # a page without these blocks leaves everything None
+    plain = parser.parse_detail_page(base, preview=preview, city="Almaty")
+    assert plain.description is None
+    assert plain.build_year is None
+    assert plain.market_diff_percent is None
+
+
 def test_build_listing_urls_adds_rent_period() -> None:
     parser = KrishaParser(redis_client=FakeRedis(), min_delay_seconds=0, max_delay_seconds=0)
     rent = SearchCriteria(

@@ -27,6 +27,16 @@ class Apartment(BaseModel):
     posted_by: Literal["owner", "agent", "developer"] | None = None
     # Agency name when posted_by == "agent" (e.g. "Top City").
     agency_name: str | None = None
+    # Free-text «Описание» — the richest condition/layout/extras signal for the LLM.
+    description: str | None = None
+    # krisha's own «на X% дешевле/дороже рынка города» verdict (signed: negative =
+    # cheaper than the city market for similar flats). None when it has no widget.
+    market_diff_percent: float | None = None
+    # about-flat params.
+    build_year: int | None = Field(default=None, ge=1900, le=2100)
+    building_type: str | None = None  # монолитный / панельный / кирпичный / …
+    ceiling_height_m: float | None = Field(default=None, gt=0)
+    furnished: str | None = None  # «Квартира меблирована»: да / частично / нет
     photos: list[str]
     published_at: datetime | None = None
     scraped_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

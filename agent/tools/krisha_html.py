@@ -49,6 +49,14 @@ AUTHOR_TITLE_PATTERN = re.compile(
     r'data-testid="advert-author-title"[^>]*>([^<]{1,80})<',
     re.IGNORECASE,
 )
+# krisha's price-vs-similar verdict, worded like "<...> 9.2% cheaper than others".
+MARKET_DIFF_PATTERN = re.compile(
+    r"На\s+([\d]+(?:[.,]\d+)?)\s*%\s*(дешевле|дороже)",  # noqa: RUF001
+    re.IGNORECASE,
+)
+CEILING_PATTERN = re.compile(r"(\d+(?:[.,]\d+)?)")
+# Longest real descriptions are ~2k chars; cap guards against spam blobs.
+DESCRIPTION_MAX_CHARS = 2000
 
 # Real listing photos live on krisha's CDN under /webp/<hash>/<n>-<size>.jpg in
 # many sizes; marketing banners sit under /content/ and must be skipped. krisha
@@ -236,6 +244,7 @@ class KrishaHtmlParser:
         photo_urls = self._extract_photo_urls(html)
         published_at = self._extract_published_at(soup)
         posted_by, agency_name = self._extract_author(html)
+        params = self._extract_params(soup)
 
         return Apartment(
             external_id=preview.external_id,
@@ -251,9 +260,87 @@ class KrishaHtmlParser:
             rooms=rooms,
             posted_by=posted_by,
             agency_name=agency_name,
+            description=self._extract_description(soup),
+            market_diff_percent=self._extract_market_diff(html),
+            build_year=self._param_int(params, "год постройки"),
+            building_type=self._param_value(params, "тип дома"),
+            ceiling_height_m=self._param_float(params, "высота потолков"),
+            furnished=self._param_value(params, "меблирова"),
             photos=photo_urls,
             published_at=published_at,
         )
+
+    @staticmethod
+    def _extract_description(soup: BeautifulSoup) -> str | None:
+        """The free-text description body (not the about-flat params block)."""
+        node = soup.select_one(".js-description") or soup.select_one(".offer__description .text")
+        if node is None:
+            return None
+        text = node.get_text("\n", strip=True)
+        text = re.sub(r"\n{3,}", "\n\n", text).strip()
+        if not text:
+            return None
+        return text[:DESCRIPTION_MAX_CHARS]
+
+    @staticmethod
+    def _extract_market_diff(html: str) -> float | None:
+        """krisha's price-vs-city verdict as a signed percent (cheaper = negative)."""
+        match = MARKET_DIFF_PATTERN.search(html)
+        if match is None:
+            return None
+        value = float(match.group(1).replace(",", "."))
+        return -value if match.group(2).lower() == "дешевле" else value
+
+    @staticmethod
+    def _extract_params(soup: BeautifulSoup) -> dict[str, str]:
+        """Flatten both about-flat param blocks into a {lower label: value} map.
+
+        Desktop krisha has TWO param areas: a <dl> (balcony/door/furnished/ceiling)
+        and info-item rows (city/building type/build year/condition), where the
+        value is an `.offer__advert-short-info` node in the same row as the title.
+        """
+        params: dict[str, str] = {}
+        for dl in soup.find_all("dl"):
+            terms = dl.find_all("dt")
+            values = dl.find_all("dd")
+            for term, value in zip(terms, values, strict=False):
+                label = term.get_text(" ", strip=True).lower()
+                text = value.get_text(" ", strip=True)
+                if label and text:
+                    params.setdefault(label, text)
+        for title in soup.select(".offer__info-title"):
+            row = title.parent
+            value_node = row.select_one(".offer__advert-short-info") if row else None
+            if value_node is None:
+                continue
+            label = title.get_text(" ", strip=True).lower()
+            text = value_node.get_text(" ", strip=True)
+            if label and text:
+                params.setdefault(label, text)
+        return params
+
+    @staticmethod
+    def _param_value(params: dict[str, str], needle: str) -> str | None:
+        for label, value in params.items():
+            if needle in label:
+                return value
+        return None
+
+    @classmethod
+    def _param_int(cls, params: dict[str, str], needle: str) -> int | None:
+        value = cls._param_value(params, needle)
+        if value is None:
+            return None
+        match = re.search(r"\d{4}", value)
+        return int(match.group()) if match else None
+
+    @classmethod
+    def _param_float(cls, params: dict[str, str], needle: str) -> float | None:
+        value = cls._param_value(params, needle)
+        if value is None:
+            return None
+        match = CEILING_PATTERN.search(value)
+        return float(match.group(1).replace(",", ".")) if match else None
 
     @staticmethod
     def _extract_author(

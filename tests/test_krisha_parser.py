@@ -186,43 +186,56 @@ def test_detail_page_extracts_author_kind() -> None:
     base_html = load_fixture("detail_123456789.html")
     preview = make_preview(external_id="123456789", price_kzt=35_000_000)
 
-    owner_block = (
-        '<div data-testid="advert-author" class="a-page__block">'
-        '<div class="owner" data-v-b16dc70c="">'
-        '<h2 data-testid="advert-author-title">Хозяин недвижимости</h2></div></div>'
+    def with_author(*objects: str) -> str:
+        # krisha now embeds the poster as JSON in a script blob, not markup.
+        blob = "<script>window.data={" + ",".join(objects) + "}</script>"
+        return base_html.replace("</body>", blob + "</body>")
+
+    # Хозяин недвижимости -> owner (isOwner)
+    owner_json = (
+        '"owner":{"isPro":false,"isComplex":false,"isBuilder":false,"isOwner":true,'
+        '"title":"Хозяин","label":{"title":"Хозяин недвижимости","name":"owner"}}'
     )
-    owner = parser.parse_detail_page(
-        base_html.replace("</body>", owner_block + "</body>"),
-        preview=preview, city="Almaty",
-    )
+    owner = parser.parse_detail_page(with_author(owner_json), preview=preview, city="Almaty")
     assert owner.posted_by == "owner"
     assert owner.agency_name is None
 
-    company_block = (
-        '<div data-testid="advert-author" class="a-page__block">'
-        '<div class="company" data-v-7106868f="">'
-        '<h2 data-testid="advert-author-title">Top City</h2></div></div>'
+    # realtor/specialist -> agent, agency name from the sibling "agency" object
+    agent_json = (
+        '"owner":{"isPro":true,"isComplex":false,"isBuilder":false,"isOwner":false,'
+        '"title":"Мейрам","label":{"title":"Специалист","name":"identified-specialist"}}'
     )
+    agency_json = '"agency":{"id":8285612,"isChecked":false,"name":" Top City "}'
     agent = parser.parse_detail_page(
-        base_html.replace("</body>", company_block + "</body>"),
-        preview=preview, city="Almaty",
+        with_author(agent_json, agency_json), preview=preview, city="Almaty"
     )
     assert agent.posted_by == "agent"
-    assert agent.agency_name == "Top City"
+    assert agent.agency_name == "Top City"  # surrounding whitespace stripped
 
-    builder_block = (
-        '<div data-testid="advert-author" class="a-page__block">'
-        '<div class="builder" data-v-c2af3d64="">'
-        '<div class="builder__header">ЖК Пример</div></div></div>'
+    # Новостройка (isComplex) and a bare builder both map to developer
+    complex_json = (
+        '"owner":{"isPro":false,"isComplex":true,"isBuilder":false,"isOwner":false,'
+        '"title":"Жилой комплекс","label":{"title":"Новостройка","name":"complex"}}'
     )
-    developer = parser.parse_detail_page(
-        base_html.replace("</body>", builder_block + "</body>"),
-        preview=preview, city="Almaty",
-    )
+    developer = parser.parse_detail_page(with_author(complex_json), preview=preview, city="Almaty")
     assert developer.posted_by == "developer"
     assert developer.agency_name is None
 
-    # no author block on the page -> both stay None
+    builder_json = (
+        '"owner":{"isPro":false,"isComplex":false,"isBuilder":true,"isOwner":false,'
+        '"title":"Застройщик","label":{"name":"builder"}}'
+    )
+    builder = parser.parse_detail_page(with_author(builder_json), preview=preview, city="Almaty")
+    assert builder.posted_by == "developer"
+
+    # an agent with no agency object still resolves as agent, name None
+    agent_no_name = parser.parse_detail_page(
+        with_author(agent_json), preview=preview, city="Almaty"
+    )
+    assert agent_no_name.posted_by == "agent"
+    assert agent_no_name.agency_name is None
+
+    # no author JSON on the page -> both stay None
     plain = parser.parse_detail_page(base_html, preview=preview, city="Almaty")
     assert plain.posted_by is None
     assert plain.agency_name is None

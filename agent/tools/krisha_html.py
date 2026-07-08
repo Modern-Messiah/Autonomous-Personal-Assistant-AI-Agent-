@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Any, Literal
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
 from bs4 import BeautifulSoup
@@ -40,18 +41,10 @@ TITLE_ADDRESS_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-# The advert-author block tells who posted the listing: its first child div
-# carries class "owner" (Хозяин недвижимости), "company" (agency) or "builder"
-# (developer / new construction); advert-author-title holds the agency name for
-# companies (builders usually have no title).
-AUTHOR_KIND_PATTERN = re.compile(
-    r'data-testid="advert-author"[^>]*>\s*<div\s+class="(owner|company|builder)[\s"]',
-    re.IGNORECASE,
-)
-AUTHOR_TITLE_PATTERN = re.compile(
-    r'data-testid="advert-author-title"[^>]*>([^<]{1,80})<',
-    re.IGNORECASE,
-)
+# Who posted the listing now lives in an embedded advert JSON object rather than
+# the old `data-testid="advert-author"` markup (krisha dropped it, ~2026-07). The
+# `"owner":{...}` object carries boolean flags (isOwner / isBuilder / isComplex)
+# and a label; the agency name for a realtor sits in a sibling `"agency":{...}`.
 # krisha's price-vs-similar verdict, worded like "<...> 9.2% cheaper than others".
 MARKET_DIFF_PATTERN = re.compile(
     r"На\s+([\d]+(?:[.,]\d+)?)\s*%\s*(дешевле|дороже)",  # noqa: RUF001
@@ -346,22 +339,56 @@ class KrishaHtmlParser:
         match = CEILING_PATTERN.search(value)
         return float(match.group(1).replace(",", ".")) if match else None
 
-    @staticmethod
+    @classmethod
     def _extract_author(
+        cls,
         html: str,
     ) -> tuple[Literal["owner", "agent", "developer"] | None, str | None]:
-        """Return (posted_by, agency_name) from the advert-author block."""
-        kind_match = AUTHOR_KIND_PATTERN.search(html)
-        if kind_match is None:
+        """Return (posted_by, agency_name) from the embedded advert JSON.
+
+        The poster is the `"owner":{...}` object: `isOwner` → owner (Хозяин),
+        `isBuilder`/`isComplex` → developer (застройщик/новостройка), otherwise a
+        realtor/specialist → agent, whose name comes from the sibling
+        `"agency":{"name": ...}` object.
+        """
+        owner = cls._find_json_object(html, "owner", required_key="isOwner")
+        if owner is None:
             return None, None
-        kind = kind_match.group(1).lower()
-        if kind == "owner":
+        if owner.get("isOwner"):
             return "owner", None
-        if kind == "builder":
+        if owner.get("isBuilder") or owner.get("isComplex"):
             return "developer", None
-        title_match = AUTHOR_TITLE_PATTERN.search(html)
-        agency = title_match.group(1).strip() if title_match else None
-        return "agent", agency or None
+        agency = cls._find_json_object(html, "agency", required_key="name")
+        name = agency.get("name") if agency is not None else None
+        if not isinstance(name, str):
+            return "agent", None
+        return "agent", name.strip() or None
+
+    @staticmethod
+    def _find_json_object(html: str, key: str, *, required_key: str) -> dict[str, Any] | None:
+        """First embedded ``"key": {...}`` JSON object that carries ``required_key``.
+
+        Brace-matches the object so a nested child (e.g. the label) doesn't
+        truncate it; skips objects that don't parse or lack the marker key.
+        """
+        for match in re.finditer(rf'"{re.escape(key)}"\s*:\s*{{', html):
+            start = html.index("{", match.start())
+            depth = 0
+            for index in range(start, min(len(html), start + 8000)):
+                char = html[index]
+                if char == "{":
+                    depth += 1
+                elif char == "}":
+                    depth -= 1
+                    if depth == 0:
+                        try:
+                            parsed = json.loads(html[start : index + 1])
+                        except json.JSONDecodeError:
+                            break
+                        if isinstance(parsed, dict) and required_key in parsed:
+                            return parsed
+                        break
+        return None
 
     def _deduplicate_previews(self, previews: list[ListingPreview]) -> list[ListingPreview]:
         """Drop exact id repeats AND collapse the same flat re-posted by different

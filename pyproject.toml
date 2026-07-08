@@ -21,7 +21,10 @@ dependencies = [
   "langgraph>=1.2,<2",
   "langgraph-checkpoint-postgres>=3.1,<4",
   "langsmith>=0.1.120",
-  "playwright==1.47.0",
+  # Exact pin on purpose: must match the browser binaries baked into the
+  # mcr.microsoft.com/playwright/python base image tag in Containerfile —
+  # bump both together.
+  "playwright==1.61.0",
   "pydantic>=2.8.2",
   "pydantic-settings>=2.4.0",
   "psycopg[binary]>=3.2.10",

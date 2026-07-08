@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/playwright/python:v1.47.0-jammy AS builder
+FROM mcr.microsoft.com/playwright/python:v1.61.0-jammy AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -25,7 +25,7 @@ COPY scheduler ./scheduler
 
 RUN uv sync --no-dev --locked && rm -rf /root/.cache/uv
 
-FROM mcr.microsoft.com/playwright/python:v1.47.0-jammy AS runtime
+FROM mcr.microsoft.com/playwright/python:v1.61.0-jammy AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

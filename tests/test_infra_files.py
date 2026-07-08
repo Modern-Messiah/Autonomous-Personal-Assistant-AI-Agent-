@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 
 def test_containerfile_contains_runtime_basics() -> None:
-    containerfile = Path(__file__).resolve().parents[1] / "Containerfile"
+    root = Path(__file__).resolve().parents[1]
+    containerfile = root / "Containerfile"
     text = containerfile.read_text(encoding="utf-8")
 
-    assert "mcr.microsoft.com/playwright/python:v1.47.0-jammy" in text
+    # The pip playwright pin and the base-image tag ship matched browser
+    # binaries — they must always move in lockstep.
+    pin = re.search(r'"playwright==([\d.]+)"', (root / "pyproject.toml").read_text("utf-8"))
+    assert pin is not None, "pyproject must pin playwright to an exact version"
+    assert f"mcr.microsoft.com/playwright/python:v{pin.group(1)}-jammy" in text
     assert "pip install --no-cache-dir uv" in text
     assert "COPY pyproject.toml uv.lock README.md alembic.ini ./" in text
     assert "uv sync --no-dev --locked --no-install-project" in text

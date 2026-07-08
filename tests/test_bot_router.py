@@ -13,6 +13,7 @@ from aiogram.methods import (
     AnswerCallbackQuery,
     DeleteMessage,
     EditMessageReplyMarkup,
+    EditMessageText,
     SendChatAction,
     SendMessage,
     SendPhoto,
@@ -45,6 +46,7 @@ class CapturingSession(BaseSession):
         self.sent_texts: list[str] = []
         self.sent_photo_captions: list[str] = []
         self.callback_answers: list[str | None] = []
+        self.edited_texts: list[str] = []
         self.cleared_keyboards = 0
         self.deleted_messages = 0
 
@@ -82,6 +84,9 @@ class CapturingSession(BaseSession):
             )
         if isinstance(method, AnswerCallbackQuery):
             self.callback_answers.append(method.text)
+            return True
+        if isinstance(method, EditMessageText):
+            self.edited_texts.append(method.text)
             return True
         if isinstance(method, EditMessageReplyMarkup):
             self.cleared_keyboards += 1
@@ -316,6 +321,12 @@ class StubService:
         self.refine_error: Exception | None = None
         self.recommend_error: Exception | None = None
         self.recommendation_result: RecommendationResult | None = None
+        self.rerun_result: SearchExecution | None = None
+        self.rerun_error: Exception | None = None
+        self.set_city_resolved = True
+        self.budget_reset = False
+        self.owner_toggle_error: Exception | None = None
+        self.owner_only_after_toggle = True
 
     def _record(self, method: str, **kwargs: Any) -> None:
         self.calls.append((method, kwargs))
@@ -403,6 +414,51 @@ class StubService:
 
     async def reject_apartments(self, **kwargs: Any) -> int:
         return 0
+
+    async def rerun_active_search(self, *, telegram_user_id: int, username: str | None):
+        self._record("rerun_active_search", telegram_user_id=telegram_user_id)
+        if self.rerun_error is not None:
+            raise self.rerun_error
+        if self.rerun_result is None:
+            raise ActiveCriteriaNotFoundError()
+        return self.rerun_result
+
+    async def set_active_city(
+        self, *, telegram_user_id: int, username: str | None, city_text: str
+    ):
+        self._record("set_active_city", city_text=city_text)
+        return build_criteria(), self.set_city_resolved
+
+    async def set_active_deal_type(
+        self,
+        *,
+        telegram_user_id: int,
+        username: str | None,
+        deal_type: str,
+        rent_period: str | None,
+    ):
+        self._record("set_active_deal_type", deal_type=deal_type, rent_period=rent_period)
+        return build_criteria(), self.budget_reset
+
+    async def set_active_district(
+        self, *, telegram_user_id: int, username: str | None, district: str | None
+    ):
+        self._record("set_active_district", district=district)
+        return build_criteria()
+
+    async def toggle_active_owner_only(self, *, telegram_user_id: int, username: str | None):
+        self._record("toggle_active_owner_only")
+        if self.owner_toggle_error is not None:
+            raise self.owner_toggle_error
+        return build_criteria().model_copy(
+            update={"owner_only": self.owner_only_after_toggle}
+        )
+
+    async def apply_refinement_value(
+        self, *, telegram_user_id: int, username: str | None, message: str
+    ):
+        self._record("apply_refinement_value", message=message)
+        return build_criteria()
 
 
 async def feed(service: StubService, update: Update) -> CapturingSession:
@@ -669,3 +725,242 @@ async def test_list_callback_sends_saved_list() -> None:
 
     assert "Сохранённые квартиры (1):" in session.sent_texts[0]
     assert session.callback_answers == [None]
+
+
+def make_harness(service: StubService) -> tuple[Any, Bot, CapturingSession]:
+    """Dispatcher + bot sharing one FSM storage, for multi-update flows."""
+    dispatcher = create_dispatcher(  # type: ignore[arg-type]
+        service=service,
+        storage=MemoryStorage(),
+    )
+    session = CapturingSession()
+    bot = Bot(token="123456:ABCDEF", session=session, default=DefaultBotProperties())
+    return dispatcher, bot, session
+
+
+def build_text_update(*, text: str) -> Update:
+    """Plain text message (no command entity) for FSM-state handlers."""
+    return Update.model_validate(
+        {
+            "update_id": 3,
+            "message": {
+                "message_id": 11,
+                "date": 0,
+                "chat": {"id": 77, "type": "private"},
+                "from": {"id": 77, "is_bot": False, "first_name": "Denis"},
+                "text": text,
+            },
+        }
+    )
+
+
+@pytest.mark.asyncio
+async def test_search_more_callback_reruns_active_search() -> None:
+    service = StubService()
+    service.active_criteria = build_criteria()
+    service.rerun_result = SearchExecution(
+        criteria=build_criteria(), apartments=[build_enriched("9001")]
+    )
+    session = await feed(service, build_callback_update(data="dialog:more"))
+
+    assert ("rerun_active_search", {"telegram_user_id": 77}) in service.calls
+    assert session.sent_texts[0] == "Ищу ещё варианты по тем же критериям…"
+    assert len(session.sent_photo_captions) == 1
+
+
+@pytest.mark.asyncio
+async def test_search_more_callback_reports_no_new_results() -> None:
+    service = StubService()
+    service.rerun_result = SearchExecution(criteria=build_criteria(), apartments=[])
+    session = await feed(service, build_callback_update(data="dialog:more"))
+
+    assert any("Новых вариантов" in text for text in session.sent_texts)
+
+
+@pytest.mark.asyncio
+async def test_refine_callback_opens_menu() -> None:
+    service = StubService()
+    service.active_criteria = build_criteria()
+    session = await feed(service, build_callback_update(data="dialog:refine"))
+
+    assert "Что изменить?" in session.sent_texts[0]
+
+
+@pytest.mark.asyncio
+async def test_refine_field_callbacks_show_choice_keyboards() -> None:
+    service = StubService()
+    service.active_criteria = build_criteria()
+
+    session = await feed(service, build_callback_update(data="refine:field:city"))
+    assert "Выберите город" in session.edited_texts[0]
+
+    session = await feed(service, build_callback_update(data="refine:field:deal"))
+    assert "Тип сделки" in session.edited_texts[0]
+
+    session = await feed(service, build_callback_update(data="refine:field:district"))
+    assert "Выберите район" in session.edited_texts[0]
+
+
+@pytest.mark.asyncio
+async def test_refine_field_district_without_criteria_prompts_search() -> None:
+    service = StubService()
+    session = await feed(service, build_callback_update(data="refine:field:district"))
+
+    assert session.edited_texts == []
+    assert session.callback_answers == ["Сначала выполни поиск через /search."]
+
+
+@pytest.mark.asyncio
+async def test_refine_typed_value_flow_applies_and_returns_to_menu() -> None:
+    # budget button -> prompt; typed value -> applied; menu shown again
+    service = StubService()
+    service.active_criteria = build_criteria()
+    dispatcher, bot, session = make_harness(service)
+
+    await dispatcher.feed_update(bot, build_callback_update(data="refine:field:budget"))
+    assert "Напишите бюджет" in session.edited_texts[0]
+
+    await dispatcher.feed_update(bot, build_text_update(text="до 40 млн"))
+    assert ("apply_refinement_value", {"message": "до 40 млн"}) in service.calls
+    assert any("Что изменить?" in text for text in session.sent_texts)
+
+
+@pytest.mark.asyncio
+async def test_refine_set_city_updates_and_confirms() -> None:
+    service = StubService()
+    service.active_criteria = build_criteria()
+    session = await feed(service, build_callback_update(data="refine:city:Астана"))
+
+    assert ("set_active_city", {"city_text": "Астана"}) in service.calls
+    assert "Что изменить?" in session.edited_texts[0]  # menu redrawn in place
+    assert session.callback_answers == ["Город обновлён"]
+
+
+@pytest.mark.asyncio
+async def test_refine_city_other_typed_flow_handles_unrecognized_city() -> None:
+    service = StubService()
+    service.active_criteria = build_criteria()
+    service.set_city_resolved = False
+    dispatcher, bot, session = make_harness(service)
+
+    await dispatcher.feed_update(bot, build_callback_update(data="refine:city_other"))
+    assert "Напишите город" in session.edited_texts[0]
+
+    await dispatcher.feed_update(bot, build_text_update(text="Хогвартс"))
+    assert ("set_active_city", {"city_text": "Хогвартс"}) in service.calls
+    assert any("Город не распознан" in text for text in session.sent_texts)
+
+    # still in the typed-value state: a retry goes to the same handler
+    service.set_city_resolved = True
+    await dispatcher.feed_update(bot, build_text_update(text="Павлодар"))
+    assert ("set_active_city", {"city_text": "Павлодар"}) in service.calls
+    assert any("Что изменить?" in text for text in session.sent_texts)
+
+
+@pytest.mark.asyncio
+async def test_refine_set_deal_sale_confirms_menu() -> None:
+    service = StubService()
+    service.active_criteria = build_criteria()
+    session = await feed(service, build_callback_update(data="refine:deal:sale"))
+
+    assert (
+        "set_active_deal_type",
+        {"deal_type": "sale", "rent_period": None},
+    ) in service.calls
+    assert session.callback_answers == ["Сделка обновлена"]
+
+
+@pytest.mark.asyncio
+async def test_refine_set_deal_rent_asks_period_then_applies() -> None:
+    service = StubService()
+    service.active_criteria = build_criteria()
+    dispatcher, bot, session = make_harness(service)
+
+    await dispatcher.feed_update(bot, build_callback_update(data="refine:deal:rent"))
+    # nothing persisted yet: rent needs a term first
+    assert all(name != "set_active_deal_type" for name, _ in service.calls)
+    assert "Срок аренды" in session.edited_texts[0]
+
+    await dispatcher.feed_update(bot, build_callback_update(data="refine:period:daily"))
+    assert (
+        "set_active_deal_type",
+        {"deal_type": "rent", "rent_period": "daily"},
+    ) in service.calls
+    assert session.callback_answers[-1] == "Сделка обновлена"
+
+
+@pytest.mark.asyncio
+async def test_refine_deal_change_with_budget_reset_asks_new_budget() -> None:
+    service = StubService()
+    service.active_criteria = build_criteria()
+    service.budget_reset = True
+    session = await feed(service, build_callback_update(data="refine:deal:sale"))
+
+    assert any("прежний бюджет сброшен" in text for text in session.edited_texts)
+    assert session.callback_answers == ["Сделка обновлена — укажите бюджет"]
+
+
+@pytest.mark.asyncio
+async def test_refine_set_district_and_clear() -> None:
+    service = StubService()
+    service.active_criteria = build_criteria()
+
+    session = await feed(
+        service, build_callback_update(data="refine:distr:Бостандыкский р-н")  # noqa: RUF001
+    )
+    assert ("set_active_district", {"district": "Бостандыкский р-н"}) in service.calls  # noqa: RUF001
+    assert session.callback_answers == ["Район обновлён"]
+
+    session = await feed(service, build_callback_update(data="refine:distr:*"))
+    assert ("set_active_district", {"district": None}) in service.calls
+    assert session.callback_answers == ["Ищу по всему городу"]
+
+
+@pytest.mark.asyncio
+async def test_refine_toggle_owner_only() -> None:
+    service = StubService()
+    service.active_criteria = build_criteria()
+
+    session = await feed(service, build_callback_update(data="refine:owner"))
+    assert session.callback_answers == ["Только объявления от хозяев"]
+
+    service.owner_only_after_toggle = False
+    session = await feed(service, build_callback_update(data="refine:owner"))
+    assert session.callback_answers == ["Любые объявления"]
+
+    service.owner_toggle_error = ActiveCriteriaNotFoundError()
+    session = await feed(service, build_callback_update(data="refine:owner"))
+    assert session.callback_answers == ["Сначала выполни поиск через /search."]
+
+
+@pytest.mark.asyncio
+async def test_refine_back_returns_to_menu() -> None:
+    service = StubService()
+    service.active_criteria = build_criteria()
+    session = await feed(service, build_callback_update(data="refine:back"))
+
+    assert "Что изменить?" in session.edited_texts[0]
+
+
+@pytest.mark.asyncio
+async def test_refine_run_reruns_search_with_updated_criteria() -> None:
+    service = StubService()
+    service.rerun_result = SearchExecution(
+        criteria=build_criteria(), apartments=[build_enriched("9001")]
+    )
+    session = await feed(service, build_callback_update(data="refine:run"))
+
+    assert session.sent_texts[0] == "Ищу по обновлённым критериям…"
+    assert len(session.sent_photo_captions) == 1
+    assert session.sent_texts[-1] == "Что делаем дальше?"
+
+
+@pytest.mark.asyncio
+async def test_refine_run_without_criteria_prompts_search() -> None:
+    service = StubService()
+    session = await feed(service, build_callback_update(data="refine:run"))
+
+    assert (
+        "Активные критерии не найдены. Сначала выполни поиск через /search."
+        in session.sent_texts
+    )

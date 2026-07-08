@@ -230,7 +230,7 @@ async def test_search_bot_service_loads_saved_apartments(monkeypatch: pytest.Mon
         assert limit == 5
         return [build_apartment()]
 
-    monkeypatch.setattr("bot.service.list_feedback_apartments", fake_list_feedback)
+    monkeypatch.setattr("bot.feedback_service.list_feedback_apartments", fake_list_feedback)
 
     apartments = await service.get_saved_apartments(telegram_user_id=77, limit=5)
 
@@ -249,7 +249,7 @@ async def test_search_bot_service_counts_saved_apartments(monkeypatch: pytest.Mo
         assert decision == "saved"
         return 12
 
-    monkeypatch.setattr("bot.service.count_feedback_apartments", fake_count)
+    monkeypatch.setattr("bot.feedback_service.count_feedback_apartments", fake_count)
 
     assert await service.count_saved_apartments(telegram_user_id=77) == 12
 
@@ -300,8 +300,8 @@ async def test_recommend_requires_saved_apartments(monkeypatch: pytest.MonkeyPat
         return SimpleNamespace(id=123)
 
     monkeypatch.setattr("bot.service.get_active_search_criteria_record", record)
-    monkeypatch.setattr("bot.service.list_feedback_apartments", no_feedback)
-    monkeypatch.setattr("bot.service.upsert_telegram_user", upsert)
+    monkeypatch.setattr("bot.recommendation_service.list_feedback_apartments", no_feedback)
+    monkeypatch.setattr("bot.recommendation_service.upsert_telegram_user", upsert)
 
     with pytest.raises(NoPreferencesError):
         await service.recommend(telegram_user_id=77, username="tester")
@@ -337,8 +337,8 @@ async def test_recommend_ranks_candidates_by_preference(monkeypatch: pytest.Monk
         del session, user_id, apartments
 
     monkeypatch.setattr("bot.service.get_active_search_criteria_record", record)
-    monkeypatch.setattr("bot.service.list_feedback_apartments", feedback)
-    monkeypatch.setattr("bot.service.upsert_telegram_user", upsert)
+    monkeypatch.setattr("bot.recommendation_service.list_feedback_apartments", feedback)
+    monkeypatch.setattr("bot.recommendation_service.upsert_telegram_user", upsert)
     monkeypatch.setattr("bot.service.upsert_apartment_records", upsert_apts)
     monkeypatch.setattr("bot.service.get_apartment_feedback_map", feedback_map)
     monkeypatch.setattr("bot.service.mark_apartments_seen", mark_seen)
@@ -370,8 +370,8 @@ async def test_search_bot_service_lists_trashed(monkeypatch: pytest.MonkeyPatch)
         assert limit == 7
         return [build_apartment(external_id="rejected-1")]
 
-    monkeypatch.setattr("bot.service.list_trashed_apartments", fake_list_trashed)
-    monkeypatch.setattr("bot.service.list_feedback_apartments", fake_list_feedback)
+    monkeypatch.setattr("bot.feedback_service.list_trashed_apartments", fake_list_trashed)
+    monkeypatch.setattr("bot.feedback_service.list_feedback_apartments", fake_list_feedback)
 
     items = await service.get_trashed_apartments(telegram_user_id=77, limit=7)
     # Corzina merges rejected + deleted-from-saved, rejected first.
@@ -389,7 +389,7 @@ async def test_search_bot_service_restores_apartment(monkeypatch: pytest.MonkeyP
         assert external_id == "900100"
         return True
 
-    monkeypatch.setattr("bot.service.restore_apartment_feedback", fake_restore)
+    monkeypatch.setattr("bot.feedback_service.restore_apartment_feedback", fake_restore)
 
     outcome = await service.restore_apartment(telegram_user_id=77, external_id="900100")
     assert outcome == "restored_to_saved"
@@ -412,8 +412,8 @@ async def test_search_bot_service_restore_unrejects(monkeypatch: pytest.MonkeyPa
         assert decision == "rejected"
         return True  # an active rejection was cleared
 
-    monkeypatch.setattr("bot.service.restore_apartment_feedback", fake_restore)
-    monkeypatch.setattr("bot.service.clear_apartment_feedback", fake_clear)
+    monkeypatch.setattr("bot.feedback_service.restore_apartment_feedback", fake_restore)
+    monkeypatch.setattr("bot.feedback_service.clear_apartment_feedback", fake_clear)
 
     outcome = await service.restore_apartment(telegram_user_id=77, external_id="900100")
     assert outcome == "unrejected"
@@ -433,7 +433,7 @@ async def test_search_bot_service_purges_trashed_apartment(
         assert external_id == "900100"
         return True
 
-    monkeypatch.setattr("bot.service.tombstone_apartment_feedback", fake_tombstone)
+    monkeypatch.setattr("bot.feedback_service.tombstone_apartment_feedback", fake_tombstone)
 
     assert await service.purge_trashed_apartment(telegram_user_id=77, external_id="900100") is True
     assert session_factory.session.commit_calls == 1
@@ -654,9 +654,9 @@ async def test_search_bot_service_records_save_and_reject_feedback(
         decisions.append((user_id, decision, len(apartments)))
         return []
 
-    monkeypatch.setattr("bot.service.upsert_telegram_user", fake_upsert)
-    monkeypatch.setattr("bot.service.list_apartment_records_by_urls", fake_list_apartments)
-    monkeypatch.setattr("bot.service.upsert_apartment_feedback", fake_upsert_feedback)
+    monkeypatch.setattr("bot.feedback_service.upsert_telegram_user", fake_upsert)
+    monkeypatch.setattr("bot.feedback_service.list_apartment_records_by_urls", fake_list_apartments)
+    monkeypatch.setattr("bot.feedback_service.upsert_apartment_feedback", fake_upsert_feedback)
 
     saved_count = await service.save_apartments(
         telegram_user_id=77,
@@ -755,10 +755,12 @@ async def test_search_bot_service_syncs_saved_apartments_to_notion(
         synced_updates.append(dict(synced_pages))
         return []
 
-    monkeypatch.setattr("bot.service.upsert_telegram_user", fake_upsert)
-    monkeypatch.setattr("bot.service.list_apartment_records_by_urls", fake_list_apartments)
-    monkeypatch.setattr("bot.service.upsert_apartment_feedback", fake_upsert_feedback)
-    monkeypatch.setattr("bot.service.update_apartment_feedback_notion_sync", fake_update_sync)
+    monkeypatch.setattr("bot.feedback_service.upsert_telegram_user", fake_upsert)
+    monkeypatch.setattr("bot.feedback_service.list_apartment_records_by_urls", fake_list_apartments)
+    monkeypatch.setattr("bot.feedback_service.upsert_apartment_feedback", fake_upsert_feedback)
+    monkeypatch.setattr(
+        "bot.feedback_service.update_apartment_feedback_notion_sync", fake_update_sync
+    )
 
     saved_count = await service.save_apartments(
         telegram_user_id=77,
@@ -1370,7 +1372,7 @@ async def test_search_bot_service_reads_monitor_status(monkeypatch: pytest.Monke
         assert telegram_user_id == 77
         return SimpleNamespace(is_enabled=True, interval_minutes=180)
 
-    monkeypatch.setattr("bot.service.get_monitor_settings_record", fake_get_monitor_record)
+    monkeypatch.setattr("bot.monitor_service.get_monitor_settings_record", fake_get_monitor_record)
 
     status = await service.get_monitor_status(telegram_user_id=77)
 
@@ -1412,8 +1414,8 @@ async def test_search_bot_service_updates_monitor_settings(monkeypatch: pytest.M
             interval_minutes=interval_minutes if interval_minutes is not None else 360,
         )
 
-    monkeypatch.setattr("bot.service.upsert_telegram_user", fake_upsert)
-    monkeypatch.setattr("bot.service.upsert_monitor_settings", fake_upsert_monitor)
+    monkeypatch.setattr("bot.monitor_service.upsert_telegram_user", fake_upsert)
+    monkeypatch.setattr("bot.monitor_service.upsert_monitor_settings", fake_upsert_monitor)
 
     enabled_status = await service.set_monitor_enabled(
         telegram_user_id=77,
@@ -1514,7 +1516,7 @@ async def test_search_bot_service_deletes_saved_apartment(
         seen.append((telegram_user_id, external_id))
         return external_id == "900100"
 
-    monkeypatch.setattr("bot.service.delete_apartment_feedback", fake_delete)
+    monkeypatch.setattr("bot.feedback_service.delete_apartment_feedback", fake_delete)
 
     assert await service.delete_saved_apartment(telegram_user_id=77, external_id="900100") is True
     assert await service.delete_saved_apartment(telegram_user_id=77, external_id="000") is False

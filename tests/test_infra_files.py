@@ -58,7 +58,8 @@ def test_container_workflow_builds_containerfile_to_ghcr() -> None:
     )
     text = workflow.read_text(encoding="utf-8")
 
-    assert "docker/build-push-action@v6" in text
+    # version-agnostic: the action must be used, but bumps must not break this
+    assert re.search(r"docker/build-push-action@v\d+", text)
     assert "ghcr.io/${{ github.repository_owner }}/krisha-agent" in text
     assert "file: ./Containerfile" in text
     assert "docker run --rm" in text

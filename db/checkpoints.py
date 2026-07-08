@@ -1,4 +1,12 @@
-"""Helpers for LangGraph checkpoint persistence."""
+"""Postgres implementation of the search graph's checkpointer contract.
+
+The pure config builder lives in ``agent.checkpointing`` (the graph side of the
+contract) and is re-exported here so existing ``from db import
+build_checkpoint_config`` imports keep working. ``get_async_postgres_checkpointer``
+satisfies ``agent.checkpointing.CheckpointerFactory`` and is injected into the
+graph by the composition roots (bot/scheduler) — the agent package itself never
+imports this module.
+"""
 
 from __future__ import annotations
 
@@ -7,23 +15,10 @@ from contextlib import asynccontextmanager
 from importlib import import_module
 from typing import Any
 
+from agent.checkpointing import build_checkpoint_config
 from config.settings import get_settings
 
-
-def build_checkpoint_config(
-    *,
-    thread_id: str,
-    checkpoint_ns: str = "",
-    checkpoint_id: str | None = None,
-) -> dict[str, dict[str, str]]:
-    """Build LangGraph runnable config for checkpointed executions."""
-    configurable: dict[str, str] = {
-        "thread_id": thread_id,
-        "checkpoint_ns": checkpoint_ns,
-    }
-    if checkpoint_id is not None:
-        configurable["checkpoint_id"] = checkpoint_id
-    return {"configurable": configurable}
+__all__ = ["build_checkpoint_config", "get_async_postgres_checkpointer"]
 
 
 @asynccontextmanager
@@ -37,4 +32,3 @@ async def get_async_postgres_checkpointer(*, setup: bool = True) -> AsyncIterato
         if setup:
             await saver.setup()
         yield saver
-

@@ -11,7 +11,7 @@ from aiogram.types import BotCommand
 
 from agent.tools import NotionClient
 from bot.middlewares import AllowlistMiddleware, ThrottleMiddleware
-from bot.router import create_bot_router
+from bot.routers import create_bot_router
 from bot.service import SearchBotService
 from config.observability import configure_observability
 from config.settings import TelegramSettings, get_settings

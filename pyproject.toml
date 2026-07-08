@@ -84,5 +84,5 @@ module = [
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["bot.router"]
+module = ["bot.routers.*"]
 disable_error_code = ["untyped-decorator"]

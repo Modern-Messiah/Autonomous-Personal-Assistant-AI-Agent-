@@ -13,7 +13,7 @@ from agent.locations import ResolvedLocations, resolve_locations
 from agent.models.criteria import SearchCriteria
 from agent.tools.llm_intent_parser import LLMIntentParser
 from agent.tools.regex_intent_parser import RegexIntentParser
-from config.settings import get_settings
+from config.settings import Settings, get_settings
 
 
 class LLMIntentParserProtocol(Protocol):
@@ -179,10 +179,12 @@ class ParsedIntent:
     defaulted_city: bool = False
 
 
-def create_default_llm_intent_parser() -> LLMIntentParserProtocol | None:
+def create_default_llm_intent_parser(
+    *, settings: Settings | None = None
+) -> LLMIntentParserProtocol | None:
     """Create the production LLM parser from settings, or disable it safely."""
     try:
-        settings = get_settings()
+        settings = settings or get_settings()
         api_key = settings.api.deepseek_api_key.get_secret_value()
     except Exception:
         return None

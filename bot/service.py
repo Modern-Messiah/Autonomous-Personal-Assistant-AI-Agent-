@@ -7,7 +7,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -26,6 +26,7 @@ from db import (
     delete_apartment_feedback,
     get_active_search_criteria_record,
     get_apartment_feedback_map,
+    get_async_postgres_checkpointer,
     get_monitor_settings_record,
     list_apartment_records_by_external_ids,
     list_apartment_records_by_urls,
@@ -43,6 +44,16 @@ from db import (
 )
 
 SearchRunner = Callable[..., Awaitable[list[EnrichedApartment]]]
+
+
+async def run_search_graph_with_postgres(
+    criteria: SearchCriteria, **kwargs: Any
+) -> list[EnrichedApartment]:
+    """Default runner: the bot (composition root) wires the Postgres
+    checkpointer into the persistence-agnostic search graph."""
+    return await run_search_graph(
+        criteria, checkpointer_factory=get_async_postgres_checkpointer, **kwargs
+    )
 # What a /trash restore actually did: a deleted-from-saved item goes back to the
 # saved list; a rejected item has its rejection lifted so it can reappear in search.
 RestoreOutcome = Literal["restored_to_saved", "unrejected"]
@@ -135,7 +146,7 @@ class SearchBotService:
         *,
         session_factory: async_sessionmaker[AsyncSession],
         intent_node: IntentNode | None = None,
-        search_runner: SearchRunner = run_search_graph,
+        search_runner: SearchRunner = run_search_graph_with_postgres,
         notion_sync: NotionApartmentSync | None = None,
     ) -> None:
         self._session_factory = session_factory

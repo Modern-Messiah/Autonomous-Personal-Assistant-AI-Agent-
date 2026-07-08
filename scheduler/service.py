@@ -6,6 +6,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -14,6 +15,7 @@ from agent.models.criteria import SearchCriteria
 from agent.models.enriched import EnrichedApartment
 from db import (
     MonitorTarget,
+    get_async_postgres_checkpointer,
     get_monitor_target_by_telegram_user_id,
     get_unseen_apartment_records,
     list_due_monitor_targets,
@@ -24,6 +26,16 @@ from db import (
 )
 
 MonitorSearchRunner = Callable[..., Awaitable[list[EnrichedApartment]]]
+
+
+async def run_search_graph_with_postgres(
+    criteria: SearchCriteria, **kwargs: Any
+) -> list[EnrichedApartment]:
+    """Default runner: the scheduler (composition root) wires the Postgres
+    checkpointer into the persistence-agnostic search graph."""
+    return await run_search_graph(
+        criteria, checkpointer_factory=get_async_postgres_checkpointer, **kwargs
+    )
 MonitorNotifier = Callable[[int, SearchCriteria, list[EnrichedApartment]], Awaitable[None]]
 logger = logging.getLogger(__name__)
 
@@ -46,7 +58,7 @@ class SchedulerService:
         *,
         session_factory: async_sessionmaker[AsyncSession],
         notifier: MonitorNotifier,
-        search_runner: MonitorSearchRunner = run_search_graph,
+        search_runner: MonitorSearchRunner = run_search_graph_with_postgres,
         now_provider: Callable[[], datetime] | None = None,
         batch_size: int = 50,
     ) -> None:

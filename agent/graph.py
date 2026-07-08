@@ -4,13 +4,13 @@ from typing import Any, cast
 
 from langgraph.graph import END, START, StateGraph
 
+from agent.checkpointing import CheckpointerFactory, build_checkpoint_config
 from agent.models.criteria import SearchCriteria
 from agent.models.enriched import EnrichedApartment
 from agent.nodes.enrich_node import EnrichNode, create_default_enrich_node
 from agent.nodes.intent_node import IntentNode
 from agent.nodes.scoring_node import ScoringNode, create_default_scoring_node
 from agent.nodes.search_node import SearchGraphState, SearchNode, create_default_search_node
-from db import build_checkpoint_config, get_async_postgres_checkpointer
 
 
 def build_search_graph(
@@ -82,12 +82,18 @@ async def run_search_graph(
     enrich_node: EnrichNode | None = None,
     scoring_node: ScoringNode | None = None,
     checkpointer: Any | None = None,
+    checkpointer_factory: CheckpointerFactory | None = None,
     thread_id: str | None = None,
     checkpoint_ns: str = "",
     checkpoint_id: str | None = None,
     dedup_namespace: str = "search",
 ) -> list[EnrichedApartment]:
-    """Execute search pipeline and map results to enriched apartments."""
+    """Execute search pipeline and map results to enriched apartments.
+
+    Checkpointed runs (``thread_id`` set) need either an open ``checkpointer``
+    or a ``checkpointer_factory`` supplied by the composition root — the agent
+    package is persistence-agnostic and no longer defaults to Postgres.
+    """
     active_node = search_node or create_default_search_node(
         dedup_namespace=dedup_namespace
     )
@@ -130,7 +136,13 @@ async def run_search_graph(
             checkpoint_id=checkpoint_id,
         )
 
-    async with get_async_postgres_checkpointer() as active_checkpointer:
+    if checkpointer_factory is None:
+        msg = (
+            "thread_id requires a checkpointer or checkpointer_factory; "
+            "inject one from the composition root (e.g. db.get_async_postgres_checkpointer)"
+        )
+        raise ValueError(msg)
+    async with checkpointer_factory() as active_checkpointer:
         return await _invoke_search_graph(
             criteria=criteria,
             search_node=active_node,
@@ -150,6 +162,7 @@ async def get_search_graph_state_history(
     enrich_node: EnrichNode | None = None,
     scoring_node: ScoringNode | None = None,
     checkpointer: Any | None = None,
+    checkpointer_factory: CheckpointerFactory | None = None,
     checkpoint_ns: str = "",
 ) -> list[Any]:
     """Return checkpoint history for one thread."""
@@ -170,7 +183,13 @@ async def get_search_graph_state_history(
     if checkpointer is not None:
         return await _collect(checkpointer)
 
-    async with get_async_postgres_checkpointer(setup=False) as active_checkpointer:
+    if checkpointer_factory is None:
+        msg = (
+            "state history requires a checkpointer or checkpointer_factory; "
+            "inject one from the composition root"
+        )
+        raise ValueError(msg)
+    async with checkpointer_factory(setup=False) as active_checkpointer:
         return await _collect(active_checkpointer)
 
 

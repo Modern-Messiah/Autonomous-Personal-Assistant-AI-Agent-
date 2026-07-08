@@ -241,6 +241,30 @@ def test_detail_page_extracts_author_kind() -> None:
     assert plain.agency_name is None
 
 
+def test_detail_page_published_at_prefers_created_at() -> None:
+    parser = KrishaParser(redis_client=FakeRedis(), min_delay_seconds=0, max_delay_seconds=0)
+    base_html = load_fixture("detail_123456789.html")
+    preview = make_preview(external_id="123456789", price_kzt=35_000_000)
+
+    # createdAt (original post) wins over addedAt (re-bumped to today) — otherwise
+    # every re-bumped listing would read as posted today and «дней на рынке» = 0.
+    blob = '<script>window.data={"createdAt":"2026-02-13","addedAt":"2026-07-08"}</script>'
+    apt = parser.parse_detail_page(
+        base_html.replace("</body>", blob + "</body>"), preview=preview, city="Almaty"
+    )
+    assert apt.published_at is not None
+    assert apt.published_at.date().isoformat() == "2026-02-13"
+    assert apt.published_at.tzinfo is not None  # tz-aware (UTC)
+
+    # falls back to addedAt when createdAt is missing
+    only_added = '<script>window.data={"addedAt":"2026-07-01"}</script>'
+    apt2 = parser.parse_detail_page(
+        base_html.replace("</body>", only_added + "</body>"), preview=preview, city="Almaty"
+    )
+    assert apt2.published_at is not None
+    assert apt2.published_at.date().isoformat() == "2026-07-01"
+
+
 def test_extract_floor_rejects_implausible_values() -> None:
     from agent.tools.krisha_html import KrishaHtmlParser
 

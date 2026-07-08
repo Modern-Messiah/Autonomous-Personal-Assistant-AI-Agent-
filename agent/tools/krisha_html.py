@@ -33,6 +33,11 @@ ROOMS_WORD_PATTERN = re.compile(
     re.IGNORECASE,
 )
 PUBLISHED_PATTERN = re.compile(r"(\d{2}\.\d{2}\.\d{4})")
+# krisha embeds the advert dates in JSON: `createdAt` is the ORIGINAL publish
+# date — the honest "days on market" anchor — while `addedAt` resets to today on
+# every seller re-bump, so it always looks fresh. Prefer createdAt.
+CREATED_AT_PATTERN = re.compile(r'"createdAt"\s*:\s*"(\d{4}-\d{2}-\d{2})')
+ADDED_AT_PATTERN = re.compile(r'"addedAt"\s*:\s*"(\d{4}-\d{2}-\d{2})')
 # The page <title> ("... №<id>: <address> — за <price> — Крыша") is server-side
 # rendered and always present, so it is the reliable source for the address that
 # 2GIS geocodes (the in-page address node is JS-hydrated and often missing).
@@ -238,7 +243,7 @@ class KrishaHtmlParser:
         floor = self._extract_floor(detail_text) if preview.floor is None else preview.floor
 
         photo_urls = self._extract_photo_urls(html)
-        published_at = self._extract_published_at(soup)
+        published_at = self._extract_published_at(soup, html)
         posted_by, agency_name = self._extract_author(html)
         params = self._extract_params(soup)
 
@@ -597,8 +602,22 @@ class KrishaHtmlParser:
 
         return [f"{base}-{PHOTO_DISPLAY_SIZE}.jpg" for base in bases]
 
-    @staticmethod
-    def _extract_published_at(soup: BeautifulSoup) -> datetime | None:
+    @classmethod
+    def _extract_published_at(cls, soup: BeautifulSoup, html: str) -> datetime | None:
+        """First-published date, preferring the advert JSON `createdAt`.
+
+        krisha dropped the `time[datetime]` markup and lets sellers re-bump
+        (`addedAt` → today), so `createdAt` is the honest post date. Fall back to
+        `addedAt`, then to the legacy markup for older/cached pages.
+        """
+        for pattern in (CREATED_AT_PATTERN, ADDED_AT_PATTERN):
+            match = pattern.search(html)
+            if match is not None:
+                try:
+                    return datetime.strptime(match.group(1), "%Y-%m-%d").replace(tzinfo=UTC)
+                except ValueError:
+                    continue
+
         for selector in ("time[datetime]", "[data-test='published-at'][datetime]"):
             node = soup.select_one(selector)
             if node is None:

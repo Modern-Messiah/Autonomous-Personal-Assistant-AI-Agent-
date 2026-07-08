@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 
 from agent.models.apartment import Apartment
 from agent.models.criteria import SearchCriteria
@@ -140,11 +141,14 @@ def format_apartment_card(
     *,
     index: int | None = None,
     price_stats: BatchPriceStats | None = None,
+    now: datetime | None = None,
 ) -> str:
     """Render one apartment as a rich plain-text card (photo caption / list row).
 
     ``price_stats`` carries the ₸/м² average of the current selection; when
-    provided, the card shows how this listing compares against it.
+    provided, the card shows how this listing compares against it. ``now`` is
+    the clock for the days-on-market line (None = real time; injectable so
+    tests are deterministic).
     """
     apartment = item.apartment
     prefix = f"{index}. " if index is not None else ""
@@ -174,7 +178,7 @@ def format_apartment_card(
     published = apartment.published_at
     if published is not None:
         line = f"📅 Опубликовано {published:%d.%m.%Y}"
-        days = apartment.days_on_market()
+        days = apartment.days_on_market(now=now)
         if days == 0:
             line += " · 🆕 сегодня"
         elif days is not None:

@@ -42,7 +42,7 @@ Current scope is **Phase 0 + Phase 7 infra baseline**: foundation, parser, LangG
 ├── tests/
 ├── Containerfile
 ├── podman-compose.yml
-└── .github/workflows/ci.yml
+└── .github/workflows/        # ci.yml, container.yml, cd.yml
 ```
 
 ## Quick Start
@@ -123,11 +123,22 @@ The project uses nested settings via `pydantic-settings` and `env_nested_delimit
 - `DB__HOST`, `DB__PORT`, `DB__NAME`, `DB__USER`, `DB__PASSWORD`
 - `REDIS__HOST`, `REDIS__PORT`, `REDIS__DB`, `REDIS__PASSWORD`
 - `TELEGRAM__BOT_TOKEN`
+- `TELEGRAM__ALLOWED_USER_IDS` — comma/semicolon-separated Telegram user ids
+  allowed to use the bot. **Empty (the default) means the bot is open to
+  everyone**, and any stranger can trigger searches that spend paid
+  DeepSeek/2GIS quota. Set it before exposing a production bot.
+- `TELEGRAM__RATE_LIMIT_PER_MINUTE` — per-user sliding-window rate limit
+  (default 20 messages+callbacks per minute).
 - `API__TWO_GIS_API_KEY`, `API__DEEPSEEK_API_KEY`
 - optional `API__LANGSMITH_API_KEY` + `API__LANGSMITH_PROJECT` (both enable tracing)
 - optional `API__SENTRY_DSN` (enables Sentry error reporting)
 - `NOTION__ENABLED`, `NOTION__API_TOKEN`, `NOTION__DATABASE_ID`, `NOTION__TIMEOUT_SECONDS`
 - `SCHEDULER__RUNTIME`, `SCHEDULER__POLL_INTERVAL_SECONDS`, `SCHEDULER__BATCH_SIZE`
+- `SCHEDULER__CANARY_ENABLED`, `SCHEDULER__CANARY_ADMIN_CHAT_ID`,
+  `SCHEDULER__CANARY_CITY`, `SCHEDULER__CANARY_INTERVAL_HOURS` — parser canary:
+  the ARQ worker periodically parses a reference krisha search page and pings
+  the admin chat when extraction breaks (markup change / anti-bot block),
+  instead of failing silently with empty search results.
 - `ARQ__QUEUE_NAME`, `ARQ__JOB_TIMEOUT_SECONDS`, `ARQ__MAX_TRIES`
 
 See `.env.example` for the full contract.
@@ -166,6 +177,7 @@ uv run python -m bot
 Available commands:
 
 - `/start` registers the Telegram user and shows a short usage guide.
+- `/help` shows the command reference.
 - `/search <query>` parses text into `SearchCriteria`, stores it as active criteria, and runs the LangGraph search pipeline.
 - plain free-text messages are routed through the dialog agent and can trigger search, refinement, saved-list, criteria, or monitor actions.
 - `/refine <query>` merges a free-text refinement into the active criteria and reruns the search.
@@ -300,6 +312,38 @@ podman login ghcr.io
 podman-compose -f podman-compose.yml -f podman-compose.prod.yml pull
 podman-compose -f podman-compose.yml -f podman-compose.prod.yml up -d
 ```
+
+## Continuous Deployment
+
+> ⚠️ **Every push to `main` deploys to production automatically.** Do not push
+> to `main` unless you intend a production rollout; use a branch + PR otherwise.
+
+[cd.yml](.github/workflows/cd.yml) runs on each push to `main`:
+
+1. `test` — the full CI suite (ruff, mypy, pytest) via `ci.yml`.
+2. `build-push` — builds the runtime image, smoke-tests it, and pushes it to
+   GHCR via `container.yml` (runs in parallel with `test`).
+3. `deploy` — only when **both** succeed, connects to the server over SSH
+   (`appleboy/ssh-action`), does `git pull --ff-only`, pulls the fresh GHCR
+   image (`podman-compose.prod.yml` overlay), runs the one-shot `migrate`
+   service, and restarts `bot` / `scheduler-producer` / `scheduler-worker`.
+
+A `production-deploy` concurrency group serializes deploys: a queued push waits
+for the previous rollout instead of racing it.
+
+Required repository secrets (Settings → Secrets → Actions):
+
+- `DEPLOY_HOST` — server address,
+- `DEPLOY_USER` — SSH user on the server,
+- `DEPLOY_SSH_KEY` — private key whose public half is in that user's
+  `~/.ssh/authorized_keys`,
+- `DEPLOY_PATH` — path to the repository clone on the server,
+- `DEPLOY_PORT` — optional, defaults to 22.
+
+The manual systemd/podman-compose flow below still works for the first
+bootstrap and for servers without the CD pipeline; day-to-day updates normally
+arrive via `cd.yml`, which drives `docker compose` directly rather than the
+systemd unit.
 
 ## VPS Deploy
 

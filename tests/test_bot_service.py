@@ -1149,11 +1149,13 @@ def test_format_apartment_card_shows_days_on_market() -> None:
             update={"apartment": base.apartment.model_copy(update={"published_at": published})}
         )
 
-    stale = with_published(datetime.now(UTC) - timedelta(days=120))
-    assert "висит 120 дней" in format_apartment_card(stale, index=1)
+    # fixed clock via now= so the assertions are deterministic (no wall time)
+    now = datetime(2026, 7, 8, 12, 0, tzinfo=UTC)
+    stale = with_published(now - timedelta(days=120))
+    assert "висит 120 дней" in format_apartment_card(stale, index=1, now=now)
 
-    fresh = with_published(datetime.now(UTC))
-    assert "🆕 сегодня" in format_apartment_card(fresh, index=1)
+    fresh = with_published(now)
+    assert "🆕 сегодня" in format_apartment_card(fresh, index=1, now=now)
 
     # no publish date -> no dedicated line at all
     assert "висит" not in format_apartment_card(build_apartment(), index=1)

@@ -8,6 +8,7 @@ from typing import Any
 import httpx
 
 from agent.models.criteria import SearchCriteria
+from agent.tools.http_retry import request_with_retry
 
 DEEPSEEK_ENDPOINT = "https://api.deepseek.com/chat/completions"
 
@@ -47,6 +48,10 @@ class LLMIntentParser:
         )
         headers = {"Authorization": f"Bearer {self._api_key}"}
 
+        # Transport errors and 5xx/429 are retried with backoff inside
+        # request_with_retry (previously this loop hammered the API back-to-back
+        # with no delay). The outer loop re-sends only on malformed LLM output,
+        # where a fresh sample can succeed where backoff cannot.
         last_error: Exception | None = None
         async with httpx.AsyncClient(
             timeout=self._timeout_seconds,
@@ -54,15 +59,19 @@ class LLMIntentParser:
         ) as client:
             for _ in range(self._max_retries + 1):
                 try:
-                    response = await client.post(self._endpoint, headers=headers, json=payload)
-                    response.raise_for_status()
+                    response = await request_with_retry(
+                        lambda: client.post(self._endpoint, headers=headers, json=payload),
+                        attempts=self._max_retries + 1,
+                    )
                     content = self._extract_content(response.json())
                     parsed = json.loads(content)
                     if not isinstance(parsed, dict):
                         msg = "LLM intent parser expected a JSON object"
                         raise ValueError(msg)
                     return parsed
-                except (httpx.HTTPError, json.JSONDecodeError, ValueError) as exc:
+                except httpx.HTTPError:
+                    raise  # HTTP retries already exhausted (or non-transient)
+                except (json.JSONDecodeError, ValueError) as exc:
                     last_error = exc
 
         assert last_error is not None

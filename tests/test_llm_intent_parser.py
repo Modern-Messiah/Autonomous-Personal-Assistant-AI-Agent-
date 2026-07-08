@@ -47,3 +47,67 @@ async def test_llm_intent_parser_posts_openai_compatible_request() -> None:
     )
 
     assert result == expected
+
+
+@pytest.mark.asyncio
+async def test_llm_intent_parser_retries_transient_5xx_with_backoff() -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return httpx.Response(status_code=500, text="upstream error")
+        return httpx.Response(
+            status_code=200,
+            json={"choices": [{"message": {"content": json.dumps({"rooms": [2]})}}]},
+        )
+
+    parser = LLMIntentParser(api_key="test-key", transport=httpx.MockTransport(handler))
+
+    # previously the loop hammered the API without delay; now a transient 5xx is
+    # retried (with backoff inside request_with_retry) and the parse succeeds
+    result = await parser.parse_patch(message="2 комнаты")
+
+    assert result == {"rooms": [2]}
+    assert calls == 2
+
+
+@pytest.mark.asyncio
+async def test_llm_intent_parser_fails_fast_on_client_error() -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(status_code=401, text="bad key")
+
+    parser = LLMIntentParser(api_key="bad-key", transport=httpx.MockTransport(handler))
+
+    # a non-429 4xx (bad key) is not transient: one request, immediate raise
+    with pytest.raises(httpx.HTTPStatusError):
+        await parser.parse_patch(message="2 комнаты")
+
+    assert calls == 1
+
+
+@pytest.mark.asyncio
+async def test_llm_intent_parser_resamples_malformed_llm_output() -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        content = "not json at all" if calls == 1 else json.dumps({"city": "Алматы"})
+        return httpx.Response(
+            status_code=200,
+            json={"choices": [{"message": {"content": content}}]},
+        )
+
+    parser = LLMIntentParser(api_key="test-key", transport=httpx.MockTransport(handler))
+
+    # malformed LLM output is re-sent (fresh sample), not raised on first try
+    result = await parser.parse_patch(message="в Алматы")
+
+    assert result == {"city": "Алматы"}
+    assert calls == 2

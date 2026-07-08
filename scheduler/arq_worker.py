@@ -52,6 +52,11 @@ class WorkerSettings:
     cron_jobs: ClassVar[list[Any]] = build_canary_cron_jobs()
     on_startup: ClassVar[Any] = worker_startup
     on_shutdown: ClassVar[Any] = worker_shutdown
+    # One monitor job at a time: each job scrapes krisha, and the arq default
+    # (10 concurrent) would burst the site from one IP. Monitor jobs are
+    # background work — they can queue. The Redis fetch lock still guards the
+    # cross-process case (bot search vs worker job).
+    max_jobs: ClassVar[int] = 1
     queue_name: ClassVar[str] = get_settings().arq.queue_name
     job_timeout: ClassVar[int] = get_settings().arq.job_timeout_seconds
     max_tries: ClassVar[int] = get_settings().arq.max_tries

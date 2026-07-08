@@ -106,6 +106,15 @@ class ParserHealthReport:
     previews_with_specs: int
     detail_checked: bool
     failures: list[str]
+    # Rich-field extraction across the sampled detail pages: how many pages were
+    # parsed and how many yielded each field. posted_by/description/published_at
+    # are structurally always present on krisha, so 0/N means parsing broke;
+    # condition is optional per listing (new-builds lack it) — tracked, no alarm.
+    details_checked: int = 0
+    details_with_posted_by: int = 0
+    details_with_description: int = 0
+    details_with_published_at: int = 0
+    details_with_condition: int = 0
 
 
 class KrishaHtmlParser:

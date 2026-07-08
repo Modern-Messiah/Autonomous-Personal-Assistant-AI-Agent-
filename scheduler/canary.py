@@ -79,7 +79,12 @@ def format_canary_alert(report: ParserHealthReport) -> str:
         f"Объявлений распознано: {report.listing_count}",
         f"Распознано цен: {report.previews_with_price}",
         f"Распознано комнат/площадей: {report.previews_with_specs}",
-        f"Детальная страница проверена: {'да' if report.detail_checked else 'нет'}",
+        f"Детальных страниц проверено: {report.details_checked}",
+        (
+            f"Автор/описание/дата/состояние: {report.details_with_posted_by}/"
+            f"{report.details_with_description}/{report.details_with_published_at}/"
+            f"{report.details_with_condition} из {report.details_checked}"
+        ),
         "",
         "Что не так:",
     ]

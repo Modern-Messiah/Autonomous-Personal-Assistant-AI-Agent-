@@ -964,3 +964,110 @@ async def test_refine_run_without_criteria_prompts_search() -> None:
         "Активные критерии не найдены. Сначала выполни поиск через /search."
         in session.sent_texts
     )
+
+
+@pytest.mark.asyncio
+async def test_free_text_search_runs_pipeline_via_dialog_agent() -> None:
+    # no command, no FSM state -> catch-all -> DialogAgent classifies as search
+    service = StubService()
+    service.search_result = SearchExecution(
+        criteria=build_criteria(), apartments=[build_enriched("9001")]
+    )
+    session = await feed(service, build_text_update(text="найди 2-комнатную в Алматы"))
+
+    assert ("run_search", {"query": "найди 2-комнатную в Алматы"}) in service.calls
+    assert session.sent_texts[0] == "Ищу варианты по заданным критериям..."
+    assert len(session.sent_photo_captions) == 1
+    assert session.sent_texts[-1] == "Что делаем дальше?"
+
+
+@pytest.mark.asyncio
+async def test_free_text_search_failure_reports_user_message() -> None:
+    service = StubService()  # search_result is None -> SearchExecutionError
+    session = await feed(service, build_text_update(text="найди квартиру в Алматы"))
+
+    assert session.sent_texts[-1] == SEARCH_EXECUTION_ERROR_MESSAGE
+
+
+@pytest.mark.asyncio
+async def test_free_text_refine_merges_into_active_criteria() -> None:
+    service = StubService()
+    service.active_criteria = build_criteria()
+    service.search_result = SearchExecution(
+        criteria=build_criteria(), apartments=[build_enriched("9001")]
+    )
+    session = await feed(service, build_text_update(text="только 3 комнаты и до 35 млн"))
+
+    assert ("refine_search", {"message": "только 3 комнаты и до 35 млн"}) in service.calls
+    assert len(session.sent_photo_captions) == 1
+
+
+@pytest.mark.asyncio
+async def test_free_text_refine_unrecognized_keeps_feedback_state() -> None:
+    service = StubService()
+    service.active_criteria = build_criteria()
+    service.refine_error = CriteriaUnchangedError()
+    session = await feed(service, build_text_update(text="только что-нибудь эдакое"))
+
+    assert any(
+        "Не удалось распознать изменение критериев." in text  # noqa: RUF001
+        for text in session.sent_texts
+    )
+
+
+@pytest.mark.asyncio
+async def test_free_text_shows_saved_list() -> None:
+    service = StubService()
+    service.saved = [build_enriched("9001")]
+    session = await feed(service, build_text_update(text="покажи сохраненные квартиры"))
+
+    assert "Сохранённые квартиры (1):" in session.sent_texts[0]
+    assert len(session.sent_photo_captions) == 1
+
+
+@pytest.mark.asyncio
+async def test_free_text_shows_monitor_status() -> None:
+    service = StubService()
+    session = await feed(service, build_text_update(text="какой сейчас мониторинг"))
+
+    assert "Состояние: выключен" in session.sent_texts[0]
+
+
+@pytest.mark.asyncio
+async def test_free_text_shows_criteria_or_prompts_search() -> None:
+    service = StubService()
+    session = await feed(service, build_text_update(text="мои критерии"))
+    assert session.sent_texts == [
+        "Активные критерии не найдены. Сначала выполни поиск через /search."
+    ]
+
+    service.active_criteria = build_criteria()
+    session = await feed(service, build_text_update(text="мои критерии"))
+    assert "Текущие критерии:" in session.sent_texts[0]
+
+
+@pytest.mark.asyncio
+async def test_free_text_help_fallback() -> None:
+    service = StubService()
+    session = await feed(service, build_text_update(text="помощь"))
+
+    assert "Krisha Agent" in session.sent_texts[0]
+    assert "Можно писать запросы обычным текстом" in session.sent_texts[1]
+
+
+@pytest.mark.asyncio
+async def test_feedback_state_free_text_refines_after_search() -> None:
+    # a successful /search leaves the chat in waiting_for_feedback; the next
+    # plain message must flow through the dialog agent as a refinement
+    service = StubService()
+    service.active_criteria = build_criteria()
+    service.search_result = SearchExecution(
+        criteria=build_criteria(), apartments=[build_enriched("9001")]
+    )
+    dispatcher, bot, session = make_harness(service)
+
+    await dispatcher.feed_update(bot, build_command_update(text="/search 2к Алматы"))
+    assert session.sent_texts[-1] == "Что делаем дальше?"
+
+    await dispatcher.feed_update(bot, build_text_update(text="только 2 комнаты"))
+    assert ("refine_search", {"message": "только 2 комнаты"}) in service.calls

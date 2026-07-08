@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
-import random
 from typing import Any
 
 import httpx
@@ -13,6 +11,7 @@ import httpx
 from agent.models.criteria import SearchCriteria
 from agent.models.enriched import EnrichedApartment
 from agent.models.score import ApartmentScore
+from agent.tools.http_retry import request_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -79,23 +78,28 @@ class DeepSeekApartmentScorer:
         payload = self._build_payload(apartments, criteria)
         headers = {"Authorization": f"Bearer {self._api_key}"}
 
+        # Transport errors and 5xx/429 are retried with backoff inside
+        # request_with_retry (a non-429 4xx like a bad key fails fast). The outer
+        # loop re-sends only on malformed LLM output, where a fresh sample can
+        # succeed where backoff cannot.
+        last_error: Exception | None = None
         async with httpx.AsyncClient(
             timeout=self._timeout_seconds,
             transport=self._transport,
         ) as client:
-            last_error: Exception | None = None
-            for attempt in range(self._max_retries + 1):
+            for _ in range(self._max_retries + 1):
                 try:
-                    response = await client.post(self._endpoint, headers=headers, json=payload)
-                    response.raise_for_status()
+                    response = await request_with_retry(
+                        lambda: client.post(self._endpoint, headers=headers, json=payload),
+                        attempts=self._max_retries + 1,
+                    )
                     content = self._extract_content(response.json())
                     return self._parse_scores(content, count=len(apartments))
-                except (httpx.HTTPError, json.JSONDecodeError, ValueError) as exc:
+                except httpx.HTTPError as exc:
                     last_error = exc
-                    if attempt < self._max_retries:
-                        # Backoff + jitter so a rate-limit/transient error isn't hit
-                        # again immediately on retry.
-                        await asyncio.sleep(min(4.0, 0.5 * (2**attempt)) + random.uniform(0, 0.5))
+                    break  # HTTP retries already exhausted (or non-transient)
+                except (json.JSONDecodeError, ValueError) as exc:
+                    last_error = exc
                     continue
 
         # DeepSeek has no strict JSON schema, so on persistent failure degrade
@@ -103,8 +107,7 @@ class DeepSeekApartmentScorer:
         # so a total scoring outage (bad key, API down, contract change) is visible
         # instead of silently dropping every recommendation.
         logger.warning(
-            "DeepSeek scoring failed after %d attempt(s); returning %d unscored listing(s)",
-            self._max_retries + 1,
+            "DeepSeek scoring failed; returning %d unscored listing(s)",
             len(apartments),
             exc_info=last_error,
         )

@@ -170,6 +170,42 @@ async def test_deepseek_scorer_logs_and_degrades_on_persistent_failure(
     assert "DeepSeek scoring failed" in caplog.text
 
 
+@pytest.mark.asyncio
+async def test_deepseek_scorer_resamples_malformed_llm_output() -> None:
+    expected = build_score()
+    valid = {
+        "items": [
+            {
+                "index": 1,
+                "score": expected.score,
+                "recommendation": expected.recommendation,
+                "reasons": expected.reasons,
+            }
+        ]
+    }
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        content = "garbled { not json" if calls == 1 else json.dumps(valid)
+        return httpx.Response(
+            status_code=200,
+            json={"choices": [{"message": {"content": content}}]},
+        )
+
+    scorer = DeepSeekApartmentScorer(
+        api_key="test-key",
+        transport=httpx.MockTransport(handler),
+    )
+
+    # malformed LLM output triggers one full re-send (fresh sample) and succeeds
+    result = await scorer.score_apartments([build_enriched_apartment()])
+
+    assert result == [expected]
+    assert calls == 2
+
+
 def test_scorer_prompt_includes_batch_stats_and_comparative_reason_rules() -> None:
     scorer = DeepSeekApartmentScorer(api_key="test-key")
     one = build_enriched_apartment()

@@ -9,12 +9,14 @@ they stop — so a breakage is noticed before users hit empty results.
 from __future__ import annotations
 
 import logging
+from typing import cast
 
 from aiogram import Bot
 
 from agent.models.criteria import SearchCriteria
 from agent.nodes.search_node import build_playwright_context_factory
 from agent.tools import KrishaParser, build_redis_client
+from agent.tools.fetch_lock import RedisFetchLock, RedisLockProtocol
 from agent.tools.krisha_parser import AntiBotBlockedError, ParserHealthReport
 from config.settings import Settings, get_settings
 
@@ -50,8 +52,9 @@ def _failed_report(reason: str) -> ParserHealthReport:
 
 async def collect_report(settings: Settings) -> ParserHealthReport:
     """Run the parser canary against krisha and return a health report."""
+    redis_client = build_redis_client(settings.redis.redis_url)
     parser = KrishaParser(
-        redis_client=build_redis_client(settings.redis.redis_url),
+        redis_client=redis_client,
         min_delay_seconds=settings.parser.min_delay_seconds,
         max_delay_seconds=settings.parser.max_delay_seconds,
         timeout_ms=settings.parser.timeout_ms,
@@ -60,8 +63,11 @@ async def collect_report(settings: Settings) -> ParserHealthReport:
     )
     factory = build_playwright_context_factory(parser)
     criteria = build_canary_criteria(settings)
+    # Queue behind interactive searches and monitor jobs: the canary is the
+    # least urgent krisha client and must not add to a concurrent burst.
+    fetch_lock = RedisFetchLock(cast(RedisLockProtocol, redis_client))
     try:
-        async with factory() as context:
+        async with fetch_lock.hold(), factory() as context:
             return await parser.check_health(context, criteria=criteria)
     except AntiBotBlockedError as exc:
         return _failed_report(f"blocked by anti-bot ({exc})")

@@ -111,3 +111,6 @@ def test_worker_settings_wires_monitor_job(arq_worker: ModuleType) -> None:
     assert settings_class.functions == [process_monitor_target_job]
     assert settings_class.on_startup is worker_startup
     assert settings_class.on_shutdown is worker_shutdown
+    # one scraping job at a time — the arq default of 10 concurrent jobs would
+    # burst krisha from one IP
+    assert settings_class.max_jobs == 1

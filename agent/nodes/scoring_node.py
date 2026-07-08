@@ -10,7 +10,7 @@ from agent.models.enriched import EnrichedApartment
 from agent.models.score import ApartmentScore
 from agent.nodes.search_node import SearchGraphState
 from agent.tools.deepseek_scorer import DeepSeekApartmentScorer
-from config.settings import get_settings
+from config.settings import Settings, get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -85,9 +85,9 @@ class ScoringNode:
         return (1, item.score.score)
 
 
-def create_default_scoring_node() -> ScoringNode:
-    """Create DeepSeek-backed scoring node from settings."""
-    settings = get_settings()
+def create_default_scoring_node(*, settings: Settings | None = None) -> ScoringNode:
+    """Create DeepSeek-backed scoring node (None = process-wide settings)."""
+    settings = settings or get_settings()
     scorer = DeepSeekApartmentScorer(
         api_key=settings.api.deepseek_api_key.get_secret_value(),
         model=settings.scoring.model,

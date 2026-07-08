@@ -15,7 +15,7 @@ from agent.tools.mortgage import (
     calculate_annuity_payment,
 )
 from agent.tools.two_gis_client import NearbyCacheProtocol, NearbySummary, TwoGISClient
-from config.settings import get_settings
+from config.settings import Settings, get_settings
 
 
 class AreaClientProtocol(Protocol):
@@ -111,9 +111,9 @@ class EnrichNode:
         return monthly_payment, overpayment
 
 
-def create_default_enrich_node() -> EnrichNode:
-    """Create enrich node using 2GIS API key from settings."""
-    settings = get_settings()
+def create_default_enrich_node(*, settings: Settings | None = None) -> EnrichNode:
+    """Create enrich node using the 2GIS key (None = process-wide settings)."""
+    settings = settings or get_settings()
     geocode_cache = cast(
         NearbyCacheProtocol,
         build_redis_client(settings.redis.redis_url),

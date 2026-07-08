@@ -13,7 +13,7 @@ from agent.models.enriched import EnrichedApartment
 from agent.tools import KrishaParser, build_redis_client
 from agent.tools.fetch_lock import RedisFetchLock, RedisLockProtocol
 from agent.tools.krisha_parser import BrowserContextProtocol
-from config.settings import get_settings
+from config.settings import Settings, get_settings
 
 
 class SearchGraphState(TypedDict, total=False):
@@ -101,9 +101,17 @@ def build_playwright_context_factory(parser: KrishaParser) -> ContextFactoryProt
     return cast(ContextFactoryProtocol, factory)
 
 
-def create_default_search_node(*, dedup_namespace: str = "search") -> SearchNode:
-    """Create production-ready search node with parser + redis + playwright."""
-    settings = get_settings()
+def create_default_search_node(
+    *,
+    dedup_namespace: str = "search",
+    settings: Settings | None = None,
+) -> SearchNode:
+    """Create production-ready search node with parser + redis + playwright.
+
+    ``settings`` is injectable (tests, alternate composition roots); None
+    falls back to the process-wide configuration.
+    """
+    settings = settings or get_settings()
     redis_client = build_redis_client(settings.redis.redis_url)
     parser = KrishaParser(
         redis_client=redis_client,

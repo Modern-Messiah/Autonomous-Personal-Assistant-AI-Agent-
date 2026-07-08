@@ -534,3 +534,44 @@ async def test_scheduler_purge_stale_delegates_and_commits(
     assert result == {"inactive_criteria": 3, "old_seen": 5, "old_apartments": 1}
     assert captured == {"seen": 10, "apartment": 20}
     assert session_factory.session.commit_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_telegram_monitor_notifier_sends_header_criteria_and_cards() -> None:
+    """The notifier is the code path that actually reaches the user when the
+    monitor fires: header message, criteria summary, then one card per flat
+    (photo card normally, text fallback when the listing has no photos)."""
+    from scheduler.notifier import TelegramMonitorNotifier
+
+    messages: list[tuple[int, str]] = []
+    photos: list[tuple[int, str, str]] = []
+
+    class FakeBot:
+        async def send_message(self, chat_id: int, text: str, **kwargs: object) -> None:
+            messages.append((chat_id, text))
+
+        async def send_photo(
+            self, chat_id: int, *, photo: str, caption: str, **kwargs: object
+        ) -> None:
+            photos.append((chat_id, photo, caption))
+
+    with_photo = build_apartment("111")
+    without_photo = build_apartment("222")
+    without_photo = without_photo.model_copy(
+        update={"apartment": without_photo.apartment.model_copy(update={"photos": []})}
+    )
+
+    notifier = TelegramMonitorNotifier(FakeBot())  # type: ignore[arg-type]
+    await notifier(77, build_criteria(), [with_photo, without_photo])
+
+    # header + criteria, in order, to the right chat
+    assert messages[0] == (77, "🔔 Найдены новые квартиры по сохранённым критериям.")
+    assert messages[1][0] == 77 and "Текущие критерии:" in messages[1][1]
+    # flat with photos -> photo card with the rendered caption
+    assert len(photos) == 1
+    assert photos[0][0] == 77
+    assert photos[0][1] == "https://photos.krisha.kz/111/1.jpg"
+    assert "🏠 1." in photos[0][2]
+    # flat without photos -> text card fallback (sent after the two headers)
+    assert len(messages) == 3
+    assert "🏠 2." in messages[2][1]

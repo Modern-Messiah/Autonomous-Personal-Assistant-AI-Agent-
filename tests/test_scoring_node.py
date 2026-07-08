@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
@@ -145,6 +146,30 @@ async def test_deepseek_apartment_scorer_parses_structured_response() -> None:
     assert result == [expected]
 
 
+@pytest.mark.asyncio
+async def test_deepseek_scorer_logs_and_degrades_on_persistent_failure(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        del request
+        return httpx.Response(status_code=500, text="upstream error")
+
+    scorer = DeepSeekApartmentScorer(
+        api_key="test-key",
+        max_retries=0,  # no backoff sleep — fail fast for the test
+        transport=httpx.MockTransport(handler),
+    )
+
+    with caplog.at_level(logging.WARNING, logger="agent.tools.deepseek_scorer"):
+        result = await scorer.score_apartments(
+            [build_enriched_apartment(), build_enriched_apartment()]
+        )
+
+    # a 5xx that survives retries degrades to all-None but is logged, not silent
+    assert result == [None, None]
+    assert "DeepSeek scoring failed" in caplog.text
+
+
 def test_scorer_prompt_includes_batch_stats_and_comparative_reason_rules() -> None:
     scorer = DeepSeekApartmentScorer(api_key="test-key")
     one = build_enriched_apartment()
@@ -220,19 +245,26 @@ async def test_scoring_node_attaches_scores_to_enriched_apartments() -> None:
 
 
 @pytest.mark.asyncio
-async def test_scoring_node_falls_back_to_none_on_errors() -> None:
+async def test_scoring_node_falls_back_to_none_on_errors(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     node = ScoringNode(scorer=BrokenApartmentScorer())
     apartment = build_enriched_apartment()
 
-    result = await node(
-        {
-            "criteria": build_criteria(),
-            "apartments": [apartment.apartment],
-            "enriched_apartments": [apartment],
-        }
-    )
+    with caplog.at_level(logging.WARNING, logger="agent.nodes.scoring_node"):
+        result = await node(
+            {
+                "criteria": build_criteria(),
+                "apartments": [apartment.apartment],
+                "enriched_apartments": [apartment],
+            }
+        )
 
+    # degrades to unscored AND leaves a visible trace (with the traceback) so an
+    # AI outage isn't silent in production
     assert result["enriched_apartments"][0].score is None
+    assert "unscored" in caplog.text
+    assert "scoring failed" in caplog.text  # RuntimeError message via exc_info
 
 
 class AreaScorer:

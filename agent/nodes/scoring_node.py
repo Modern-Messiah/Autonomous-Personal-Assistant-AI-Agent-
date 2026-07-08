@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Protocol
 
 from agent.models.criteria import SearchCriteria
@@ -10,6 +11,8 @@ from agent.models.score import ApartmentScore
 from agent.nodes.search_node import SearchGraphState
 from agent.tools.deepseek_scorer import DeepSeekApartmentScorer
 from config.settings import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 class ApartmentScorerProtocol(Protocol):
@@ -47,8 +50,20 @@ class ScoringNode:
         try:
             scores = await self._scorer.score_apartments(source_items, criteria)
         except Exception:
+            # Never crash the search on a scorer failure — degrade to unscored
+            # results, but log it so an AI outage is visible, not silent.
+            logger.warning(
+                "AI scoring raised; returning %d unscored listing(s)",
+                len(source_items),
+                exc_info=True,
+            )
             scores = [None] * len(source_items)
         if len(scores) != len(source_items):
+            logger.warning(
+                "scorer returned %d score(s) for %d listing(s); discarding as unscored",
+                len(scores),
+                len(source_items),
+            )
             scores = [None] * len(source_items)
 
         scored = [

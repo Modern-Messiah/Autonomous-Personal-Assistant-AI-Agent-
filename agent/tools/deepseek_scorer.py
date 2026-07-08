@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import random
 from typing import Any
 
@@ -12,6 +13,8 @@ import httpx
 from agent.models.criteria import SearchCriteria
 from agent.models.enriched import EnrichedApartment
 from agent.models.score import ApartmentScore
+
+logger = logging.getLogger(__name__)
 
 DEEPSEEK_ENDPOINT = "https://api.deepseek.com/chat/completions"
 
@@ -80,13 +83,15 @@ class DeepSeekApartmentScorer:
             timeout=self._timeout_seconds,
             transport=self._transport,
         ) as client:
+            last_error: Exception | None = None
             for attempt in range(self._max_retries + 1):
                 try:
                     response = await client.post(self._endpoint, headers=headers, json=payload)
                     response.raise_for_status()
                     content = self._extract_content(response.json())
                     return self._parse_scores(content, count=len(apartments))
-                except (httpx.HTTPError, json.JSONDecodeError, ValueError):
+                except (httpx.HTTPError, json.JSONDecodeError, ValueError) as exc:
+                    last_error = exc
                     if attempt < self._max_retries:
                         # Backoff + jitter so a rate-limit/transient error isn't hit
                         # again immediately on retry.
@@ -94,7 +99,15 @@ class DeepSeekApartmentScorer:
                     continue
 
         # DeepSeek has no strict JSON schema, so on persistent failure degrade
-        # gracefully: the pipeline keeps the listings, just without scores.
+        # gracefully: the pipeline keeps the listings, just without scores. Log it
+        # so a total scoring outage (bad key, API down, contract change) is visible
+        # instead of silently dropping every recommendation.
+        logger.warning(
+            "DeepSeek scoring failed after %d attempt(s); returning %d unscored listing(s)",
+            self._max_retries + 1,
+            len(apartments),
+            exc_info=last_error,
+        )
         return [None] * len(apartments)
 
     def _build_payload(

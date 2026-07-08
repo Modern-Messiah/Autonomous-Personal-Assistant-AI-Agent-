@@ -777,10 +777,25 @@ def test_parse_listing_page_extracts_previews() -> None:
     assert previews[1].rooms == 1
 
 
+RICH_DETAIL_BLOB = (
+    '<script>window.data={"createdAt":"2026-02-13","addedAt":"2026-07-08",'
+    '"owner":{"isPro":false,"isComplex":false,"isBuilder":false,"isOwner":true,'
+    '"title":"Хозяин","label":{"title":"Хозяин недвижимости","name":"owner"}}}</script>'
+    '<div class="js-description">Светлая квартира, свежий ремонт, торг.</div>'
+)
+
+
+def rich_detail_html() -> str:
+    """Detail fixture augmented with the rich blocks a real advert always has."""
+    return load_fixture("detail_123456789.html").replace(
+        "</body>", RICH_DETAIL_BLOB + "</body>"
+    )
+
+
 @pytest.mark.asyncio
 async def test_check_health_passes_on_healthy_pages() -> None:
     listing_html = load_fixture("listing_page.html")
-    detail_html = load_fixture("detail_123456789.html")
+    detail_html = rich_detail_html()
     parser = KrishaParser(redis_client=FakeRedis(), min_delay_seconds=0, max_delay_seconds=0)
     criteria = build_criteria(page_limit=1)
     listing_url = parser._build_listing_urls(criteria)[0]
@@ -788,6 +803,7 @@ async def test_check_health_passes_on_healthy_pages() -> None:
         {
             listing_url: (200, listing_html),
             "https://krisha.kz/a/show/123456789": (200, detail_html),
+            "https://krisha.kz/a/show/987654321": (200, detail_html),
         }
     )
 
@@ -799,6 +815,41 @@ async def test_check_health_passes_on_healthy_pages() -> None:
     assert report.previews_with_price >= 1
     assert report.previews_with_specs >= 1
     assert report.detail_checked
+    # both listing previews got a detail sample, and the rich fields extracted
+    assert report.details_checked == 2
+    assert report.details_with_posted_by == 2
+    assert report.details_with_description == 2
+    assert report.details_with_published_at == 2
+
+
+@pytest.mark.asyncio
+async def test_check_health_flags_broken_rich_field_extraction() -> None:
+    # The raw fixture has photos/address but none of the rich blocks — exactly
+    # what a krisha markup change looks like (posted_by went silently None for
+    # weeks once). The canary must name every dead extractor.
+    listing_html = load_fixture("listing_page.html")
+    bare_detail = load_fixture("detail_123456789.html")
+    parser = KrishaParser(redis_client=FakeRedis(), min_delay_seconds=0, max_delay_seconds=0)
+    criteria = build_criteria(page_limit=1)
+    listing_url = parser._build_listing_urls(criteria)[0]
+    context = FakeBrowserContext(
+        {
+            listing_url: (200, listing_html),
+            "https://krisha.kz/a/show/123456789": (200, bare_detail),
+            "https://krisha.kz/a/show/987654321": (200, bare_detail),
+        }
+    )
+
+    report = await parser.check_health(context, criteria=criteria)
+
+    assert not report.ok
+    assert report.details_checked == 2
+    assert report.details_with_posted_by == 0
+    joined = " ".join(report.failures)
+    assert "posted_by" in joined
+    assert "description" in joined
+    # condition is optional per listing — it never trips a failure by itself
+    assert "condition" not in joined
 
 
 @pytest.mark.asyncio

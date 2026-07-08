@@ -51,6 +51,11 @@ __all__ = [
 ]
 
 
+# Detail pages the canary samples per run: enough to tell "extractor broke"
+# from "this one listing lacks the field", cheap enough to run every few hours.
+CANARY_DETAIL_SAMPLE = 3
+
+
 class ResponseProtocol(Protocol):
     """Minimal response protocol compatible with Playwright response."""
 
@@ -301,8 +306,9 @@ class KrishaParser:
         """Parse a reference search page and verify key fields still extract.
 
         This is the canary: it exercises the same parsing code the search uses
-        (listing previews + one detail page) without claiming dedup keys, so it
-        catches a krisha markup change or a block before users hit empty results.
+        (listing previews + a sample of detail pages) without claiming dedup
+        keys, so it catches a krisha markup change or a block before users hit
+        empty results or silently degraded cards.
         Raises AntiBotBlockedError when krisha serves a captcha/anti-bot page, so
         the caller can report a block distinctly from a markup regression.
         """
@@ -327,32 +333,69 @@ class KrishaParser:
         if previews and with_specs == 0:
             failures.append("no preview carried rooms or area (spec parsing broke)")
 
-        detail_checked = False
-        if previews:
-            first = previews[0]
+        # Sample several detail pages: one page can't distinguish "extractor
+        # broke" from "this listing just lacks the field", and a broken
+        # rich-field extractor (posted_by went silently None for weeks once)
+        # must not hide behind a single lucky page.
+        parsed_details: list[Apartment] = []
+        for sample_index, preview in enumerate(previews[:CANARY_DETAIL_SAMPLE]):
+            if sample_index > 0:
+                await self._sleep_between_requests()
             page = await context.new_page()
-            apartment: Apartment | None = None
             try:
-                detail_html = await self._fetch_page_html(page, first.url)
-                apartment = self.parse_detail_page(detail_html, preview=first, city=criteria.city)
+                detail_html = await self._fetch_page_html(page, preview.url)
+                parsed_details.append(
+                    self.parse_detail_page(detail_html, preview=preview, city=criteria.city)
+                )
             except ValueError as exc:
                 failures.append(f"detail page failed to parse ({exc})")
             finally:
                 await page.close()
-            detail_checked = True
-            if apartment is not None:
-                if not apartment.photos:
-                    failures.append("detail page yielded no photos (photo extraction broke)")
-                if apartment.address is None:
-                    failures.append("detail page yielded no address (address parsing broke)")
+
+        checked = len(parsed_details)
+        with_photos = sum(1 for apartment in parsed_details if apartment.photos)
+        with_address = sum(1 for a in parsed_details if a.address is not None)
+        with_posted_by = sum(1 for a in parsed_details if a.posted_by is not None)
+        with_description = sum(1 for a in parsed_details if a.description is not None)
+        with_published_at = sum(1 for a in parsed_details if a.published_at is not None)
+        with_condition = sum(1 for a in parsed_details if a.condition is not None)
+
+        if parsed_details:
+            # posted_by/description/published_at are structurally present on
+            # every krisha advert, so all-absent means our parsing broke.
+            # condition is optional per listing (new-builds have none) — it is
+            # reported in the counts but never trips a failure.
+            if with_photos == 0:
+                failures.append(f"no photos on {checked} detail page(s) (photo extraction broke)")
+            if with_address == 0:
+                failures.append(f"no address on {checked} detail page(s) (address parsing broke)")
+            if with_posted_by == 0:
+                failures.append(
+                    f"no posted_by on {checked} detail page(s) "
+                    "(advert-author JSON parsing broke)"
+                )
+            if with_description == 0:
+                failures.append(
+                    f"no description on {checked} detail page(s) (description extraction broke)"
+                )
+            if with_published_at == 0:
+                failures.append(
+                    f"no published_at on {checked} detail page(s) "
+                    "(createdAt parsing broke — days-on-market is dead)"
+                )
 
         return ParserHealthReport(
             ok=not failures,
             listing_count=len(previews),
             previews_with_price=with_price,
             previews_with_specs=with_specs,
-            detail_checked=detail_checked,
+            detail_checked=bool(parsed_details),
             failures=failures,
+            details_checked=checked,
+            details_with_posted_by=with_posted_by,
+            details_with_description=with_description,
+            details_with_published_at=with_published_at,
+            details_with_condition=with_condition,
         )
 
     def _build_listing_urls(self, criteria: SearchCriteria) -> list[str]:

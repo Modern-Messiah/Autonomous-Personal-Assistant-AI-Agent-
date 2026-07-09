@@ -180,9 +180,16 @@ class DeepSeekApartmentScorer:
             "среднего за м²»); do not invent numbers not derivable from the data.",
             "Format money in reasons with space-separated thousands and the ₸ "
             "sign: «931 818 ₸/м²», «45 000 000 ₸» — never «931818 KZT».",
+            "For each listing that has an «описание», also return summary: a "
+            "digest in Russian of ONLY the concrete essentials from it — ЖК и "
+            "класс, срок сдачи, отделка/ремонт, мебель/техника, планировка, "
+            "торг, документы, особые условия. Максимум 2 предложения и 200 "
+            "символов. NO marketing fluff («современный», «уютная», «развитая "
+            "инфраструктура», эмодзи — выбрасывай). null if no описание.",
             'Respond with one JSON object: {"items": [{"index": <listing number>, '
             '"score": <0-100>, "recommendation": "strong_buy"|"consider"|"skip", '
-            '"reasons": ["..."]}]}. Include every listing exactly once.',
+            '"reasons": ["..."], "summary": "..."|null}]}. Include every listing '
+            "exactly once.",
         ]
         lines.extend(self._criteria_lines(criteria))
         lines.extend(self._batch_stats_lines(apartments))
@@ -286,12 +293,17 @@ class DeepSeekApartmentScorer:
             index = entry.get("index")
             if not isinstance(index, int) or not (1 <= index <= count):
                 continue
+            summary = entry.get("summary")
             try:
                 scores[index - 1] = ApartmentScore.model_validate(
                     {
                         "score": entry.get("score"),
                         "reasons": entry.get("reasons"),
                         "recommendation": entry.get("recommendation"),
+                        "description_summary": (
+                            summary.strip() if isinstance(summary, str) and summary.strip()
+                            else None
+                        ),
                     }
                 )
             except Exception:

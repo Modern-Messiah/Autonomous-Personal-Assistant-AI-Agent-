@@ -227,10 +227,15 @@ def format_apartment_card(
         )
         lines.append(f"{label} · {item.score.score:.0f}/100")
         lines.extend(f"   • {reason}" for reason in item.score.reasons[:3])
+    # Prefer the AI digest of the description (the concrete essentials, no
+    # realtor fluff) over the raw text; fall back to the raw description when
+    # scoring didn't run or returned no summary.
+    summary = item.score.description_summary if item.score is not None else None
+    description_source = summary or apartment.description
     if caption_budget is None:
-        snippet = _description_snippet(apartment.description)
+        snippet = _description_snippet(description_source)
     else:
-        snippet = _fit_description(apartment.description, lines, caption_budget)
+        snippet = _fit_description(description_source, lines, caption_budget)
     if snippet:
         lines.append(f"📝 {snippet}")
     # No raw 🔗 line: the link is the "🌐 Открыть на Krisha" button on every card.

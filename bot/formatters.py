@@ -15,6 +15,15 @@ from bot.service import MonitorStatus
 # fetch at 6), instead of cutting the presentation to a shorter top.
 DEFAULT_SEARCH_RESULTS_LIMIT = 6
 
+# Telegram's hard cap for photo captions. Text messages allow 4096, but the
+# apartment cards ship as photos, so the caption is the binding constraint.
+TELEGRAM_PHOTO_CAPTION_LIMIT = 1024
+
+
+def telegram_text_length(text: str) -> int:
+    """Length as Telegram counts it — UTF-16 code units (astral emoji = 2)."""
+    return len(text.encode("utf-16-le")) // 2
+
 RECOMMENDATION_LABELS = {
     "strong_buy": "🟢 Брать",
     "consider": "🟡 Стоит посмотреть",
@@ -142,13 +151,17 @@ def format_apartment_card(
     index: int | None = None,
     price_stats: BatchPriceStats | None = None,
     now: datetime | None = None,
+    caption_budget: int | None = None,
 ) -> str:
     """Render one apartment as a rich plain-text card (photo caption / list row).
 
     ``price_stats`` carries the ₸/м² average of the current selection; when
     provided, the card shows how this listing compares against it. ``now`` is
     the clock for the days-on-market line (None = real time; injectable so
-    tests are deterministic).
+    tests are deterministic). ``caption_budget`` (UTF-16 units) lets the
+    description fill ALL remaining space up to Telegram's caption cap instead
+    of the fixed 160-char teaser; None keeps the teaser (multi-card text
+    messages must stay short).
     """
     apartment = item.apartment
     prefix = f"{index}. " if index is not None else ""
@@ -214,11 +227,42 @@ def format_apartment_card(
         )
         lines.append(f"{label} · {item.score.score:.0f}/100")
         lines.extend(f"   • {reason}" for reason in item.score.reasons[:3])
-    snippet = _description_snippet(apartment.description)
+    if caption_budget is None:
+        snippet = _description_snippet(apartment.description)
+    else:
+        snippet = _fit_description(apartment.description, lines, caption_budget)
     if snippet:
         lines.append(f"📝 {snippet}")
     # No raw 🔗 line: the link is the "🌐 Открыть на Krisha" button on every card.
     return "\n".join(lines)
+
+
+def _fit_description(
+    description: str | None,
+    lines: list[str],
+    caption_budget: int,
+) -> str | None:
+    """Give the description every UTF-16 unit left under the caption budget.
+
+    A short description fits whole; a long one is cut at the real remaining
+    space instead of an arbitrary teaser length. Returns None when the card is
+    already so full that only a useless crumb would fit.
+    """
+    if not description:
+        return None
+    used = telegram_text_length("\n".join(lines)) + telegram_text_length("\n📝 ")
+    remaining = caption_budget - used
+    if remaining < 24:
+        return None
+    flat = " ".join(description.split())
+    if telegram_text_length(flat) <= remaining:
+        return flat
+    # keep one unit for the ellipsis; astral emoji count as 2 units, so trim
+    # until the UTF-16 length actually fits
+    snippet = flat[: max(remaining - 1, 0)]
+    while snippet and telegram_text_length(snippet) > remaining - 1:
+        snippet = snippet[:-8]
+    return snippet.rstrip() + "…"
 
 
 def _format_features(apartment: Apartment) -> str | None:

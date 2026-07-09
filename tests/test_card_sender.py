@@ -48,3 +48,42 @@ async def test_card_sender_falls_back_to_text_when_photo_fails() -> None:
 
     assert len(texts) == 1
     assert "⭐ подходит" in texts[0]
+
+
+@pytest.mark.asyncio
+async def test_card_sender_caption_respects_telegram_limit() -> None:
+    from bot.formatters import TELEGRAM_PHOTO_CAPTION_LIMIT, telegram_text_length
+
+    captions: list[str] = []
+
+    async def send_text(text: str, **kwargs: object) -> None:
+        del kwargs
+        captions.append(text)
+
+    async def send_photo(**kwargs: object) -> None:
+        captions.append(str(kwargs["caption"]))
+
+    huge_item = item(photos=["https://photos.example/card.jpg"])
+    huge_item = huge_item.model_copy(
+        update={
+            "apartment": huge_item.apartment.model_copy(
+                update={"description": "Дом мечты у парка, торг уместен. 🏡 " * 60}  # noqa: RUF001
+            )
+        }
+    )
+
+    await send_apartment_card(
+        huge_item,
+        index=1,
+        reply_markup=build_apartment_actions_keyboard("card-1"),
+        send_text=send_text,
+        send_photo=send_photo,
+        caption_suffix="⭐ подходит",
+    )
+
+    assert len(captions) == 1
+    # the suffix survived AND the whole caption stays sendable as a photo
+    assert captions[0].endswith("⭐ подходит")
+    assert telegram_text_length(captions[0]) <= TELEGRAM_PHOTO_CAPTION_LIMIT
+    # the description used the freed space (not the old 160-char teaser)
+    assert captions[0].count("Дом мечты") > 5

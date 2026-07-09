@@ -1640,3 +1640,37 @@ async def fake_search_runner(
     assert checkpoint_ns == "telegram-search"
     assert dedup_namespace in {"search", "foryou"}
     return [build_apartment()]
+
+
+def test_caption_budget_lets_description_fill_the_card() -> None:
+    from bot.formatters import TELEGRAM_PHOTO_CAPTION_LIMIT, telegram_text_length
+
+    def with_description(text: str) -> EnrichedApartment:
+        base = build_apartment()
+        return base.model_copy(
+            update={"apartment": base.apartment.model_copy(update={"description": text})}
+        )
+
+    # a description longer than the old 160-char teaser but fitting the caption
+    medium = "Просторная квартира с видом на горы. " * 12  # ~440 chars  # noqa: RUF001
+    card = format_apartment_card(
+        with_description(medium), index=1, caption_budget=TELEGRAM_PHOTO_CAPTION_LIMIT
+    )
+    assert medium.strip() in card  # included WHOLE, not cut at 160
+    assert telegram_text_length(card) <= TELEGRAM_PHOTO_CAPTION_LIMIT
+
+    # a huge description gets everything that fits, capped at the budget
+    huge = "Очень длинное описание квартиры с деталями. 🏡 " * 60  # noqa: RUF001
+    card = format_apartment_card(
+        with_description(huge), index=1, caption_budget=TELEGRAM_PHOTO_CAPTION_LIMIT
+    )
+    assert telegram_text_length(card) <= TELEGRAM_PHOTO_CAPTION_LIMIT
+    assert card.rstrip().endswith("…")
+    # and it used the space: far more than the legacy teaser made it in
+    snippet_line = next(line for line in card.splitlines() if line.startswith("📝"))
+    assert len(snippet_line) > 300
+
+    # without a budget (multi-card text lists) the 160-char teaser stays
+    legacy = format_apartment_card(with_description(huge), index=1)
+    legacy_snippet = next(line for line in legacy.splitlines() if line.startswith("📝"))
+    assert len(legacy_snippet) <= 170

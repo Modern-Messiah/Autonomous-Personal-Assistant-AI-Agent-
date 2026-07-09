@@ -376,3 +376,50 @@ async def test_run_search_graph_uses_scoring_node_when_provided() -> None:
     assert result[0].apartment.external_id == "500600"
     assert result[0].score is not None
     assert result[0].score.score == 84.0
+
+
+@pytest.mark.asyncio
+async def test_deepseek_scorer_parses_description_summary() -> None:
+    batch = {
+        "items": [
+            {
+                "index": 1,
+                "score": 80,
+                "recommendation": "consider",
+                "reasons": ["цена ниже среднего на 10%"],
+                "summary": "ЖК JAR-JAR комфорт-класс, сдача Q2 2026, чистовая отделка.",
+            },
+            {
+                "index": 2,
+                "score": 60,
+                "recommendation": "skip",
+                "reasons": ["дороже лидера на 12%"],
+                "summary": None,
+            },
+        ]
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content.decode("utf-8"))
+        prompt = payload["messages"][1]["content"]
+        # the digest instruction + the extended response schema reach the model
+        assert "also return summary" in prompt
+        assert '"summary": "..."|null' in prompt
+        return httpx.Response(
+            status_code=200,
+            json={"choices": [{"message": {"content": json.dumps(batch)}}]},
+        )
+
+    scorer = DeepSeekApartmentScorer(
+        api_key="test-key", transport=httpx.MockTransport(handler)
+    )
+    first, second = await scorer.score_apartments(
+        [build_enriched_apartment(), build_enriched_apartment()]
+    )
+
+    assert first is not None
+    assert first.description_summary == (
+        "ЖК JAR-JAR комфорт-класс, сдача Q2 2026, чистовая отделка."
+    )
+    assert second is not None
+    assert second.description_summary is None

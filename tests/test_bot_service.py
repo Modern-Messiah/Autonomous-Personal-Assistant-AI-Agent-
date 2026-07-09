@@ -1674,3 +1674,36 @@ def test_caption_budget_lets_description_fill_the_card() -> None:
     legacy = format_apartment_card(with_description(huge), index=1)
     legacy_snippet = next(line for line in legacy.splitlines() if line.startswith("📝"))
     assert len(legacy_snippet) <= 170
+
+
+def test_card_prefers_ai_description_summary_over_raw_text() -> None:
+    raw = "✅ Проверенная квартира ЖК JAR-JAR ... длинная риелторская вода ... " * 20
+    base = build_apartment()
+    with_description = base.model_copy(
+        update={"apartment": base.apartment.model_copy(update={"description": raw})}
+    )
+
+    summarized = with_description.model_copy(
+        update={
+            "score": ApartmentScore(
+                score=80,
+                reasons=["цена ниже среднего"],
+                recommendation="consider",
+                description_summary="ЖК JAR-JAR, сдача Q2 2026, чистовая отделка, торг.",
+            )
+        }
+    )
+    card = format_apartment_card(summarized, index=1)
+    assert "📝 ЖК JAR-JAR, сдача Q2 2026, чистовая отделка, торг." in card
+    assert "риелторская вода" not in card
+
+    # scored but without a summary -> raw description still shown (truncated)
+    unsummarized = with_description.model_copy(
+        update={
+            "score": ApartmentScore(
+                score=80, reasons=["цена ниже среднего"], recommendation="consider"
+            )
+        }
+    )
+    fallback = format_apartment_card(unsummarized, index=1)
+    assert "📝 ✅ Проверенная квартира ЖК JAR-JAR" in fallback

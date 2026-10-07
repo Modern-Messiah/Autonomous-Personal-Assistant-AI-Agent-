@@ -8,8 +8,17 @@
   >
 </p>
 
-Autonomous multi-agent system for apartment discovery in Kazakhstan.  
-Current scope is **Phase 0 + Phase 7 infra baseline**: foundation, parser, LangGraph search pipeline, enrichment, DeepSeek-backed scoring, checkpoint memory, Telegram bot, persistent monitor settings, ARQ scheduler runtime, Notion export, Podman stack, VPS deploy automation, tests, and CI.
+Telegram assistant for apartment discovery on Krisha.kz across Kazakhstan.
+The core is a linear LangGraph pipeline — parse intent → search krisha → enrich
+with nearby infrastructure → score with DeepSeek → present cards — wrapped in a
+dialog supervisor, persistent monitor jobs and a Notion export. It is a
+pipeline with LLM steps, not a swarm of autonomous agents planning
+independently (see `Autonomous-Personal-Assistant-AI-Agent-.md`, §1, which says
+the same).
+Current scope is **Phase 0 + Phase 7 infra baseline**: foundation, parser,
+LangGraph search pipeline, enrichment, DeepSeek-backed scoring, checkpoint
+memory, Telegram bot, persistent monitor settings, ARQ scheduler runtime,
+Notion export, Podman stack, VPS deploy automation, tests, and CI.
 
 ## Tech Stack
 

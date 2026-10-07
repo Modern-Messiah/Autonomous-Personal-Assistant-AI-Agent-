@@ -33,10 +33,16 @@ def test_podman_compose_contains_core_services() -> None:
 
     assert "postgres:" in text
     assert "redis:" in text
+    assert "postgres-backup:" in text
     assert "migrate:" in text
     assert "bot:" in text
     assert "scheduler-producer:" in text
     assert "scheduler-worker:" in text
+    # the DB holds user feedback/taste data that cannot be re-scraped: the
+    # backup service must keep dumping on schedule and expire old dumps
+    assert "pg_dump --format=custom" in text
+    assert "-mtime +$${BACKUP_RETENTION_DAYS} -delete" in text
+    assert "postgres_backups:/backups" in text
     assert 'command: ["python", "-m", "bot"]' in text
     assert 'command: ["python", "-m", "scheduler"]' in text
     assert 'command: ["arq", "scheduler.arq_worker.WorkerSettings"]' in text

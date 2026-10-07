@@ -402,6 +402,42 @@ def test_listing_url_drops_tracking_query() -> None:
     assert previews[0].external_id == "123"
 
 
+def test_listing_url_rejects_foreign_host() -> None:
+    # An href that carries an absolute foreign URL while still matching
+    # /a/show/<id> must resolve to the canonical krisha URL — the browser must
+    # not fetch the foreign site and the user must not get it as a listing link.
+    parser = KrishaParser(redis_client=FakeRedis(), min_delay_seconds=0, max_delay_seconds=0)
+    card = (
+        '<div class="a-card">'
+        '<a class="a-card__title" href="https://evil.example/a/show/777?utm=x">'
+        "2-комнатная квартира · 60 м² · 3/9 этаж</a>"
+        '<div class="a-card__price">40 000 000 〒</div>'
+        "</div>"
+    )
+    previews = parser.parse_listing_page(f"<html><body>{card}</body></html>")
+
+    assert previews
+    assert previews[0].external_id == "777"
+    assert previews[0].url == "https://krisha.kz/a/show/777"
+
+
+def test_listing_url_accepts_mobile_host() -> None:
+    # m.krisha.kz links are legitimate (krisha serves them sometimes); they must
+    # survive normalization with only the tracking query stripped.
+    parser = KrishaParser(redis_client=FakeRedis(), min_delay_seconds=0, max_delay_seconds=0)
+    card = (
+        '<div class="a-card">'
+        '<a class="a-card__title" href="https://m.krisha.kz/a/show/55?x=1">'
+        "2-комнатная квартира · 60 м² · 3/9 этаж</a>"
+        '<div class="a-card__price">40 000 000 〒</div>'
+        "</div>"
+    )
+    previews = parser.parse_listing_page(f"<html><body>{card}</body></html>")
+
+    assert previews
+    assert previews[0].url == "https://m.krisha.kz/a/show/55"
+
+
 @pytest.mark.asyncio
 async def test_search_skips_listing_when_detail_fetch_fails() -> None:
     # A single listing whose detail page fails to load (e.g. redirect loop) must

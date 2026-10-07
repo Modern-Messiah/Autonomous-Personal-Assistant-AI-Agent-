@@ -83,7 +83,12 @@ class TwoGISClient:
         point = await self._geocode(city=city, address=address)
         if point is None:
             return None
-        lat, lon = point
+        return await self.get_nearby_summary_at(city=city, lat=point[0], lon=point[1])
+
+    async def get_nearby_summary_at(
+        self, *, city: str, lat: float, lon: float
+    ) -> NearbySummary | None:
+        """Nearby counts for an already-known point (skips geocoding/quota)."""
 
         schools, schools_m = await self._count_nearby(query="school", lat=lat, lon=lon)
         parks, parks_m = await self._count_nearby(query="park", lat=lat, lon=lon)

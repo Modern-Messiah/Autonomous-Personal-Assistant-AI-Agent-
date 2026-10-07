@@ -14,6 +14,7 @@ from agent.tools.mortgage import (
     StaticInterestRateProvider,
     calculate_annuity_payment,
 )
+from agent.tools.osm_area_client import OsmAreaClient
 from agent.tools.two_gis_client import NearbyCacheProtocol, NearbySummary, TwoGISClient
 from config.settings import Settings, get_settings
 
@@ -112,14 +113,26 @@ class EnrichNode:
 
 
 def create_default_enrich_node(*, settings: Settings | None = None) -> EnrichNode:
-    """Create enrich node using the 2GIS key (None = process-wide settings)."""
+    """Create enrich node with the configured area provider (None = settings).
+
+    ``API__AREA_PROVIDER`` selects between the free OSM client (default) and
+    the paid 2GIS one; both implement the same ``get_nearby_summary`` contract
+    and share the Redis geocode/count caches.
+    """
     settings = settings or get_settings()
     geocode_cache = cast(
         NearbyCacheProtocol,
         build_redis_client(settings.redis.redis_url),
     )
-    area_client = TwoGISClient(
-        api_key=settings.api.two_gis_api_key.get_secret_value(),
-        cache=geocode_cache,
-    )
+    if settings.api.area_provider == "2gis":
+        two_gis_key = settings.api.two_gis_api_key
+        if two_gis_key is None:
+            msg = "API__AREA_PROVIDER=2gis requires API__TWO_GIS_API_KEY"
+            raise ValueError(msg)
+        area_client: AreaClientProtocol = TwoGISClient(
+            api_key=two_gis_key.get_secret_value(),
+            cache=geocode_cache,
+        )
+    else:
+        area_client = OsmAreaClient(cache=geocode_cache)
     return EnrichNode(area_client=area_client, interest_rate_provider=StaticInterestRateProvider())

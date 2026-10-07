@@ -58,11 +58,29 @@ def test_container_workflow_builds_containerfile_to_ghcr() -> None:
     )
     text = workflow.read_text(encoding="utf-8")
 
-    # version-agnostic: the action must be used, but bumps must not break this
-    assert re.search(r"docker/build-push-action@v\d+", text)
+    # SHA-pinned (bumps must not silently regress to floating tags)
+    assert re.search(r"docker/build-push-action@[0-9a-f]{40}", text)
     assert "ghcr.io/${{ github.repository_owner }}/krisha-agent" in text
     assert "file: ./Containerfile" in text
     assert "docker run --rm" in text
+
+
+def test_workflow_actions_are_pinned_to_commit_shas() -> None:
+    # These workflows hold production secrets (SSH deploy key, GHCR push); a
+    # retargeted floating tag on any action would run attacker code with them.
+    # Every external `uses:` must therefore be pinned to a full commit SHA
+    # (local workflow calls like ./.github/workflows/ci.yml are fine).
+    workflows_dir = Path(__file__).resolve().parents[1] / ".github" / "workflows"
+    for workflow in workflows_dir.glob("*.yml"):
+        text = workflow.read_text(encoding="utf-8")
+        for match in re.finditer(r"uses:\s*(\S+)", text):
+            ref = match.group(1)
+            if ref.startswith("./"):
+                continue
+            action = ref.split("@", 1)[0]
+            assert re.fullmatch(
+                r"[0-9a-f]{40}", ref.split("@", 1)[1]
+            ), f"{workflow.name}: {action} must be pinned to a commit SHA, not a tag"
 
 
 def test_systemd_deploy_files_exist_with_expected_commands() -> None:

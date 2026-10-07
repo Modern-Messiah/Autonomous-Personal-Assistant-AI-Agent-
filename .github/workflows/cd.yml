@@ -53,8 +53,12 @@ jobs:
             cd "$DEPLOY_PATH"
             export IMAGE_TAG="sha-${IMAGE_TAG:0:7}"
             echo "deploying image tag $IMAGE_TAG"
+            # The server clone is a disposable deploy checkout: hard-tracking
+            # origin/main (instead of ff-only pull) keeps deploys working even
+            # after a history rewrite on main, and never strands the server on
+            # a diverged local state.
             git fetch origin main
-            git pull --ff-only origin main
+            git reset --hard origin/main
             docker compose -f podman-compose.yml -f podman-compose.prod.yml pull migrate bot scheduler-producer scheduler-worker
             docker compose -f podman-compose.yml -f podman-compose.prod.yml run --rm migrate
             docker compose -f podman-compose.yml -f podman-compose.prod.yml up -d bot scheduler-producer scheduler-worker

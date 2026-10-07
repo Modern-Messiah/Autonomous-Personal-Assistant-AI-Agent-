@@ -11,7 +11,7 @@ from aiogram.types import BotCommand
 
 from agent.tools import NotionClient
 from bot.middlewares import AllowlistMiddleware, ThrottleMiddleware
-from bot.rate_limit import SearchRateLimiter
+from bot.rate_limit import SearchBudget
 from bot.routers import create_bot_router
 from bot.service import SearchBotService
 from config.observability import configure_observability
@@ -100,8 +100,9 @@ def create_search_service() -> SearchBotService:
     return SearchBotService(
         session_factory=get_session_factory(),
         notion_sync=notion_sync,
-        search_limiter=SearchRateLimiter(
-            limit_per_hour=settings.telegram.search_limit_per_hour
+        search_budget=SearchBudget(
+            per_user_limit=settings.telegram.search_limit_per_hour,
+            global_limit=settings.telegram.global_search_limit_per_hour,
         ),
     )
 

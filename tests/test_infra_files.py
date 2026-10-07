@@ -83,6 +83,22 @@ def test_workflow_actions_are_pinned_to_commit_shas() -> None:
             ), f"{workflow.name}: {action} must be pinned to a commit SHA, not a tag"
 
 
+def test_prod_compose_pins_image_per_deploy() -> None:
+    prod = Path(__file__).resolve().parents[1] / "podman-compose.prod.yml"
+    text = prod.read_text(encoding="utf-8")
+
+    # The production overlay must consume the per-deploy sha-<commit> tag the
+    # CD workflow exports as IMAGE_TAG, not a floating :latest — a rollout runs
+    # the exact tested artifact and a bad release has a rollback target.
+    assert text.count("${IMAGE_TAG:-latest}") == 4
+    assert "ghcr.io/modern-messiah/krisha-agent:${IMAGE_TAG:-latest}" in text
+    # ...and the CD workflow must forward the commit sha to the deploy script.
+    cd = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "cd.yml"
+    cd_text = cd.read_text(encoding="utf-8")
+    assert "IMAGE_TAG: ${{ github.sha }}" in cd_text
+    assert "envs: IMAGE_TAG,DEPLOY_PATH" in cd_text
+
+
 def test_systemd_deploy_files_exist_with_expected_commands() -> None:
     project_root = Path(__file__).resolve().parents[1]
     unit_template = (

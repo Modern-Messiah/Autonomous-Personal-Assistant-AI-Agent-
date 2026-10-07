@@ -292,3 +292,48 @@ def test_blank_two_gis_key_is_treated_as_unset() -> None:
     api = APISettings(deepseek_api_key=SecretStr("k"), two_gis_api_key="  ")
 
     assert api.two_gis_api_key is None
+
+
+def _mirror_transport(primary_status: int, *, mirror_status: int = 200) -> httpx.MockTransport:
+    """Primary overpass answers with a failure; the mirror serves the data."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "nominatim" in str(request.url):
+            q = dict(request.url.params).get("q", "")
+            if "," not in q:
+                return _nominatim_response(lat="43.2389", lon="76.8894")
+            return httpx.Response(
+                status_code=200,
+                json=[_nom(lat="43.2366", lon="76.9222", name="30, улица Сатпаева, Алматы")],
+            )
+        if "overpass-api.de" in str(request.url):
+            return httpx.Response(status_code=primary_status, text="busy")
+        if "maps.mail.ru" in str(request.url):
+            if mirror_status != 200:
+                return httpx.Response(status_code=mirror_status, text="busy")
+            return _overpass_response()
+        raise AssertionError(f"unexpected request to {request.url}")
+
+    return httpx.MockTransport(handler)
+
+
+@pytest.mark.asyncio
+async def test_overpass_mirror_takes_over_when_primary_is_down() -> None:
+    client = OsmAreaClient(
+        transport=_mirror_transport(primary_status=503),
+        min_request_interval_seconds=0.0,
+    )
+
+    summary = await client.get_nearby_summary(city="Almaty", address="Сатпаева 30")
+
+    assert summary is not None
+    assert summary.schools == 2
+
+
+@pytest.mark.asyncio
+async def test_all_overpass_instances_down_degrades_to_no_summary() -> None:
+    client = OsmAreaClient(
+        transport=_mirror_transport(primary_status=500, mirror_status=500),
+        min_request_interval_seconds=0.0,
+    )
+
+    assert await client.get_nearby_summary(city="Almaty", address="Сатпаева 30") is None

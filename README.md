@@ -292,11 +292,39 @@ docker compose -f podman-compose.yml down
 Current stack layout:
 
 - `postgres`: PostgreSQL 16 with persistent volume,
+- `postgres-backup`: nightly `pg_dump` (custom format) into the `postgres_backups`
+  volume, 14-day retention. The DB holds user feedback and learned taste
+  profiles — data that cannot be re-scraped — so it is the one thing the stack
+  backs up automatically. See [Backups](#backups).,
 - `redis`: Redis 7 queue/cache backend,
 - `migrate`: one-shot Alembic upgrade service,
 - `bot`: Telegram bot runtime,
 - `scheduler-producer`: ARQ job producer (`SCHEDULER__RUNTIME=arq`),
 - `scheduler-worker`: ARQ worker processing per-user monitor jobs.
+
+## Backups
+
+The `postgres-backup` service dumps the database at startup and then once a
+day (custom format, compressed), keeping the last 14 dumps in the
+`postgres_backups` volume.
+
+List backups:
+
+```bash
+docker compose -f podman-compose.yml run --rm --entrypoint ls postgres-backup -la /backups
+```
+
+Restore one (stops the writers first; `pg_restore` reuses the service env):
+
+```bash
+docker compose -f podman-compose.yml stop bot scheduler-producer scheduler-worker
+docker compose -f podman-compose.yml run --rm --entrypoint pg_restore postgres-backup \
+  --clean --if-exists --no-owner --no-privileges /backups/krisha_<timestamp>.dump
+docker compose -f podman-compose.yml up -d bot scheduler-producer scheduler-worker
+```
+
+To take an off-server copy: `docker cp` / `rsync` the dump out of the volume —
+a backup that lives on the same disk is only half a backup.
 
 ## Container Workflow
 

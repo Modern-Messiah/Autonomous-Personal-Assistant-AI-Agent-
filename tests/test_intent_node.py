@@ -565,3 +565,27 @@ async def test_run_search_graph_from_text_uses_intent_output() -> None:
     assert parser.last_deal_type == "rent"
     assert parser.last_max_price == 400_000
     assert parser.last_rooms == [2]
+
+
+@pytest.mark.asyncio
+async def test_intent_node_clamps_user_driven_page_limit() -> None:
+    # "20 страниц" in one /search is a crawl of krisha; the node must bound it
+    # regardless of whether the number came from the LLM patch or the regex.
+    from agent.models.criteria import SearchCriteria as Criteria
+
+    llm_node = IntentNode(
+        llm_parser=StubLLMIntentParser({"city": "Almaty", "page_limit": 20})
+    )
+    parsed = await llm_node.parse(user_id=1, message="2-комнатная в Алматы")
+    assert parsed.page_limit == 10
+
+    regex_node = IntentNode(llm_parser_factory=lambda: None)
+    regex_parsed = await regex_node.parse(user_id=1, message="квартиры в Алматы pages 20")
+    assert regex_parsed.page_limit == 10
+
+    # refine inherits and clamps the stored ceiling too
+    refined = await regex_node.refine(
+        criteria=Criteria(user_id=1, city="Almaty", deal_type="sale", page_limit=20),
+        message="только 2 комнаты",
+    )
+    assert refined.page_limit == 10

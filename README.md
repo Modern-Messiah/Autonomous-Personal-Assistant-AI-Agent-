@@ -270,22 +270,23 @@ Current scheduler behavior:
 
 The repository includes a shared runtime image in [Containerfile](Containerfile) and a local stack in [podman-compose.yml](podman-compose.yml).
 
-Suggested local flow:
+Suggested local flow (any Compose-compatible runtime: `docker compose`,
+`podman compose`; the file is standard Compose format):
 
 ```bash
 cp .env.example .env
-podman-compose build
-podman-compose up -d postgres redis
-podman-compose run --rm migrate
-podman-compose up -d bot scheduler-producer scheduler-worker
+docker compose -f podman-compose.yml build
+docker compose -f podman-compose.yml up -d postgres redis
+docker compose -f podman-compose.yml run --rm migrate
+docker compose -f podman-compose.yml up -d bot scheduler-producer scheduler-worker
 ```
 
 Useful commands:
 
 ```bash
-podman-compose logs -f bot
-podman-compose logs -f scheduler-worker
-podman-compose down
+docker compose -f podman-compose.yml logs -f bot
+docker compose -f podman-compose.yml logs -f scheduler-worker
+docker compose -f podman-compose.yml down
 ```
 
 Current stack layout:
@@ -355,10 +356,12 @@ systemd unit.
 
 ## VPS Deploy
 
-The repository includes a rootless Podman deploy path for Ubuntu 24:
+The repository includes a rootless Docker deploy path for Ubuntu 24. One
+compose tooling everywhere: the manual/systemd flow below uses the same
+`docker compose` the CD pipeline drives over SSH.
 
-- [bootstrap_ubuntu_24.sh](deploy/vps/bootstrap_ubuntu_24.sh) installs Podman prerequisites and enables linger for the deploy user.
-- [krisha-agent-compose.service.template](deploy/systemd/krisha-agent-compose.service.template) wraps the full `podman-compose` stack in a user-level systemd service.
+- [bootstrap_ubuntu_24.sh](deploy/vps/bootstrap_ubuntu_24.sh) installs Docker Engine + the compose plugin, configures a rootless daemon for the deploy user, and enables linger.
+- [krisha-agent-compose.service.template](deploy/systemd/krisha-agent-compose.service.template) wraps the full `docker compose` stack in a user-level systemd service.
 - [install_user_service.sh](deploy/systemd/install_user_service.sh) renders the template into `~/.config/systemd/user`.
 
 Suggested VPS flow:
@@ -369,17 +372,15 @@ sudo ./deploy/vps/bootstrap_ubuntu_24.sh
 
 # as the deploy user
 cp .env.example .env
-podman-compose build
 ./deploy/systemd/install_user_service.sh
 systemctl --user start krisha-agent-compose.service
 systemctl --user status krisha-agent-compose.service
 ```
 
-To roll out a code update:
+To roll out a code update (day-to-day updates arrive via `cd.yml`):
 
 ```bash
 git pull
-podman-compose build
 systemctl --user restart krisha-agent-compose.service
 ```
 

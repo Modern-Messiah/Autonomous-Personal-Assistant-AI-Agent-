@@ -141,22 +141,28 @@ def test_systemd_deploy_files_exist_with_expected_commands() -> None:
         project_root / "deploy" / "systemd" / "wait_for_datastores.sh"
     ).read_text(encoding="utf-8")
 
-    assert "ExecStart=/usr/bin/env podman-compose" in unit_text
-    assert "ExecStartPre=/usr/bin/env podman-compose" in unit_text
-    assert "ExecReload=/usr/bin/env podman-compose" in unit_text
+    # One compose tooling everywhere: the unit must drive `docker compose`,
+    # the same binary the CD pipeline uses over SSH.
+    assert "ExecStart=/usr/bin/env docker compose" in unit_text
+    assert "ExecStartPre=/usr/bin/env docker compose" in unit_text
+    assert "ExecReload=/usr/bin/env docker compose" in unit_text
+    assert "Environment=DOCKER_HOST=unix:///run/user/%U/docker.sock" in unit_text
     assert "__PROJECT_ROOT__" in unit_text
 
     assert 'SERVICE_NAME="krisha-agent-compose.service"' in install_text
     assert 'systemctl --user enable "${SERVICE_NAME}"' in install_text
     assert 'sed "s|__PROJECT_ROOT__|${PROJECT_ROOT}|g"' in install_text
+    assert "docker compose version" in install_text
 
-    assert (
-        "apt-get install -y podman podman-compose uidmap slirp4netns fuse-overlayfs"
-        in bootstrap_text
-    )
+    # Bootstrap installs the same Docker Engine + compose plugin (rootless for
+    # the deploy user) instead of a parallel podman-compose stack.
+    assert "https://get.docker.com" in bootstrap_text
+    assert "docker-ce-rootless-extras" in bootstrap_text
+    assert "dockerd-rootless-setuptool.sh install" in bootstrap_text
     assert 'loginctl enable-linger "${TARGET_USER}"' in bootstrap_text
     assert "./deploy/systemd/install_user_service.sh" in bootstrap_text
     assert "ufw default deny incoming" in bootstrap_text
     assert "wait_for_datastores.sh" in unit_text
+    assert "docker compose -f" in wait_script
     assert '"$POSTGRES_USER"' in wait_script
     assert '"$REDIS_PASSWORD"' in wait_script

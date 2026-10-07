@@ -129,6 +129,10 @@ The project uses nested settings via `pydantic-settings` and `env_nested_delimit
   DeepSeek/2GIS quota. Set it before exposing a production bot.
 - `TELEGRAM__RATE_LIMIT_PER_MINUTE` — per-user sliding-window rate limit
   (default 20 messages+callbacks per minute).
+- `TELEGRAM__SEARCH_LIMIT_PER_HOUR` — per-user budget of paid searches
+  (default 6 per hour). Every search burns DeepSeek/2GIS quota and scrapes
+  krisha, so on an open bot this — not the message throttle — is what caps
+  spend per stranger.
 - `API__TWO_GIS_API_KEY`, `API__DEEPSEEK_API_KEY`
 - optional `API__LANGSMITH_API_KEY` + `API__LANGSMITH_PROJECT` (both enable tracing)
 - optional `API__SENTRY_DSN` (enables Sentry error reporting)

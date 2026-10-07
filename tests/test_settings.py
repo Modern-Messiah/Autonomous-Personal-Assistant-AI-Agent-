@@ -193,3 +193,42 @@ def test_log_level_is_normalized_and_validated(tmp_path: Path) -> None:
     env_file.write_text(env_file.read_text().replace("debug", "verbose"), encoding="utf-8")
     with pytest.raises(ValidationError):
         Settings(_env_file=env_file)
+
+
+def _write_env(env_file: Path, extra_lines: list[str]) -> None:
+    env_file.write_text(
+        "\n".join(
+            [
+                "DB__HOST=localhost",
+                "DB__NAME=krisha_agent",
+                "DB__USER=krisha",
+                "DB__PASSWORD=secret_password",
+                "REDIS__HOST=localhost",
+                "TELEGRAM__BOT_TOKEN=telegram_token",
+                "API__TWO_GIS_API_KEY=two_gis_key",
+                "API__DEEPSEEK_API_KEY=deepseek_key",
+                *extra_lines,
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_settings_reject_malformed_allowed_user_ids(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    _write_env(env_file, ["TELEGRAM__ALLOWED_USER_IDS=123,abc"])
+
+    with pytest.raises(ValidationError, match="ALLOWED_USER_IDS"):
+        Settings(_env_file=env_file)
+
+
+def test_settings_accept_numeric_allowed_user_ids_and_default_search_limit(
+    tmp_path: Path,
+) -> None:
+    env_file = tmp_path / ".env"
+    _write_env(env_file, ["TELEGRAM__ALLOWED_USER_IDS=111; 222,", ""])
+
+    settings = Settings(_env_file=env_file)
+
+    assert settings.telegram.allowed_ids == frozenset({111, 222})
+    assert settings.telegram.search_limit_per_hour == 6

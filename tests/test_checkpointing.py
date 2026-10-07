@@ -128,10 +128,10 @@ def test_build_checkpoint_config_sets_expected_keys() -> None:
 
 
 @pytest.mark.asyncio
-async def test_postgres_checkpointer_runs_setup_dd_once_per_process(
+async def test_postgres_checkpointer_skips_runtime_ddl_by_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Every checkpointed search opens a saver; the DDL must not repeat each time."""
+    """The checkpoint schema is owned by Alembic; searches must not run DDL."""
     import db.checkpoints as checkpoints_module
 
     setup_calls = 0
@@ -164,7 +164,13 @@ async def test_postgres_checkpointer_runs_setup_dd_once_per_process(
         assert isinstance(saver, FakeSaver)
     async with checkpoints_module.get_async_postgres_checkpointer() as saver:
         assert isinstance(saver, FakeSaver)
-    async with checkpoints_module.get_async_postgres_checkpointer(setup=False) as saver:
+
+    assert setup_calls == 0
+
+    # explicit bootstrap opt-in still works and runs at most once per process
+    async with checkpoints_module.get_async_postgres_checkpointer(setup=True) as saver:
+        assert isinstance(saver, FakeSaver)
+    async with checkpoints_module.get_async_postgres_checkpointer(setup=True) as saver:
         assert isinstance(saver, FakeSaver)
 
     assert setup_calls == 1

@@ -575,3 +575,64 @@ async def test_telegram_monitor_notifier_sends_header_criteria_and_cards() -> No
     # flat without photos -> text card fallback (sent after the two headers)
     assert len(messages) == 3
     assert "🏠 2." in messages[2][1]
+
+
+@pytest.mark.asyncio
+async def test_daily_purge_runs_once_per_interval(monkeypatch) -> None:
+    from datetime import timedelta
+
+    from scheduler import app as scheduler_app
+
+    monkeypatch.setattr(scheduler_app, "PURGE_INTERVAL", timedelta(hours=24))
+
+    class CountingService:
+        def __init__(self) -> None:
+            self.purges = 0
+
+        async def purge_stale(self) -> dict[str, int]:
+            self.purges += 1
+            return {"old_seen": 1}
+
+    service = CountingService()
+    purge = scheduler_app._DailyPurge()
+
+    await purge.run_if_due(service)  # type: ignore[arg-type]
+    await purge.run_if_due(service)  # type: ignore[arg-type]
+    assert service.purges == 1  # within the interval — once
+
+
+@pytest.mark.asyncio
+async def test_daily_purge_reruns_after_interval(monkeypatch) -> None:
+    from datetime import timedelta
+
+    from scheduler import app as scheduler_app
+
+    monkeypatch.setattr(scheduler_app, "PURGE_INTERVAL", timedelta(0))
+
+    class CountingService:
+        def __init__(self) -> None:
+            self.purges = 0
+
+        async def purge_stale(self) -> dict[str, int]:
+            self.purges += 1
+            return {}
+
+    service = CountingService()
+    purge = scheduler_app._DailyPurge()
+
+    await purge.run_if_due(service)  # type: ignore[arg-type]
+    await purge.run_if_due(service)  # type: ignore[arg-type]
+    assert service.purges == 2
+
+
+@pytest.mark.asyncio
+async def test_daily_purge_survives_purge_errors() -> None:
+    from scheduler import app as scheduler_app
+
+    class BrokenService:
+        async def purge_stale(self) -> dict[str, int]:
+            raise RuntimeError("db unavailable")
+
+    purge = scheduler_app._DailyPurge()
+    # must not raise: a failed purge logs and still counts as "ran"
+    await purge.run_if_due(BrokenService())  # type: ignore[arg-type]

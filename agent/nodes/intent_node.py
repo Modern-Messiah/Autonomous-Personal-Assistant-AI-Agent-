@@ -211,12 +211,17 @@ class IntentNode:
         default_city: str = "Almaty",
         default_deal_type: Literal["sale", "rent"] = "sale",
         default_page_limit: int = 3,
+        # Hard ceiling for user-driven page_limit regardless of what the LLM
+        # extracted: each page is a krisha fetch, and a high value turns one
+        # /search into a crawl of the site (ban risk + wasted quota).
+        max_page_limit: int = 10,
         llm_parser: LLMIntentParserProtocol | None = None,
         llm_parser_factory: Callable[[], LLMIntentParserProtocol | None] | None = None,
     ) -> None:
         self._default_city = default_city
         self._default_deal_type = default_deal_type
         self._default_page_limit = default_page_limit
+        self._max_page_limit = max(1, max_page_limit)
         self._llm_parser = llm_parser
         self._llm_parser_factory = llm_parser_factory or create_default_llm_intent_parser
         self._llm_parser_resolved = llm_parser is not None
@@ -269,12 +274,13 @@ class IntentNode:
             message=message,
             default_city=self._default_city,
         )
+        regex_criteria = self._regex.parse(
+            user_id=user_id,
+            message=message,
+            locations=locations,
+        )
         return ParsedIntent(
-            criteria=self._regex.parse(
-                user_id=user_id,
-                message=message,
-                locations=locations,
-            ),
+            criteria=self._with_clamped_page_limit(regex_criteria),
             defaulted_city=locations.defaulted_city,
         )
 
@@ -309,11 +315,23 @@ class IntentNode:
             existing_city=criteria.city,
             existing_districts=criteria.districts,
         )
-        return self._regex.refine(
-            criteria=criteria,
-            message=message,
-            locations=locations,
+        return self._with_clamped_page_limit(
+            self._regex.refine(
+                criteria=criteria,
+                message=message,
+                locations=locations,
+            )
         )
+
+    def _clamp_page_limit(self, page_limit: int) -> int:
+        """Bound listing pages per search: each page is a live krisha fetch."""
+        return min(max(page_limit, 1), self._max_page_limit)
+
+    def _with_clamped_page_limit(self, criteria: SearchCriteria) -> SearchCriteria:
+        clamped = self._clamp_page_limit(criteria.page_limit)
+        if clamped == criteria.page_limit:
+            return criteria
+        return criteria.model_copy(update={"page_limit": clamped})
 
     async def _parse_with_llm(
         self,
@@ -373,7 +391,7 @@ class IntentNode:
             min_area_m2=patch.min_area_m2,
             max_area_m2=patch.max_area_m2,
             owner_only=bool(patch.owner_only),
-            page_limit=patch.page_limit or self._default_page_limit,
+            page_limit=self._clamp_page_limit(patch.page_limit or self._default_page_limit),
         )
 
     def _build_refined_criteria(
@@ -417,5 +435,7 @@ class IntentNode:
             min_area_m2=criteria.min_area_m2 if patch.min_area_m2 is None else patch.min_area_m2,
             max_area_m2=criteria.max_area_m2 if patch.max_area_m2 is None else patch.max_area_m2,
             owner_only=criteria.owner_only if patch.owner_only is None else patch.owner_only,
-            page_limit=criteria.page_limit if patch.page_limit is None else patch.page_limit,
+            page_limit=self._clamp_page_limit(
+                criteria.page_limit if patch.page_limit is None else patch.page_limit
+            ),
         )

@@ -20,6 +20,11 @@ from config.settings import get_settings
 
 __all__ = ["build_checkpoint_config", "get_async_postgres_checkpointer"]
 
+# Setup DDL is idempotent but not free: run it once per process instead of on
+# every checkpointed search (each search opens a fresh saver). Two searches
+# racing the first call may both run it — harmless, the DDL is IF NOT EXISTS.
+_checkpoint_setup_done: bool = False
+
 
 @asynccontextmanager
 async def get_async_postgres_checkpointer(*, setup: bool = True) -> AsyncIterator[Any]:
@@ -27,8 +32,10 @@ async def get_async_postgres_checkpointer(*, setup: bool = True) -> AsyncIterato
     checkpoint_module = import_module("langgraph.checkpoint.postgres.aio")
     async_postgres_saver = checkpoint_module.AsyncPostgresSaver
 
+    global _checkpoint_setup_done
     settings = get_settings()
     async with async_postgres_saver.from_conn_string(settings.db.psycopg_url) as saver:
-        if setup:
+        if setup and not _checkpoint_setup_done:
             await saver.setup()
+            _checkpoint_setup_done = True
         yield saver

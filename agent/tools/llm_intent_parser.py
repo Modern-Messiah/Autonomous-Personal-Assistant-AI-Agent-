@@ -9,6 +9,7 @@ import httpx
 
 from agent.models.criteria import SearchCriteria
 from agent.tools.http_retry import request_with_retry
+from agent.tools.json_fence import strip_json_fence
 
 DEEPSEEK_ENDPOINT = "https://api.deepseek.com/chat/completions"
 
@@ -163,9 +164,4 @@ class LLMIntentParser:
         if not isinstance(content, str) or not content.strip():
             msg = "LLM intent parser response did not contain content"
             raise ValueError(msg)
-
-        cleaned = content.strip()
-        if cleaned.startswith("```"):
-            cleaned = cleaned.strip("`")
-            cleaned = cleaned.replace("json\n", "", 1).strip()
-        return cleaned
+        return strip_json_fence(content)

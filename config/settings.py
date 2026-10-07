@@ -111,11 +111,32 @@ class TelegramSettings(BaseModel):
 class APISettings(BaseModel):
     """External integrations keys."""
 
-    two_gis_api_key: SecretStr
+    # Which service enriches listings with nearby-infrastructure data:
+    # "osm" (default) — Nominatim + Overpass, free, no key, rate-limit friendly;
+    # "2gis" — richer KZ data, but a paid metered key.
+    area_provider: Literal["osm", "2gis"] = "osm"
+    two_gis_api_key: SecretStr | None = None
     deepseek_api_key: SecretStr
     langsmith_api_key: SecretStr | None = None
     langsmith_project: str | None = Field(default=None, min_length=1)
     sentry_dsn: str | None = Field(default=None, min_length=1)
+
+    @field_validator("two_gis_api_key", mode="before")
+    @classmethod
+    def normalize_empty_api_key(cls, value: object) -> object:
+        """Treat a blank TWO_GIS key from environment files as unset."""
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @model_validator(mode="after")
+    def validate_provider_contract(self) -> "APISettings":
+        if self.area_provider == "2gis" and not (
+            self.two_gis_api_key and self.two_gis_api_key.get_secret_value().strip()
+        ):
+            msg = "two_gis_api_key is required when API__AREA_PROVIDER=2gis"
+            raise ValueError(msg)
+        return self
 
     @field_validator("langsmith_api_key", "langsmith_project", "sentry_dsn", mode="before")
     @classmethod

@@ -11,6 +11,7 @@ from aiogram.types import BotCommand
 
 from agent.tools import NotionClient
 from bot.middlewares import AllowlistMiddleware, ThrottleMiddleware
+from bot.rate_limit import SearchRateLimiter
 from bot.routers import create_bot_router
 from bot.service import SearchBotService
 from config.observability import configure_observability
@@ -46,13 +47,24 @@ def create_dispatcher(
     service: SearchBotService | None = None,
     *,
     storage: BaseStorage | None = None,
+    guards: bool | None = None,
+    telegram: TelegramSettings | None = None,
 ) -> Dispatcher:
-    """Create dispatcher with project routes."""
+    """Create dispatcher with project routes.
+
+    ``guards`` controls the allowlist + throttle explicitly. The default
+    (``None``) keeps the historical behavior — guards on for the real bootstrap
+    (no injected service), off for tests that inject one — but any caller can
+    now opt in or out explicitly instead of the security middlewares being tied
+    to whether a service was injected.
+    """
     dispatcher = Dispatcher(storage=storage if storage is not None else create_fsm_storage())
-    # Real bootstrap (service is None) reads settings anyway; only then guard the
-    # dispatcher with the allowlist + throttle. Tests inject a service and skip it.
-    if service is None:
-        register_guard_middlewares(dispatcher, get_settings().telegram)
+    guards_enabled = guards if guards is not None else service is None
+    if guards_enabled:
+        register_guard_middlewares(
+            dispatcher,
+            telegram if telegram is not None else get_settings().telegram,
+        )
     active_service = service or create_search_service()
     dispatcher.include_router(create_bot_router(active_service))
     return dispatcher
@@ -88,6 +100,9 @@ def create_search_service() -> SearchBotService:
     return SearchBotService(
         session_factory=get_session_factory(),
         notion_sync=notion_sync,
+        search_limiter=SearchRateLimiter(
+            limit_per_hour=settings.telegram.search_limit_per_hour
+        ),
     )
 
 

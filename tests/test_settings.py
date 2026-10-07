@@ -193,3 +193,45 @@ def test_log_level_is_normalized_and_validated(tmp_path: Path) -> None:
     env_file.write_text(env_file.read_text().replace("debug", "verbose"), encoding="utf-8")
     with pytest.raises(ValidationError):
         Settings(_env_file=env_file)
+
+
+def test_env_example_is_a_complete_valid_configuration() -> None:
+    """cp .env.example .env must yield a bootable process.
+
+    A new required setting (or a blank optional one the parser can't read)
+    committed without updating .env.example breaks every fresh deployment.
+    """
+    from pathlib import Path
+
+    env_example = Path(__file__).resolve().parents[1] / ".env.example"
+    settings = Settings(_env_file=env_example)
+
+    assert settings.telegram.rate_limit_per_minute >= 1
+    assert settings.scheduler.canary_admin_chat_id is None
+
+
+def test_empty_optional_chat_id_is_treated_as_unset(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    _write_minimal_env(env_file, ["SCHEDULER__CANARY_ADMIN_CHAT_ID="])
+
+    settings = Settings(_env_file=env_file)
+
+    assert settings.scheduler.canary_admin_chat_id is None
+
+def _write_minimal_env(env_file: Path, extra_lines: list[str]) -> None:
+    env_file.write_text(
+        "\n".join(
+            [
+                "DB__HOST=localhost",
+                "DB__NAME=krisha_agent",
+                "DB__USER=krisha",
+                "DB__PASSWORD=secret_password",
+                "REDIS__HOST=localhost",
+                "TELEGRAM__BOT_TOKEN=telegram_token",
+                "API__TWO_GIS_API_KEY=two_gis_key",
+                "API__DEEPSEEK_API_KEY=deepseek_key",
+                *extra_lines,
+            ]
+        ),
+        encoding="utf-8",
+    )

@@ -140,6 +140,14 @@ class SchedulerSettings(BaseModel):
     canary_city: str = Field(default="Almaty", min_length=1)
     canary_interval_hours: int = Field(default=6, ge=1, le=24)
 
+    @field_validator("canary_admin_chat_id", mode="before")
+    @classmethod
+    def normalize_empty_chat_id(cls, value: object) -> object:
+        """Treat the blank value from .env.example templates as unset."""
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
 
 class ArqSettings(BaseModel):
     """ARQ queue settings for background worker mode."""

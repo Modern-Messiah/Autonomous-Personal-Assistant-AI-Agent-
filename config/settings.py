@@ -72,6 +72,28 @@ class TelegramSettings(BaseModel):
     allowed_user_ids: str = ""
     # Per-user command budget: at most this many actions per 60s window.
     rate_limit_per_minute: int = Field(default=20, ge=1)
+    # Per-user budget of PAID searches (LLM scoring + 2GIS + krisha scraping)
+    # per 60 minutes. A single search costs far more than a chat message, so the
+    # message throttle alone cannot cap quota spend for an open bot.
+    search_limit_per_hour: int = Field(default=6, ge=1)
+
+    @field_validator("allowed_user_ids", mode="before")
+    @classmethod
+    def validate_allowed_user_ids(cls, value: object) -> object:
+        """Reject malformed allowlists at load time, not mid-update in runtime."""
+        if not isinstance(value, str):
+            return value
+        for part in value.replace(";", ",").split(","):
+            token = part.strip()
+            if not token:
+                continue
+            if not token.isdigit():
+                msg = (
+                    f"TELEGRAM__ALLOWED_USER_IDS must be comma-separated integer "
+                    f"Telegram user ids, got {token!r}"
+                )
+                raise ValueError(msg)
+        return value
 
     @property
     def allowed_ids(self) -> frozenset[int]:

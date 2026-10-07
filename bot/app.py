@@ -49,6 +49,7 @@ def create_dispatcher(
     storage: BaseStorage | None = None,
     guards: bool | None = None,
     telegram: TelegramSettings | None = None,
+    redis: object | None = None,
 ) -> Dispatcher:
     """Create dispatcher with project routes.
 
@@ -64,26 +65,47 @@ def create_dispatcher(
         register_guard_middlewares(
             dispatcher,
             telegram if telegram is not None else get_settings().telegram,
+            redis=redis,
         )
-    active_service = service or create_search_service()
+    active_service = service or create_search_service(redis=redis)
     dispatcher.include_router(create_bot_router(active_service))
     return dispatcher
 
 
-def register_guard_middlewares(dispatcher: Dispatcher, telegram: TelegramSettings) -> None:
+def register_guard_middlewares(
+    dispatcher: Dispatcher,
+    telegram: TelegramSettings,
+    *,
+    redis: object | None = None,
+) -> None:
     """Attach the allowlist + per-user throttle as outer middlewares.
 
     Outer so they run before FSM/handler resolution on both messages and taps.
+    ``redis`` (optional) makes the throttle window shared across replicas.
     """
     allowlist = AllowlistMiddleware(telegram.allowed_ids)
-    throttle = ThrottleMiddleware(telegram.rate_limit_per_minute)
+    throttle = ThrottleMiddleware(
+        telegram.rate_limit_per_minute,
+        redis=redis,  # type: ignore[arg-type]
+    )
     for observer in (dispatcher.message, dispatcher.callback_query):
         observer.outer_middleware(allowlist)
         observer.outer_middleware(throttle)
 
 
-def create_search_service() -> SearchBotService:
-    """Create bot service with optional Notion sync integration."""
+def create_rate_limit_redis() -> object:
+    """Shared Redis client for the throttle/search-budget windows (lazy connect)."""
+    from importlib import import_module
+
+    redis_module = import_module("redis.asyncio")
+    return redis_module.from_url(get_settings().redis.redis_url, decode_responses=True)
+
+
+def create_search_service(*, redis: object | None = None) -> SearchBotService:
+    """Create bot service with optional Notion sync integration.
+
+    ``redis`` shares the search-budget window across processes/replicas.
+    """
     settings = get_settings()
     notion_sync = None
     if settings.notion.enabled:
@@ -103,6 +125,7 @@ def create_search_service() -> SearchBotService:
         search_budget=SearchBudget(
             per_user_limit=settings.telegram.search_limit_per_hour,
             global_limit=settings.telegram.global_search_limit_per_hour,
+            redis=redis,  # type: ignore[arg-type]
         ),
     )
 
@@ -110,10 +133,20 @@ def create_search_service() -> SearchBotService:
 async def run_polling() -> None:
     """Start Telegram long polling."""
     bot = create_bot()
-    dispatcher = create_dispatcher()
+    rate_limit_redis = create_rate_limit_redis()
+    dispatcher = create_dispatcher(redis=rate_limit_redis)
     # Register the command menu so commands autocomplete under "/" in Telegram.
     await bot.set_my_commands(BOT_COMMANDS)
-    await dispatcher.start_polling(bot)
+    try:
+        await dispatcher.start_polling(bot)
+    finally:
+        close = getattr(rate_limit_redis, "aclose", None) or getattr(
+            rate_limit_redis, "close", None
+        )
+        if close is not None:
+            result = close()
+            if asyncio.iscoroutine(result):
+                await result
 
 
 def main() -> None:

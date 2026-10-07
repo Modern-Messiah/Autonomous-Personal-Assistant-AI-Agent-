@@ -396,7 +396,7 @@ class SearchBotService:
     ) -> list[EnrichedApartment]:
         """Run the search graph and drop listings the user already decided on."""
         if self._search_budget is not None:
-            decision = self._search_budget.try_acquire(telegram_user_id)
+            decision = await self._search_budget.try_acquire(telegram_user_id)
             if decision is BudgetDecision.USER_EXHAUSTED:
                 logger.info(
                     "per-user search budget exhausted for telegram user %s",

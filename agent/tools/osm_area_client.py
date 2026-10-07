@@ -44,6 +44,10 @@ logger = logging.getLogger(__name__)
 
 NOMINATIM_SEARCH_URL = "https://nominatim.openstreetmap.org/search"
 OVERPASS_INTERPRETER_URL = "https://overpass-api.de/api/interpreter"
+# Same data, independent hosting. The main instance rate-limits and
+# occasionally goes down for maintenance — cards must not lose their
+# schools/parks/metro chips whenever it does.
+OVERPASS_MIRROR_URL = "https://maps.mail.ru/osm/tools/overpass/api/interpreter"
 
 # Nominatim public instance policy: absolute max 1 request/second.
 DEFAULT_MIN_REQUEST_INTERVAL_SECONDS = 1.1
@@ -188,7 +192,7 @@ class OsmAreaClient:
         min_request_interval_seconds: float = DEFAULT_MIN_REQUEST_INTERVAL_SECONDS,
         transport: httpx.AsyncBaseTransport | None = None,
         nominatim_url: str = NOMINATIM_SEARCH_URL,
-        overpass_url: str = OVERPASS_INTERPRETER_URL,
+        overpass_urls: tuple[str, ...] = (OVERPASS_INTERPRETER_URL, OVERPASS_MIRROR_URL),
     ) -> None:
         self._timeout_seconds = timeout_seconds
         self._radius_meters = radius_meters
@@ -198,7 +202,7 @@ class OsmAreaClient:
         self._counts_ttl_seconds = counts_ttl_seconds
         self._transport = transport
         self._nominatim_url = nominatim_url
-        self._overpass_url = overpass_url
+        self._overpass_urls = overpass_urls
         # Serializes requests and spaces them out for the public instances.
         self._gate = asyncio.Lock()
         self._min_interval_seconds = min_request_interval_seconds
@@ -410,28 +414,46 @@ class OsmAreaClient:
         self, *, lat: float, lon: float
     ) -> list[dict[str, Any]] | None:
         query = _overpass_query(lat, lon, self._radius_meters)
+        for url in self._overpass_urls:
+            elements = await self._fetch_pois_from(url, query=query)
+            if elements is not None:
+                return elements
+        return None
+
+    async def _fetch_pois_from(
+        self, url: str, *, query: str
+    ) -> list[dict[str, Any]] | None:
+        """One Overpass instance; None means try the next mirror.
+
+        Single attempt per instance: the retry budget here is the OTHER
+        mirror, not backoff against a slow one — a rate-limited-but-alive
+        primary must not eat minutes of the user's search time.
+        """
         try:
             await self._paced()
             async with httpx.AsyncClient(
-                timeout=self._timeout_seconds + 15.0,
+                timeout=self._timeout_seconds + 5.0,
                 transport=self._transport,
             ) as client:
                 response = await request_with_retry(
                     lambda: client.post(
-                        self._overpass_url,
+                        url,
                         data={"data": query},
                         headers={"User-Agent": _USER_AGENT},
-                    )
+                    ),
+                    attempts=1,
                 )
         except httpx.HTTPError:
-            logger.warning("Overpass POI request failed")
+            logger.warning("Overpass POI request failed url=%s", url)
             return None
 
         try:
             payload = response.json()
         except ValueError:
+            logger.warning("Overpass POI response was not JSON url=%s", url)
             return None
         elements = payload.get("elements") if isinstance(payload, dict) else None
         if not isinstance(elements, list):
+            logger.warning("Overpass POI response lacked elements url=%s", url)
             return None
         return elements

@@ -41,7 +41,7 @@ jobs:
       - name: Smoke runtime image
         run: >-
           docker run --rm --entrypoint sh krisha-agent:test -c
-          'test "$(id -u)" = 1000 && python -c "import bot.app, scheduler.app"'
+          'test "$(id -u)" = 1000 && python -c "import agent, bot, bot.app, config, db, scheduler, scheduler.app"'
 
       - name: Login to GHCR
         if: github.event_name == 'push'

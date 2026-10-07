@@ -13,8 +13,8 @@ if ! command -v systemctl >/dev/null 2>&1; then
   exit 1
 fi
 
-if ! command -v podman-compose >/dev/null 2>&1; then
-  echo "podman-compose is required but not installed" >&2
+if ! docker compose version >/dev/null 2>&1; then
+  echo "docker with the compose plugin is required but not installed" >&2
   exit 1
 fi
 

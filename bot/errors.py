@@ -6,6 +6,10 @@ SEARCH_EXECUTION_ERROR_MESSAGE = "Не удалось получить объя�
 SEARCH_BLOCKED_MESSAGE = (
     "Сайт временно ограничил доступ из-за защиты от ботов. Попробуй позже."
 )
+SEARCH_RATE_LIMITED_MESSAGE = (
+    "Лимит поисков исчерпан — не больше нескольких за час. "
+    "Подождите немного и попробуйте снова."
+)
 
 
 class ActiveCriteriaNotFoundError(RuntimeError):

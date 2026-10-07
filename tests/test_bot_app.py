@@ -9,6 +9,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from pydantic import SecretStr
 
 from bot.app import BOT_COMMANDS, create_bot, create_dispatcher
+from config.settings import TelegramSettings
 
 
 class DummyService:
@@ -115,3 +116,37 @@ def test_create_bot_does_not_force_html_parse_mode(monkeypatch) -> None:
     bot = create_bot()
 
     assert bot.default.parse_mode is None
+
+
+def _guard_settings() -> TelegramSettings:
+    return TelegramSettings(
+        bot_token=SecretStr("123456:ABCDEF"),
+        allowed_user_ids="111",
+        rate_limit_per_minute=100,
+    )
+
+
+def test_create_dispatcher_guards_can_be_enabled_with_injected_service() -> None:
+    # The historical behavior tied guards to `service is None` (a DI detail);
+    # an explicit opt-in must now work even with an injected service.
+    dispatcher = create_dispatcher(  # type: ignore[arg-type]
+        service=DummyService(),
+        storage=MemoryStorage(),
+        guards=True,
+        telegram=_guard_settings(),
+    )
+
+    # allowlist + throttle on both observed update types
+    assert len(dispatcher.message.outer_middleware) == 2
+    assert len(dispatcher.callback_query.outer_middleware) == 2
+
+
+def test_create_dispatcher_guards_can_be_disabled_explicitly() -> None:
+    dispatcher = create_dispatcher(  # type: ignore[arg-type]
+        service=DummyService(),
+        storage=MemoryStorage(),
+        guards=False,
+    )
+
+    assert len(dispatcher.message.outer_middleware) == 0
+    assert len(dispatcher.callback_query.outer_middleware) == 0

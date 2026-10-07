@@ -83,6 +83,30 @@ def test_workflow_actions_are_pinned_to_commit_shas() -> None:
             ), f"{workflow.name}: {action} must be pinned to a commit SHA, not a tag"
 
 
+def test_ci_defines_the_full_check_matrix() -> None:
+    ci = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "ci.yml"
+    text = ci.read_text(encoding="utf-8")
+
+    # The PR check matrix: dropping one of these silently shrinks review
+    # coverage back to "two green checks".
+    for job in (
+        "lint:",
+        "typecheck:",
+        "lockfile:",
+        "migrations:",
+        "tests:",
+        "security-audit:",
+        "infra-lint:",
+    ):
+        assert f"  {job}" in text, f"ci.yml must keep the {job.rstrip(':')} job"
+    # migrations really cycle and the lockfile is really verified
+    assert "alembic downgrade -1" in text
+    assert "uv lock --check" in text
+    assert "pip-audit" in text
+    assert "actionlint" in text
+    assert "shellcheck" in text
+
+
 def test_prod_compose_pins_image_per_deploy() -> None:
     prod = Path(__file__).resolve().parents[1] / "podman-compose.prod.yml"
     text = prod.read_text(encoding="utf-8")

@@ -210,3 +210,4 @@ __marimo__/
 .codegraph
 docs/
 .worktrees/
+.claude/

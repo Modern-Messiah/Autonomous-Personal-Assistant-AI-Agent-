@@ -13,6 +13,7 @@ from agent.models.criteria import SearchCriteria
 from agent.models.enriched import EnrichedApartment
 from agent.models.score import ApartmentScore
 from agent.tools.http_retry import request_with_retry
+from agent.tools.json_fence import strip_json_fence
 
 logger = logging.getLogger(__name__)
 
@@ -353,9 +354,4 @@ class DeepSeekApartmentScorer:
         if not isinstance(content, str) or not content.strip():
             msg = "DeepSeek response did not contain content"
             raise ValueError(msg)
-
-        cleaned = content.strip()
-        if cleaned.startswith("```"):
-            cleaned = cleaned.strip("`")
-            cleaned = cleaned.replace("json\n", "", 1).strip()
-        return cleaned
+        return strip_json_fence(content)

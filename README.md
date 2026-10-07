@@ -133,6 +133,10 @@ The project uses nested settings via `pydantic-settings` and `env_nested_delimit
   (default 6 per hour). Every search burns DeepSeek/2GIS quota and scrapes
   krisha, so on an open bot this — not the message throttle — is what caps
   spend per stranger.
+- `TELEGRAM__GLOBAL_SEARCH_LIMIT_PER_HOUR` — deployment-wide budget of paid
+  searches across all users (default 30 per hour). The wallet guard for an
+  open bot: many strangers × the per-user limit is still an unbounded bill
+  and a crawl of krisha from one IP.
 - `API__TWO_GIS_API_KEY`, `API__DEEPSEEK_API_KEY`
 - optional `API__LANGSMITH_API_KEY` + `API__LANGSMITH_PROJECT` (both enable tracing)
 - optional `API__SENTRY_DSN` (enables Sentry error reporting)

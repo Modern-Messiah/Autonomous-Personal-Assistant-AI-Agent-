@@ -137,7 +137,11 @@ The project uses nested settings via `pydantic-settings` and `env_nested_delimit
   searches across all users (default 30 per hour). The wallet guard for an
   open bot: many strangers × the per-user limit is still an unbounded bill
   and a crawl of krisha from one IP.
-- `API__TWO_GIS_API_KEY`, `API__DEEPSEEK_API_KEY`
+- `API__AREA_PROVIDER` — nearby-infrastructure data source: `osm` (default;
+  free Nominatim + Overpass, no key, self-throttled + Redis-cached) or `2gis`
+  (richer Kazakhstan coverage, paid metered key).
+- `API__TWO_GIS_API_KEY` — required only when `API__AREA_PROVIDER=2gis`
+- `API__DEEPSEEK_API_KEY`
 - optional `API__LANGSMITH_API_KEY` + `API__LANGSMITH_PROJECT` (both enable tracing)
 - optional `API__SENTRY_DSN` (enables Sentry error reporting)
 - `NOTION__ENABLED`, `NOTION__API_TOKEN`, `NOTION__DATABASE_ID`, `NOTION__TIMEOUT_SECONDS`
@@ -160,7 +164,8 @@ See `.env.example` for the full contract.
   - `KrishaParser` (Playwright-first), anti-bot fallback, randomized UA support, Redis-based dedup.
   - `IntentNode` (rule-based text -> `SearchCriteria`) and `run_search_graph_from_text`.
   - `SearchNode` + `run_search_graph` pipeline on LangGraph.
-  - `EnrichNode` with mortgage annuity calculation and 2GIS nearby summary client.
+  - `EnrichNode` with mortgage annuity calculation and a nearby summary client
+    (free OSM via Nominatim+Overpass by default, 2GIS optional).
   - `ScoringNode` with DeepSeek JSON scoring and graceful fallback on scorer errors.
   - Optional Postgres-backed LangGraph checkpointing via `thread_id` and official saver integration.
   - Telegram bot baseline on `aiogram` with `/start`, `/search`, `/criteria`, user registration, and active criteria persistence.

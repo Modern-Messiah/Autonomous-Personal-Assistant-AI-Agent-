@@ -331,6 +331,14 @@ podman-compose -f podman-compose.yml -f podman-compose.prod.yml up -d
 A `production-deploy` concurrency group serializes deploys: a queued push waits
 for the previous rollout instead of racing it.
 
+Every rollout runs the exact artifact this workflow built and tested: the image
+is referenced by its `sha-<commit>` GHCR tag (exported as `IMAGE_TAG`), not the
+floating `:latest`. To roll back, restart the stack on an older tag on the server:
+
+```bash
+IMAGE_TAG=sha-<old-commit> docker compose -f podman-compose.yml -f podman-compose.prod.yml up -d
+```
+
 Required repository secrets (Settings → Secrets → Actions):
 
 - `DEPLOY_HOST` — server address,

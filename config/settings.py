@@ -76,6 +76,10 @@ class TelegramSettings(BaseModel):
     # per 60 minutes. A single search costs far more than a chat message, so the
     # message throttle alone cannot cap quota spend for an open bot.
     search_limit_per_hour: int = Field(default=6, ge=1)
+    # Deployment-wide budget of paid searches per 60 minutes across ALL users.
+    # The bot is open, so strangers x the per-user limit is still an unbounded
+    # bill and a crawl of krisha from one IP; this is the wallet guard.
+    global_search_limit_per_hour: int = Field(default=30, ge=1)
 
     @field_validator("allowed_user_ids", mode="before")
     @classmethod

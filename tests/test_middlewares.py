@@ -88,3 +88,37 @@ async def test_throttle_is_per_user() -> None:
     assert await mw(handler, FakeMessage(1), {}) is None  # user 1 over budget
     assert await mw(handler, FakeMessage(2), {}) == "handled"  # user 2 unaffected
     assert len(seen) == 2
+
+
+class FakeThrottleRedis:
+    """In-Python mirror of _THROTTLE_LUA semantics (one sorted set per key)."""
+
+    def __init__(self) -> None:
+        self.windows: dict[str, dict[str, float]] = {}
+
+    async def eval(self, script: str, numkeys: int, *args: object) -> int:
+        assert numkeys == 1
+        key, now_ms, window_ms, limit, member = args
+        now, window, limit = int(now_ms), int(window_ms), int(limit)
+        window_set = self.windows.setdefault(str(key), {})
+        for stale in [m for m, score in window_set.items() if score <= now - window]:
+            del window_set[stale]
+        if len(window_set) >= limit:
+            return 0
+        window_set[str(member)] = float(now)
+        return 1
+
+
+@pytest.mark.asyncio
+async def test_throttle_redis_window_is_shared_per_user() -> None:
+    redis = FakeThrottleRedis()
+    middleware = ThrottleMiddleware(2, window_seconds=60.0, redis=redis)
+
+    allowed = [await middleware._allow(11) for _ in range(3)]
+
+    assert allowed == [True, True, False]
+    # the denied third attempt recorded nothing
+    assert len(redis.windows["krisha:throttle:11"]) == 2
+    # another user has their own shared window
+    assert await middleware._allow(12) is True
+    assert "krisha:throttle:12" in redis.windows

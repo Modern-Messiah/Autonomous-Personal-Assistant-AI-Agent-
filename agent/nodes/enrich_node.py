@@ -24,6 +24,10 @@ class AreaClientProtocol(Protocol):
 
     async def get_nearby_summary(self, *, city: str, address: str) -> NearbySummary | None: ...
 
+    async def get_nearby_summary_at(
+        self, *, city: str, lat: float, lon: float
+    ) -> NearbySummary | None: ...
+
 
 class EnrichNode:
     """Adds area metadata and mortgage estimates to apartments."""
@@ -65,9 +69,7 @@ class EnrichNode:
     async def _enrich_apartment(
         self, apartment: Apartment, *, deal_type: str = "sale"
     ) -> EnrichedApartment:
-        area_task = asyncio.create_task(
-            self._load_nearby_summary(apartment.city, apartment.address)
-        )
+        area_task = asyncio.create_task(self._load_nearby_summary(apartment))
         nearby = await area_task
         # A mortgage estimate only makes sense for a purchase — on a rental the
         # price is a monthly rate, and "mortgage from 300 000 ₸" is nonsense.
@@ -88,11 +90,24 @@ class EnrichNode:
             mortgage_total_overpayment_kzt=overpayment,
         )
 
-    async def _load_nearby_summary(self, city: str, address: str | None) -> NearbySummary | None:
-        if self._area_client is None or not address:
+    async def _load_nearby_summary(self, apartment: Apartment) -> NearbySummary | None:
+        if self._area_client is None:
             return None
         try:
-            return await self._area_client.get_nearby_summary(city=city, address=address)
+            # The listing's own map pin beats every geocoder: krisha pins the
+            # advert block in the embedded JSON, so prefer it whenever present
+            # and fall back to address geocoding only for listings without it.
+            if apartment.latitude is not None and apartment.longitude is not None:
+                return await self._area_client.get_nearby_summary_at(
+                    city=apartment.city,
+                    lat=apartment.latitude,
+                    lon=apartment.longitude,
+                )
+            if not apartment.address:
+                return None
+            return await self._area_client.get_nearby_summary(
+                city=apartment.city, address=apartment.address
+            )
         except Exception:
             return None
 

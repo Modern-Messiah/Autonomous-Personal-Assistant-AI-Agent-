@@ -1,11 +1,15 @@
-"""Tests for the per-user paid-search budget."""
+"""Tests for the per-user and global paid-search budgets."""
 
 from __future__ import annotations
 
 import pytest
 
-from bot.errors import SEARCH_RATE_LIMITED_MESSAGE, SearchExecutionError
-from bot.rate_limit import SearchRateLimiter
+from bot.errors import (
+    SEARCH_BUSY_MESSAGE,
+    SEARCH_RATE_LIMITED_MESSAGE,
+    SearchExecutionError,
+)
+from bot.rate_limit import BudgetDecision, SearchBudget, SearchRateLimiter
 
 
 class FakeClock:
@@ -51,6 +55,34 @@ def test_limiter_rejects_non_positive_limit() -> None:
         SearchRateLimiter(limit_per_hour=0)
 
 
+def test_budget_reports_user_window_first() -> None:
+    clock = FakeClock()
+    budget = SearchBudget(
+        per_user_limit=1, global_limit=100, clock=clock
+    )
+
+    assert budget.try_acquire(7) is BudgetDecision.ALLOWED
+    assert budget.try_acquire(7) is BudgetDecision.USER_EXHAUSTED
+    # another user is unaffected by the per-user window...
+    assert budget.try_acquire(8) is BudgetDecision.ALLOWED
+
+
+def test_budget_global_window_caps_all_users_together() -> None:
+    clock = FakeClock()
+    budget = SearchBudget(
+        per_user_limit=10, global_limit=2, clock=clock
+    )
+
+    assert budget.try_acquire(1) is BudgetDecision.ALLOWED
+    assert budget.try_acquire(2) is BudgetDecision.ALLOWED
+    # per-user windows are fresh, but the deployment is out of budget
+    assert budget.try_acquire(3) is BudgetDecision.GLOBAL_EXHAUSTED
+    assert budget.try_acquire(4) is BudgetDecision.GLOBAL_EXHAUSTED
+    # the failed attempts must not have recorded phantom per-user usage
+    clock.advance(3601.0)
+    assert budget.try_acquire(3) is BudgetDecision.ALLOWED
+
+
 @pytest.mark.asyncio
 async def test_service_blocks_paid_search_when_budget_spent() -> None:
     from bot.service import SearchBotService
@@ -62,7 +94,9 @@ async def test_service_blocks_paid_search_when_budget_spent() -> None:
     service = SearchBotService(
         session_factory=None,  # type: ignore[arg-type]
         search_runner=fake_runner,
-        search_limiter=SearchRateLimiter(limit_per_hour=1, clock=FakeClock()),
+        search_budget=SearchBudget(
+            per_user_limit=1, global_limit=10, clock=FakeClock()
+        ),
     )
 
     first = await service._run_search_graph(
@@ -81,3 +115,29 @@ def _build_criteria() -> object:
     from agent.models.criteria import SearchCriteria
 
     return SearchCriteria(user_id=1, city="Almaty", deal_type="sale")
+
+
+@pytest.mark.asyncio
+async def test_service_reports_busy_when_global_budget_spent() -> None:
+    from bot.service import SearchBotService
+
+    async def fake_runner(*args: object, **kwargs: object) -> list[object]:
+        return []
+
+    clock = FakeClock()
+    service = SearchBotService(
+        session_factory=None,  # type: ignore[arg-type]
+        search_runner=fake_runner,
+        search_budget=SearchBudget(
+            per_user_limit=10, global_limit=1, clock=clock
+        ),
+    )
+    budget = service._search_budget
+    assert budget is not None
+    budget.try_acquire(999)  # a different user drains the global window
+
+    with pytest.raises(SearchExecutionError) as exc_info:
+        await service._run_search_graph(
+            telegram_user_id=7, user_id=1, criteria=_build_criteria()
+        )
+    assert exc_info.value.user_message == SEARCH_BUSY_MESSAGE

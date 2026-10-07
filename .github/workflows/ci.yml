@@ -128,6 +128,11 @@ jobs:
       - name: Install dependencies
         run: uv sync --dev --locked
 
+      # Integration tests hit the real schema; the downgrade cycle itself is
+      # validated separately in the migrations job.
+      - name: Apply migrations for integration tests
+        run: uv run alembic upgrade head
+
       - name: Pytest
         run: >-
           uv run pytest

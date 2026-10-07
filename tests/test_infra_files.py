@@ -96,13 +96,16 @@ def test_ci_defines_the_full_check_matrix() -> None:
         "migrations:",
         "tests:",
         "security-audit:",
+        "secrets-scan:",
         "infra-lint:",
     ):
         assert f"  {job}" in text, f"ci.yml must keep the {job.rstrip(':')} job"
     # migrations really cycle and the lockfile is really verified
     assert "alembic downgrade -1" in text
+    assert "uv run alembic check" in text  # model drift guard
     assert "uv lock --check" in text
     assert "pip-audit" in text
+    assert "gitleaks" in text  # secrets scan
     assert "actionlint" in text
     assert "shellcheck" in text
 
@@ -166,3 +169,18 @@ def test_systemd_deploy_files_exist_with_expected_commands() -> None:
     assert "docker compose -f" in wait_script
     assert '"$POSTGRES_USER"' in wait_script
     assert '"$REDIS_PASSWORD"' in wait_script
+
+
+def test_example_env_and_real_env_never_committed() -> None:
+    """Guards the no-leaked-secrets invariant that gitleaks backs up in CI."""
+    import subprocess
+
+    root = Path(__file__).resolve().parents[1]
+    gitignore = (root / ".gitignore").read_text(encoding="utf-8")
+    assert "\n.env\n" in gitignore or gitignore.startswith(".env\n")
+
+    tracked = subprocess.run(
+        ["git", "ls-files"], cwd=root, capture_output=True, text=True, check=True
+    ).stdout.splitlines()
+    assert ".env" not in tracked, ".env must never be tracked"
+    assert ".env.example" in tracked, ".env.example must stay tracked"

@@ -20,15 +20,22 @@ from config.settings import get_settings
 
 __all__ = ["build_checkpoint_config", "get_async_postgres_checkpointer"]
 
-# Setup DDL is idempotent but not free: run it once per process instead of on
-# every checkpointed search (each search opens a fresh saver). Two searches
-# racing the first call may both run it — harmless, the DDL is IF NOT EXISTS.
+# Setup DDL is owned by Alembic migration 202610070008 (langgraph checkpoint
+# tables), so the runtime role needs no DDL privileges. ``setup=True`` remains
+# available for one-off bootstrap flows; it is idempotent and runs at most once
+# per process (two searches racing the first call may both run it — harmless).
 _checkpoint_setup_done: bool = False
 
 
 @asynccontextmanager
-async def get_async_postgres_checkpointer(*, setup: bool = True) -> AsyncIterator[Any]:
-    """Yield official LangGraph Postgres saver bound to current DB settings."""
+async def get_async_postgres_checkpointer(*, setup: bool = False) -> AsyncIterator[Any]:
+    """Yield official LangGraph Postgres saver bound to current DB settings.
+
+    The checkpoint schema is created by ``alembic upgrade head`` (migration
+    202610070008 mirrors ``AsyncPostgresSaver.setup()`` exactly, bookkeeping
+    included), so DDL at runtime is off by default. Pass ``setup=True`` only for
+    explicit one-off bootstrap outside the migration path.
+    """
     checkpoint_module = import_module("langgraph.checkpoint.postgres.aio")
     async_postgres_saver = checkpoint_module.AsyncPostgresSaver
 

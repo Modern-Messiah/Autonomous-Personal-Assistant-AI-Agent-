@@ -56,6 +56,12 @@ MARKET_DIFF_PATTERN = re.compile(
     re.IGNORECASE,
 )
 CEILING_PATTERN = re.compile(r"(\d+(?:[.,]\d+)?)")
+# krisha pins each advert on the map inside the embedded advert JSON:
+# "map":{"lat":43.29,"lon":77.01,"zoom":14,...} — exactly one occurrence per
+# detail page, block-level precise (better than any geocoder can do).
+MAP_COORDS_PATTERN = re.compile(
+    r'"map":\s*\{"lat":(\d+(?:\.\d+)?),"lon":(\d+(?:\.\d+)?)'
+)
 # Longest real descriptions are ~2k chars; cap guards against spam blobs.
 DESCRIPTION_MAX_CHARS = 2000
 
@@ -255,6 +261,7 @@ class KrishaHtmlParser:
         published_at = self._extract_published_at(soup, html)
         posted_by, agency_name = self._extract_author(html)
         params = self._extract_params(soup)
+        coordinates = self._extract_map_coordinates(html)
 
         return Apartment(
             external_id=preview.external_id,
@@ -279,6 +286,8 @@ class KrishaHtmlParser:
             condition=self._param_value(params, "состояние"),
             photos=photo_urls,
             published_at=published_at,
+            latitude=coordinates[0] if coordinates else None,
+            longitude=coordinates[1] if coordinates else None,
         )
 
     @staticmethod
@@ -301,6 +310,17 @@ class KrishaHtmlParser:
             return None
         value = float(match.group(1).replace(",", "."))
         return -value if match.group(2).lower() == "дешевле" else value
+
+    @staticmethod
+    def _extract_map_coordinates(html: str) -> tuple[float, float] | None:
+        """The advert's own map pin (block-level) from the embedded advert JSON."""
+        match = MAP_COORDS_PATTERN.search(html)
+        if match is None:
+            return None
+        try:
+            return float(match.group(1)), float(match.group(2))
+        except ValueError:
+            return None
 
     @staticmethod
     def _extract_params(soup: BeautifulSoup) -> dict[str, str]:

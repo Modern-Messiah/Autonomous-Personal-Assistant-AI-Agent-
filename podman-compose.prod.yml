@@ -1,16 +1,22 @@
 # Production override: run the CI-built, smoke-tested image from GHCR instead of
 # building on the VPS. The base podman-compose.yml still builds locally for dev.
 #
-# VPS usage:
+# The image is pinned per deploy via IMAGE_TAG (the sha-<commit> tag pushed by
+# container.yml alongside :latest), so each rollout runs an exact, reproducible
+# artifact and a bad release has a rollback target:
+#
+#   IMAGE_TAG=sha-<old-commit> podman-compose -f podman-compose.yml -f podman-compose.prod.yml up -d
+#
+# VPS first bootstrap (unpinned, before CD exists):
 #   podman login ghcr.io
 #   podman-compose -f podman-compose.yml -f podman-compose.prod.yml pull
 #   podman-compose -f podman-compose.yml -f podman-compose.prod.yml up -d
 services:
   migrate:
-    image: ghcr.io/modern-messiah/krisha-agent:latest
+    image: ghcr.io/modern-messiah/krisha-agent:${IMAGE_TAG:-latest}
   bot:
-    image: ghcr.io/modern-messiah/krisha-agent:latest
+    image: ghcr.io/modern-messiah/krisha-agent:${IMAGE_TAG:-latest}
   scheduler-producer:
-    image: ghcr.io/modern-messiah/krisha-agent:latest
+    image: ghcr.io/modern-messiah/krisha-agent:${IMAGE_TAG:-latest}
   scheduler-worker:
-    image: ghcr.io/modern-messiah/krisha-agent:latest
+    image: ghcr.io/modern-messiah/krisha-agent:${IMAGE_TAG:-latest}

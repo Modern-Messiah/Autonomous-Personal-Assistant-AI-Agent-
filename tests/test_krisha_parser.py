@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+from pydantic import ValidationError
 
 from agent.models.apartment import Apartment
 from agent.models.criteria import SearchCriteria
@@ -880,3 +881,39 @@ async def test_check_health_raises_on_blocked_page() -> None:
     # A block must propagate so the canary can report it distinctly from a markup change.
     with pytest.raises(AntiBotBlockedError):
         await parser.check_health(context, criteria=criteria)
+
+
+def test_detail_page_extracts_listing_map_pin() -> None:
+    parser = KrishaParser(redis_client=FakeRedis(), min_delay_seconds=0, max_delay_seconds=0)
+    base_html = load_fixture("detail_123456789.html")
+    preview = make_preview(external_id="123456789", price_kzt=35_000_000)
+
+    blob = (
+        "<script>window.data={"
+        '"map":{"lat":43.292679384553,"lon":77.013974189649,"zoom":14,"type":null}'
+        "}</script>"
+    )
+    html = base_html.replace("</body>", blob + "</body>")
+
+    apartment = parser.parse_detail_page(html, preview=preview, city="Almaty")
+
+    assert apartment.latitude == pytest.approx(43.292679384553)
+    assert apartment.longitude == pytest.approx(77.013974189649)
+
+    # no embedded map object -> coordinates stay None, enrichment falls back
+    plain = parser.parse_detail_page(base_html, preview=preview, city="Almaty")
+    assert plain.latitude is None
+    assert plain.longitude is None
+
+    # garbage coordinates outside the KZ bounding box are rejected by the model
+    bad_blob = (
+        "<script>window.data={"
+        '"map":{"lat":13.37,"lon":52.52,"zoom":14}'
+        "}</script>"
+    )
+    with pytest.raises(ValidationError):
+        parser.parse_detail_page(
+            base_html.replace("</body>", bad_blob + "</body>"),
+            preview=preview,
+            city="Almaty",
+        )

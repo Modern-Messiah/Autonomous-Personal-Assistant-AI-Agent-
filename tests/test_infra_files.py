@@ -117,16 +117,29 @@ def test_prod_compose_pins_image_per_deploy() -> None:
     prod = Path(__file__).resolve().parents[1] / "podman-compose.prod.yml"
     text = prod.read_text(encoding="utf-8")
 
-    # The production overlay must consume the per-deploy sha-<commit> tag the
-    # CD workflow exports as IMAGE_TAG, not a floating :latest — a rollout runs
-    # the exact tested artifact and a bad release has a rollback target.
+    # The production overlay must consume a per-run sha-<commit> tag via
+    # IMAGE_TAG, not a floating :latest — a rollout runs the exact tested
+    # artifact and a bad release has a rollback target.
     assert text.count("${IMAGE_TAG:-latest}") == 4
     assert "ghcr.io/modern-messiah/krisha-agent:${IMAGE_TAG:-latest}" in text
-    # ...and the CD workflow must forward the commit sha to the deploy script.
+
+
+def test_cd_has_no_server_deploy() -> None:
+    """No deployment target exists — CD must not SSH anywhere.
+
+    Guards against an accidental re-add of the deploy job: it used to fail
+    every run on SSH auth once the server was gone.
+    """
+    for workflow in (Path(__file__).resolve().parents[1] / ".github" / "workflows").glob("*.yml"):
+        text = workflow.read_text(encoding="utf-8")
+        assert "ssh-action" not in text, f"{workflow.name} must not deploy over SSH"
+        assert "secrets.DEPLOY_" not in text, f"{workflow.name} uses deploy secrets"
+
     cd = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "cd.yml"
     cd_text = cd.read_text(encoding="utf-8")
-    assert "IMAGE_TAG: ${{ github.sha }}" in cd_text
-    assert "envs: IMAGE_TAG,DEPLOY_PATH" in cd_text
+    # CD remains the main-branch gate: full test suite + published image.
+    assert "uses: ./.github/workflows/ci.yml" in cd_text
+    assert "uses: ./.github/workflows/container.yml" in cd_text
 
 
 def test_systemd_deploy_files_exist_with_expected_commands() -> None:

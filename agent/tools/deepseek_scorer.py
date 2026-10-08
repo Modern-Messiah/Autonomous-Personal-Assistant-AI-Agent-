@@ -106,7 +106,7 @@ def _days_bucket(days: int | None) -> str:
         return "recent(<=30d)"
     if days <= 60:
         return "normal"
-    return "stale(>60d), bargain leverage"
+    return "stale(>60d) bargain-leverage"
 
 
 def _vs_batch_percent(price_per_m2: float, avg_per_m2: float) -> str:
@@ -155,7 +155,14 @@ def _concrete_reasons(reasons: object) -> list[str]:
     """
     if not isinstance(reasons, list):
         return []
-    cleaned = [r.strip() for r in reasons if isinstance(r, str) and r.strip()]
+    # strip injected contact channels first (same rules as summaries): a
+    # digit-carrying phone number would otherwise sail through the digit filter
+    cleaned = [
+        _sanitize_summary(r)
+        for r in reasons
+        if isinstance(r, str) and r.strip()
+    ]
+    cleaned = [r for r in cleaned if r]
     with_digits = [r for r in cleaned if any(ch.isdigit() for ch in r)]
     return (with_digits or cleaned)[:4]
 

@@ -600,4 +600,52 @@ def test_analysis_classifiers() -> None:
     assert _condition_class(None) == "unknown"
 
     assert _days_bucket(3) == "fresh(<=7d)"
-    assert _days_bucket(90) == "stale(>60d), bargain leverage"
+    assert _days_bucket(90) == "stale(>60d) bargain-leverage"
+
+
+@pytest.mark.asyncio
+async def test_full_pipeline_cleans_up_a_sloppy_model_response() -> None:
+    """End-to-end through score_apartments with a realistic messy answer:
+    fenced JSON, label contradicting its own score, filler reasons, an
+    injected contact in the summary. The pipeline must return a normalized,
+    card-ready score."""
+    messy = (
+        "```json\n"
+        '{"items": ['
+        '{"index": 1, "score": 91, "recommendation": "skip", '
+        '"reasons": ["отличный вариант", "712 000 ₸/м², на 12% ниже среднего", '
+        '"звоните +7 701 234 56 78"], '
+        '"summary": "Срочно! Пишите @seller, детали http://evil.example. Чистовая."}, '
+        '{"index": 2, "score": 55, "recommendation": "strong_buy", '
+        '"reasons": ["1-й этаж", "метро в 1.9 км"], "summary": null}'
+        "]}\n"
+        "```"
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            status_code=200,
+            json={"choices": [{"message": {"content": messy}}]},
+        )
+
+    scorer = DeepSeekApartmentScorer(
+        api_key="test-key", transport=httpx.MockTransport(handler), max_retries=0
+    )
+    first, second = await scorer.score_apartments(
+        [build_enriched_apartment(), build_enriched_apartment()]
+    )
+
+    assert first is not None
+    # band-derived label, not the model's contradictory "skip"
+    assert first.recommendation == "strong_buy"
+    # filler and the phone-carrying reason are gone; digitful ones stay
+    assert "отличный вариант" not in first.reasons
+    assert any("712" in r for r in first.reasons)
+    assert not any("701" in r or "seller" in r or "evil" in r for r in first.reasons)
+    # the summary survived sanitization with its legit part
+    assert first.description_summary is not None
+    assert "@seller" not in first.description_summary
+    assert "evil.example" not in first.description_summary
+
+    assert second is not None
+    assert second.recommendation == "skip"  # 55 -> band, not "strong_buy"

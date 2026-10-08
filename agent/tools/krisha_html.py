@@ -14,6 +14,10 @@ from bs4 import BeautifulSoup
 from agent.models.apartment import Apartment
 
 BASE_URL = "https://krisha.kz"
+# Hosts a preview href may resolve to. Anything else (an injected absolute URL
+# that merely contains "/a/show/<id>") is not krisha and must never be fetched
+# by the browser or shown to the user as a listing link.
+_KRISHA_HOSTS = frozenset({"krisha.kz", "www.krisha.kz", "m.krisha.kz"})
 CAPTCHA_MARKERS = ("captcha", "verify you are human", "too many requests", "access denied")
 EXTERNAL_ID_PATTERN = re.compile(r"/a/show/(\d+)")
 PRICE_PATTERN = re.compile(r"(\d[\d\s]{2,}\d)")
@@ -184,7 +188,7 @@ class KrishaHtmlParser:
 
             preview = ListingPreview(
                 external_id=external_id,
-                url=self._normalize_url(href_value),
+                url=self._normalize_url(href_value, external_id=external_id),
                 title=title,
                 price_kzt=self._extract_price_kzt(price_text),
                 rooms=self._extract_rooms(spec_text),
@@ -496,13 +500,18 @@ class KrishaHtmlParser:
         return fallback
 
     @staticmethod
-    def _normalize_url(href: str) -> str:
+    def _normalize_url(href: str, *, external_id: str) -> str:
         # Drop tracking query/fragment (e.g. ?srchid=...&srchtype=hot_block_filter
         # &srchpos=2&source=search_advert). On promoted "hot block" adverts those
         # params send the detail page into a redirect loop (ERR_TOO_MANY_REDIRECTS);
         # the bare /a/show/<id> path is the canonical, fetchable URL.
         absolute = urljoin(BASE_URL, href)
         split = urlsplit(absolute)
+        if split.netloc.removeprefix("www.") not in _KRISHA_HOSTS:
+            # The href carried a foreign host while still matching /a/show/<id>
+            # (injected or rewritten link). The id is the only trusted part —
+            # rebuild the canonical krisha URL instead of following it.
+            split = urlsplit(f"{BASE_URL}/a/show/{external_id}")
         return urlunsplit((split.scheme, split.netloc, split.path, "", ""))
 
     @staticmethod

@@ -42,6 +42,12 @@ class Apartment(BaseModel):
     condition: str | None = None
     photos: list[str]
     published_at: datetime | None = None
+    # krisha pins every advert on the map in the embedded advert JSON; the point
+    # is block-level (deliberately blurred) but far more precise than any
+    # geocoder and lets enrichment skip geocoding entirely. Bounded to the
+    # Kazakhstan bounding box so garbage in the page can't smuggle through.
+    latitude: float | None = Field(default=None, ge=40.0, le=56.0)
+    longitude: float | None = Field(default=None, ge=46.0, le=88.0)
     scraped_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     def days_on_market(self, *, now: datetime | None = None) -> int | None:

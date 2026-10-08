@@ -76,6 +76,10 @@ class TelegramSettings(BaseModel):
     # per 60 minutes. A single search costs far more than a chat message, so the
     # message throttle alone cannot cap quota spend for an open bot.
     search_limit_per_hour: int = Field(default=6, ge=1)
+    # Deployment-wide budget of paid searches per 60 minutes across ALL users.
+    # The bot is open, so strangers x the per-user limit is still an unbounded
+    # bill and a crawl of krisha from one IP; this is the wallet guard.
+    global_search_limit_per_hour: int = Field(default=30, ge=1)
 
     @field_validator("allowed_user_ids", mode="before")
     @classmethod
@@ -107,11 +111,32 @@ class TelegramSettings(BaseModel):
 class APISettings(BaseModel):
     """External integrations keys."""
 
-    two_gis_api_key: SecretStr
+    # Which service enriches listings with nearby-infrastructure data:
+    # "osm" (default) — Nominatim + Overpass, free, no key, rate-limit friendly;
+    # "2gis" — richer KZ data, but a paid metered key.
+    area_provider: Literal["osm", "2gis"] = "osm"
+    two_gis_api_key: SecretStr | None = None
     deepseek_api_key: SecretStr
     langsmith_api_key: SecretStr | None = None
     langsmith_project: str | None = Field(default=None, min_length=1)
     sentry_dsn: str | None = Field(default=None, min_length=1)
+
+    @field_validator("two_gis_api_key", mode="before")
+    @classmethod
+    def normalize_empty_api_key(cls, value: object) -> object:
+        """Treat a blank TWO_GIS key from environment files as unset."""
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @model_validator(mode="after")
+    def validate_provider_contract(self) -> "APISettings":
+        if self.area_provider == "2gis" and not (
+            self.two_gis_api_key and self.two_gis_api_key.get_secret_value().strip()
+        ):
+            msg = "two_gis_api_key is required when API__AREA_PROVIDER=2gis"
+            raise ValueError(msg)
+        return self
 
     @field_validator("langsmith_api_key", "langsmith_project", "sentry_dsn", mode="before")
     @classmethod
@@ -161,6 +186,14 @@ class SchedulerSettings(BaseModel):
     canary_admin_chat_id: int | None = None
     canary_city: str = Field(default="Almaty", min_length=1)
     canary_interval_hours: int = Field(default=6, ge=1, le=24)
+
+    @field_validator("canary_admin_chat_id", mode="before")
+    @classmethod
+    def normalize_empty_chat_id(cls, value: object) -> object:
+        """Treat the blank value from .env.example templates as unset."""
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
 
 class ArqSettings(BaseModel):

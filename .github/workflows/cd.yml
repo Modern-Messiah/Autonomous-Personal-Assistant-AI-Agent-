@@ -28,19 +28,37 @@ jobs:
     name: Deploy to server
     needs: [test, build-push]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      # Passed through the environment, not interpolated into the script: a
+      # secret value must never become part of the shell command line.
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+      # Full commit sha; the script turns it into the sha-<short> image tag that
+      # container.yml pushed alongside :latest, so the deploy runs the exact
+      # artifact this workflow built and tested (not whatever :latest points to
+      # by then).
+      IMAGE_TAG: ${{ github.sha }}
     steps:
       - name: Update stack over SSH
-        uses: appleboy/ssh-action@v1.2.5
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ secrets.DEPLOY_PORT || 22 }}
+          envs: IMAGE_TAG,DEPLOY_PATH
           script: |
             set -euo pipefail
-            cd "${{ secrets.DEPLOY_PATH }}"
+            cd "$DEPLOY_PATH"
+            export IMAGE_TAG="sha-${IMAGE_TAG:0:7}"
+            echo "deploying image tag $IMAGE_TAG"
+            # The server clone is a disposable deploy checkout: hard-tracking
+            # origin/main (instead of ff-only pull) keeps deploys working even
+            # after a history rewrite on main, and never strands the server on
+            # a diverged local state.
             git fetch origin main
-            git pull --ff-only origin main
+            git reset --hard origin/main
             docker compose -f podman-compose.yml -f podman-compose.prod.yml pull migrate bot scheduler-producer scheduler-worker
             docker compose -f podman-compose.yml -f podman-compose.prod.yml run --rm migrate
             docker compose -f podman-compose.yml -f podman-compose.prod.yml up -d bot scheduler-producer scheduler-worker

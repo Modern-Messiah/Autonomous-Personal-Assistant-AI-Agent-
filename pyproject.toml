@@ -86,3 +86,9 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = ["bot.routers.*"]
 disable_error_code = ["untyped-decorator"]
+
+[tool.bandit]
+# B101 assert  — internal invariants, not security checks
+# B110/B112    — intentional per-item skip in parsing/feedback loops
+# B311 random  — jitter/delays/UA rotation, not crypto
+skips = ["B101", "B110", "B112", "B311"]

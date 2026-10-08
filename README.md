@@ -142,7 +142,15 @@ The project uses nested settings via `pydantic-settings` and `env_nested_delimit
   (default 6 per hour). Every search burns DeepSeek/2GIS quota and scrapes
   krisha, so on an open bot this — not the message throttle — is what caps
   spend per stranger.
-- `API__TWO_GIS_API_KEY`, `API__DEEPSEEK_API_KEY`
+- `TELEGRAM__GLOBAL_SEARCH_LIMIT_PER_HOUR` — deployment-wide budget of paid
+  searches across all users (default 30 per hour). The wallet guard for an
+  open bot: many strangers × the per-user limit is still an unbounded bill
+  and a crawl of krisha from one IP.
+- `API__AREA_PROVIDER` — nearby-infrastructure data source: `osm` (default;
+  free Nominatim + Overpass, no key, self-throttled + Redis-cached) or `2gis`
+  (richer Kazakhstan coverage, paid metered key).
+- `API__TWO_GIS_API_KEY` — required only when `API__AREA_PROVIDER=2gis`
+- `API__DEEPSEEK_API_KEY`
 - optional `API__LANGSMITH_API_KEY` + `API__LANGSMITH_PROJECT` (both enable tracing)
 - optional `API__SENTRY_DSN` (enables Sentry error reporting)
 - `NOTION__ENABLED`, `NOTION__API_TOKEN`, `NOTION__DATABASE_ID`, `NOTION__TIMEOUT_SECONDS`
@@ -165,7 +173,8 @@ See `.env.example` for the full contract.
   - `KrishaParser` (Playwright-first), anti-bot fallback, randomized UA support, Redis-based dedup.
   - `IntentNode` (rule-based text -> `SearchCriteria`) and `run_search_graph_from_text`.
   - `SearchNode` + `run_search_graph` pipeline on LangGraph.
-  - `EnrichNode` with mortgage annuity calculation and 2GIS nearby summary client.
+  - `EnrichNode` with mortgage annuity calculation and a nearby summary client
+    (free OSM via Nominatim+Overpass by default, 2GIS optional).
   - `ScoringNode` with DeepSeek JSON scoring and graceful fallback on scorer errors.
   - Optional Postgres-backed LangGraph checkpointing via `thread_id` and official saver integration.
   - Telegram bot baseline on `aiogram` with `/start`, `/search`, `/criteria`, user registration, and active criteria persistence.
@@ -283,32 +292,61 @@ Current scheduler behavior:
 
 The repository includes a shared runtime image in [Containerfile](Containerfile) and a local stack in [podman-compose.yml](podman-compose.yml).
 
-Suggested local flow:
+Suggested local flow (any Compose-compatible runtime: `docker compose`,
+`podman compose`; the file is standard Compose format):
 
 ```bash
 cp .env.example .env
-podman-compose build
-podman-compose up -d postgres redis
-podman-compose run --rm migrate
-podman-compose up -d bot scheduler-producer scheduler-worker
+docker compose -f podman-compose.yml build
+docker compose -f podman-compose.yml up -d postgres redis
+docker compose -f podman-compose.yml run --rm migrate
+docker compose -f podman-compose.yml up -d bot scheduler-producer scheduler-worker
 ```
 
 Useful commands:
 
 ```bash
-podman-compose logs -f bot
-podman-compose logs -f scheduler-worker
-podman-compose down
+docker compose -f podman-compose.yml logs -f bot
+docker compose -f podman-compose.yml logs -f scheduler-worker
+docker compose -f podman-compose.yml down
 ```
 
 Current stack layout:
 
 - `postgres`: PostgreSQL 16 with persistent volume,
+- `postgres-backup`: nightly `pg_dump` (custom format) into the `postgres_backups`
+  volume, 14-day retention. The DB holds user feedback and learned taste
+  profiles — data that cannot be re-scraped — so it is the one thing the stack
+  backs up automatically. See [Backups](#backups).,
 - `redis`: Redis 7 queue/cache backend,
 - `migrate`: one-shot Alembic upgrade service,
 - `bot`: Telegram bot runtime,
 - `scheduler-producer`: ARQ job producer (`SCHEDULER__RUNTIME=arq`),
 - `scheduler-worker`: ARQ worker processing per-user monitor jobs.
+
+## Backups
+
+The `postgres-backup` service dumps the database at startup and then once a
+day (custom format, compressed), keeping the last 14 dumps in the
+`postgres_backups` volume.
+
+List backups:
+
+```bash
+docker compose -f podman-compose.yml run --rm --entrypoint ls postgres-backup -la /backups
+```
+
+Restore one (stops the writers first; `pg_restore` reuses the service env):
+
+```bash
+docker compose -f podman-compose.yml stop bot scheduler-producer scheduler-worker
+docker compose -f podman-compose.yml run --rm --entrypoint pg_restore postgres-backup \
+  --clean --if-exists --no-owner --no-privileges /backups/krisha_<timestamp>.dump
+docker compose -f podman-compose.yml up -d bot scheduler-producer scheduler-worker
+```
+
+To take an off-server copy: `docker cp` / `rsync` the dump out of the volume —
+a backup that lives on the same disk is only half a backup.
 
 ## Container Workflow
 
@@ -344,6 +382,14 @@ podman-compose -f podman-compose.yml -f podman-compose.prod.yml up -d
 A `production-deploy` concurrency group serializes deploys: a queued push waits
 for the previous rollout instead of racing it.
 
+Every rollout runs the exact artifact this workflow built and tested: the image
+is referenced by its `sha-<commit>` GHCR tag (exported as `IMAGE_TAG`), not the
+floating `:latest`. To roll back, restart the stack on an older tag on the server:
+
+```bash
+IMAGE_TAG=sha-<old-commit> docker compose -f podman-compose.yml -f podman-compose.prod.yml up -d
+```
+
 Required repository secrets (Settings → Secrets → Actions):
 
 - `DEPLOY_HOST` — server address,
@@ -360,10 +406,12 @@ systemd unit.
 
 ## VPS Deploy
 
-The repository includes a rootless Podman deploy path for Ubuntu 24:
+The repository includes a rootless Docker deploy path for Ubuntu 24. One
+compose tooling everywhere: the manual/systemd flow below uses the same
+`docker compose` the CD pipeline drives over SSH.
 
-- [bootstrap_ubuntu_24.sh](deploy/vps/bootstrap_ubuntu_24.sh) installs Podman prerequisites and enables linger for the deploy user.
-- [krisha-agent-compose.service.template](deploy/systemd/krisha-agent-compose.service.template) wraps the full `podman-compose` stack in a user-level systemd service.
+- [bootstrap_ubuntu_24.sh](deploy/vps/bootstrap_ubuntu_24.sh) installs Docker Engine + the compose plugin, configures a rootless daemon for the deploy user, and enables linger.
+- [krisha-agent-compose.service.template](deploy/systemd/krisha-agent-compose.service.template) wraps the full `docker compose` stack in a user-level systemd service.
 - [install_user_service.sh](deploy/systemd/install_user_service.sh) renders the template into `~/.config/systemd/user`.
 
 Suggested VPS flow:
@@ -374,17 +422,15 @@ sudo ./deploy/vps/bootstrap_ubuntu_24.sh
 
 # as the deploy user
 cp .env.example .env
-podman-compose build
 ./deploy/systemd/install_user_service.sh
 systemctl --user start krisha-agent-compose.service
 systemctl --user status krisha-agent-compose.service
 ```
 
-To roll out a code update:
+To roll out a code update (day-to-day updates arrive via `cd.yml`):
 
 ```bash
 git pull
-podman-compose build
 systemctl --user restart krisha-agent-compose.service
 ```
 

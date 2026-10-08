@@ -17,6 +17,7 @@ from agent.nodes.intent_node import IntentNode
 from agent.tools.krisha_parser import AntiBotBlockedError
 from bot.errors import (
     SEARCH_BLOCKED_MESSAGE,
+    SEARCH_BUSY_MESSAGE,
     SEARCH_EXECUTION_ERROR_MESSAGE,
     SEARCH_RATE_LIMITED_MESSAGE,
     ActiveCriteriaNotFoundError,
@@ -26,7 +27,7 @@ from bot.errors import (
 )
 from bot.feedback_service import FeedbackService, NotionApartmentSync, RestoreOutcome
 from bot.monitor_service import MonitorService, MonitorStatus
-from bot.rate_limit import SearchRateLimiter
+from bot.rate_limit import BudgetDecision, SearchBudget
 from bot.recommendation_service import (
     Recommendation,
     RecommendationResult,
@@ -95,12 +96,12 @@ class SearchBotService:
         intent_node: IntentNode | None = None,
         search_runner: SearchRunner = run_search_graph_with_postgres,
         notion_sync: NotionApartmentSync | None = None,
-        search_limiter: SearchRateLimiter | None = None,
+        search_budget: SearchBudget | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._intent_node = intent_node or IntentNode()
         self._search_runner = search_runner
-        self._search_limiter = search_limiter
+        self._search_budget = search_budget
         self._monitor = MonitorService(session_factory=session_factory)
         self._feedback = FeedbackService(
             session_factory=session_factory, notion_sync=notion_sync
@@ -394,15 +395,17 @@ class SearchBotService:
         dedup_namespace: str = "search",
     ) -> list[EnrichedApartment]:
         """Run the search graph and drop listings the user already decided on."""
-        if self._search_limiter is not None and not self._search_limiter.try_acquire(
-            telegram_user_id
-        ):
-            # Every paid pipeline (search, refine, /foryou rerun) funnels through
-            # here, so this single check bounds a user's hourly quota spend.
-            logger.info(
-                "search rate limit reached for telegram user %s", telegram_user_id
-            )
-            raise SearchExecutionError(SEARCH_RATE_LIMITED_MESSAGE)
+        if self._search_budget is not None:
+            decision = await self._search_budget.try_acquire(telegram_user_id)
+            if decision is BudgetDecision.USER_EXHAUSTED:
+                logger.info(
+                    "per-user search budget exhausted for telegram user %s",
+                    telegram_user_id,
+                )
+                raise SearchExecutionError(SEARCH_RATE_LIMITED_MESSAGE)
+            if decision is BudgetDecision.GLOBAL_EXHAUSTED:
+                logger.warning("global search budget exhausted; bot is busy")
+                raise SearchExecutionError(SEARCH_BUSY_MESSAGE)
         try:
             runner_kwargs = {
                 "thread_id": f"telegram-user:{telegram_user_id}",

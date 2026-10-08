@@ -195,7 +195,7 @@ def test_log_level_is_normalized_and_validated(tmp_path: Path) -> None:
         Settings(_env_file=env_file)
 
 
-def _write_env(env_file: Path, extra_lines: list[str]) -> None:
+def _write_minimal_env(env_file: Path, extra_lines: list[str]) -> None:
     env_file.write_text(
         "\n".join(
             [
@@ -216,7 +216,7 @@ def _write_env(env_file: Path, extra_lines: list[str]) -> None:
 
 def test_settings_reject_malformed_allowed_user_ids(tmp_path: Path) -> None:
     env_file = tmp_path / ".env"
-    _write_env(env_file, ["TELEGRAM__ALLOWED_USER_IDS=123,abc"])
+    _write_minimal_env(env_file, ["TELEGRAM__ALLOWED_USER_IDS=123,abc"])
 
     with pytest.raises(ValidationError, match="ALLOWED_USER_IDS"):
         Settings(_env_file=env_file)
@@ -226,9 +226,33 @@ def test_settings_accept_numeric_allowed_user_ids_and_default_search_limit(
     tmp_path: Path,
 ) -> None:
     env_file = tmp_path / ".env"
-    _write_env(env_file, ["TELEGRAM__ALLOWED_USER_IDS=111; 222,", ""])
+    _write_minimal_env(env_file, ["TELEGRAM__ALLOWED_USER_IDS=111; 222,", ""])
 
     settings = Settings(_env_file=env_file)
 
     assert settings.telegram.allowed_ids == frozenset({111, 222})
     assert settings.telegram.search_limit_per_hour == 6
+
+
+def test_env_example_is_a_complete_valid_configuration() -> None:
+    """cp .env.example .env must yield a bootable process.
+
+    A new required setting (or a blank optional one the parser can't read)
+    committed without updating .env.example breaks every fresh deployment.
+    """
+    from pathlib import Path
+
+    env_example = Path(__file__).resolve().parents[1] / ".env.example"
+    settings = Settings(_env_file=env_example)
+
+    assert settings.telegram.rate_limit_per_minute >= 1
+    assert settings.scheduler.canary_admin_chat_id is None
+
+
+def test_empty_optional_chat_id_is_treated_as_unset(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    _write_minimal_env(env_file, ["SCHEDULER__CANARY_ADMIN_CHAT_ID="])
+
+    settings = Settings(_env_file=env_file)
+
+    assert settings.scheduler.canary_admin_chat_id is None

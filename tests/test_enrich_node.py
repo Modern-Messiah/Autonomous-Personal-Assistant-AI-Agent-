@@ -28,7 +28,7 @@ class FakeSearchParser:
 
 
 class FakeAreaClient:
-    """Stub 2GIS client for tests."""
+    """Stub area client for tests."""
 
     def __init__(self, summary: NearbySummary | None) -> None:
         self._summary = summary
@@ -37,13 +37,43 @@ class FakeAreaClient:
         del city, address
         return self._summary
 
+    async def get_nearby_summary_at(
+        self, *, city: str, lat: float, lon: float
+    ) -> NearbySummary | None:
+        del city, lat, lon
+        return self._summary
+
 
 class BrokenAreaClient:
     """Failing area client to test graceful fallbacks."""
 
     async def get_nearby_summary(self, *, city: str, address: str) -> NearbySummary | None:
         del city, address
-        raise RuntimeError("2GIS unavailable")
+        raise RuntimeError("area client unavailable")
+
+    async def get_nearby_summary_at(
+        self, *, city: str, lat: float, lon: float
+    ) -> NearbySummary | None:
+        del city, lat, lon
+        raise RuntimeError("area client unavailable")
+
+
+class RecordingAreaClient:
+    """Records which entrypoint the enrichment chose."""
+
+    def __init__(self) -> None:
+        self.geocoded: list[tuple[str, str]] = []
+        self.at_points: list[tuple[str, float, float]] = []
+
+    async def get_nearby_summary(self, *, city: str, address: str) -> NearbySummary | None:
+        self.geocoded.append((city, address))
+        return None
+
+    async def get_nearby_summary_at(
+        self, *, city: str, lat: float, lon: float
+    ) -> NearbySummary | None:
+        self.at_points.append((city, lat, lon))
+        return None
 
 
 class FakeRateProvider:
@@ -81,7 +111,11 @@ def build_criteria() -> SearchCriteria:
     )
 
 
-def build_apartment(*, with_address: bool = True) -> Apartment:
+def build_apartment(
+    *,
+    with_address: bool = True,
+    coordinates: tuple[float, float] | None = None,
+) -> Apartment:
     return Apartment(
         external_id="300400",
         source="krisha",
@@ -95,6 +129,8 @@ def build_apartment(*, with_address: bool = True) -> Apartment:
         floor="7/12",
         photos=["https://photos.krisha.kz/300400/1.jpg"],
         published_at=datetime(2025, 2, 1, tzinfo=UTC),
+        latitude=coordinates[0] if coordinates else None,
+        longitude=coordinates[1] if coordinates else None,
     )
 
 
@@ -186,3 +222,31 @@ async def test_run_search_graph_uses_enrich_node_when_provided() -> None:
     assert enriched[0].apartment.external_id == "300400"
     assert enriched[0].nearby_schools == 4
     assert enriched[0].nearby_metro == 1
+
+
+@pytest.mark.asyncio
+async def test_listing_map_pin_skips_geocoding_entirely() -> None:
+    from agent.nodes.enrich_node import EnrichNode
+
+    recorder = RecordingAreaClient()
+    node = EnrichNode(area_client=recorder)
+
+    apartment = build_apartment(coordinates=(43.2927, 77.0140))
+    await node._enrich_apartment(apartment, deal_type="sale")
+
+    # the listing's own pin wins: no geocode call, one exact-point call
+    assert recorder.geocoded == []
+    assert recorder.at_points == [("Almaty", 43.2927, 77.0140)]
+
+
+@pytest.mark.asyncio
+async def test_address_geocoding_remains_the_fallback() -> None:
+    from agent.nodes.enrich_node import EnrichNode
+
+    recorder = RecordingAreaClient()
+    node = EnrichNode(area_client=recorder)
+
+    await node._enrich_apartment(build_apartment(), deal_type="sale")
+
+    assert recorder.at_points == []
+    assert recorder.geocoded == [("Almaty", "Satpayev 1")]

@@ -10,6 +10,9 @@ SEARCH_RATE_LIMITED_MESSAGE = (
     "Лимит поисков исчерпан — не больше нескольких за час. "
     "Подождите немного и попробуйте снова."
 )
+SEARCH_BUSY_MESSAGE = (
+    "Сейчас много одновременных запросов — попробуйте через несколько минут."
+)
 
 
 class ActiveCriteriaNotFoundError(RuntimeError):

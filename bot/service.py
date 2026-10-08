@@ -103,9 +103,7 @@ class SearchBotService:
         self._search_runner = search_runner
         self._search_budget = search_budget
         self._monitor = MonitorService(session_factory=session_factory)
-        self._feedback = FeedbackService(
-            session_factory=session_factory, notion_sync=notion_sync
-        )
+        self._feedback = FeedbackService(session_factory=session_factory, notion_sync=notion_sync)
         self._recommendation = RecommendationService(
             session_factory=session_factory,
             get_active_criteria=self.get_active_criteria,
@@ -136,10 +134,14 @@ class SearchBotService:
         )
         notices = (
             (
-                "Город не удалось распознать, поэтому использую Алматы. "
-                "Уточнить город можно через /refine."
-            ),
-        ) if parsed.defaulted_city else ()
+                (
+                    "Город не удалось распознать, поэтому использую Алматы. "
+                    "Уточнить город можно через /refine."
+                ),
+            )
+            if parsed.defaulted_city
+            else ()
+        )
         return await self._persist_and_run_search(
             telegram_user_id=telegram_user_id,
             username=username,

@@ -75,4 +75,3 @@ class SearchCriteria(BaseModel):
             msg = "min_area_m2 cannot be greater than max_area_m2"
             raise ValueError(msg)
         return self
-

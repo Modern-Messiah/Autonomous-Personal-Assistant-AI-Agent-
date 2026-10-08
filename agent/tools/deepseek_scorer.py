@@ -325,9 +325,7 @@ class DeepSeekApartmentScorer:
                 continue
             summary = entry.get("summary")
             sanitized_summary = (
-                _sanitize_summary(summary)
-                if isinstance(summary, str) and summary.strip()
-                else ""
+                _sanitize_summary(summary) if isinstance(summary, str) and summary.strip() else ""
             )
             try:
                 scores[index - 1] = ApartmentScore.model_validate(

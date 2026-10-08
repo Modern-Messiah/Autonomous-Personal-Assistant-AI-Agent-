@@ -286,7 +286,7 @@ def test_detail_page_extracts_description_params_and_market() -> None:
     parser = KrishaParser(redis_client=FakeRedis(), min_delay_seconds=0, max_delay_seconds=0)
     base = load_fixture("detail_123456789.html")
     extra = (
-        '<dl><dt>Год постройки</dt><dd>2019</dd>'
+        "<dl><dt>Год постройки</dt><dd>2019</dd>"
         "<dt>Тип дома</dt><dd>монолитный</dd>"
         "<dt>Высота потолков</dt><dd>2.7 м</dd>"
         "<dt>Квартира меблирована</dt><dd>частично</dd>"
@@ -324,13 +324,24 @@ def test_deduplicate_previews_collapses_same_flat_clones() -> None:
     parser = KrishaParser(redis_client=FakeRedis(), min_delay_seconds=0, max_delay_seconds=0)
 
     def prev(
-        ext: str, price: int | None, *, addr: str | None = "Абая 10, Алматы",
-        area: float | None = 55.5, floor: str | None = "5/9", rooms: int | None = 2,
+        ext: str,
+        price: int | None,
+        *,
+        addr: str | None = "Абая 10, Алматы",
+        area: float | None = 55.5,
+        floor: str | None = "5/9",
+        rooms: int | None = 2,
     ) -> ListingPreview:
         return ListingPreview(
-            external_id=ext, url=f"https://krisha.kz/a/show/{ext}", title="t",
-            price_kzt=price, rooms=rooms, area_m2=area, floor=floor,
-            district=None, address=addr,
+            external_id=ext,
+            url=f"https://krisha.kz/a/show/{ext}",
+            title="t",
+            price_kzt=price,
+            rooms=rooms,
+            area_m2=area,
+            floor=floor,
+            district=None,
+            address=addr,
         )
 
     previews = [
@@ -493,21 +504,19 @@ async def test_search_raises_on_captcha_page() -> None:
 
 def test_matches_criteria_filters_rooms_and_price() -> None:
     criteria = SearchCriteria(
-        user_id=1, city="Almaty", deal_type="sale", property_type="apartment",
-        rooms=[2], max_price_kzt=45_000_000,
+        user_id=1,
+        city="Almaty",
+        deal_type="sale",
+        property_type="apartment",
+        rooms=[2],
+        max_price_kzt=45_000_000,
     )
     # matches: 2-room, within budget
-    assert KrishaParser._matches_criteria(
-        make_preview(rooms=2, price_kzt=40_000_000), criteria
-    )
+    assert KrishaParser._matches_criteria(make_preview(rooms=2, price_kzt=40_000_000), criteria)
     # wrong room count
-    assert not KrishaParser._matches_criteria(
-        make_preview(rooms=3, price_kzt=40_000_000), criteria
-    )
+    assert not KrishaParser._matches_criteria(make_preview(rooms=3, price_kzt=40_000_000), criteria)
     # over budget
-    assert not KrishaParser._matches_criteria(
-        make_preview(rooms=2, price_kzt=60_000_000), criteria
-    )
+    assert not KrishaParser._matches_criteria(make_preview(rooms=2, price_kzt=60_000_000), criteria)
 
 
 def test_build_listing_urls_uses_city_slug() -> None:
@@ -529,7 +538,10 @@ def test_build_listing_urls_uses_city_slug() -> None:
 
 def test_matches_criteria_filters_by_district() -> None:
     criteria = SearchCriteria(
-        user_id=1, city="Almaty", deal_type="sale", property_type="apartment",
+        user_id=1,
+        city="Almaty",
+        deal_type="sale",
+        property_type="apartment",
         districts=["Bostandyk"],
     )
     # the card's Russian label resolves to the requested district -> match
@@ -542,21 +554,25 @@ def test_matches_criteria_filters_by_district() -> None:
 
 def test_matches_criteria_district_uses_address_fallback() -> None:
     criteria = SearchCriteria(
-        user_id=1, city="Almaty", deal_type="sale", property_type="apartment",
+        user_id=1,
+        city="Almaty",
+        deal_type="sale",
+        property_type="apartment",
         districts=["Medeu"],
     )
     assert KrishaParser._matches_criteria(
         make_preview(district=None, address="Алматы, Медеуский район, проспект Достык 1"),
         criteria,
     )
-    assert not KrishaParser._matches_criteria(
-        make_preview(district="Ауэзовский район"), criteria
-    )
+    assert not KrishaParser._matches_criteria(make_preview(district="Ауэзовский район"), criteria)
 
 
 def test_matches_criteria_district_is_city_scoped() -> None:
     astana = SearchCriteria(
-        user_id=1, city="Astana", deal_type="sale", property_type="apartment",
+        user_id=1,
+        city="Astana",
+        deal_type="sale",
+        property_type="apartment",
         districts=["Yesil"],
     )
     assert KrishaParser._matches_criteria(make_preview(district="Есильский район"), astana)
@@ -565,15 +581,14 @@ def test_matches_criteria_district_is_city_scoped() -> None:
 
 def test_matches_criteria_unresolved_district_never_broadens_search() -> None:
     criteria = SearchCriteria(
-        user_id=1, city="Taraz", deal_type="sale", property_type="apartment",
+        user_id=1,
+        city="Taraz",
+        deal_type="sale",
+        property_type="apartment",
         districts=["Center"],
     )
-    assert not KrishaParser._matches_criteria(
-        make_preview(district="Центральный район"), criteria
-    )
-    assert not KrishaParser._matches_criteria(
-        make_preview(rooms=None, price_kzt=None), criteria
-    )
+    assert not KrishaParser._matches_criteria(make_preview(district="Центральный район"), criteria)
+    assert not KrishaParser._matches_criteria(make_preview(rooms=None, price_kzt=None), criteria)
 
 
 @pytest.mark.asyncio
@@ -591,7 +606,10 @@ async def test_search_caps_detail_fetches_to_max_results() -> None:
 
     redis = FakeRedis()
     parser = KrishaParser(
-        redis_client=redis, min_delay_seconds=0, max_delay_seconds=0, max_results=2,
+        redis_client=redis,
+        min_delay_seconds=0,
+        max_delay_seconds=0,
+        max_results=2,
     )
     criteria = build_criteria(page_limit=1)
     listing_url = parser._build_listing_urls(criteria)[0]
@@ -658,35 +676,51 @@ def test_apartment_matches_criteria_rechecks_rooms_and_price_after_detail() -> N
     # preview filter, but the detail page reveals the real values; the post-detail
     # check must enforce rooms/price/area, not only district.
     criteria = SearchCriteria(
-        user_id=1, city="Almaty", deal_type="sale", property_type="apartment",
-        max_price_kzt=45_000_000, rooms=[2], districts=["Bostandyk"],
+        user_id=1,
+        city="Almaty",
+        deal_type="sale",
+        property_type="apartment",
+        max_price_kzt=45_000_000,
+        rooms=[2],
+        districts=["Bostandyk"],
     )
 
     def apt(*, rooms: int | None, price: int, district: str) -> Apartment:
         return Apartment(
-            external_id="x", url="https://krisha.kz/a/show/x", title="t",
-            price_kzt=price, city="Almaty", district=district, rooms=rooms, photos=[],
+            external_id="x",
+            url="https://krisha.kz/a/show/x",
+            title="t",
+            price_kzt=price,
+            city="Almaty",
+            district=district,
+            rooms=rooms,
+            photos=[],
         )
 
     # wrong rooms + over budget (the promoted 5-room/160M leak) -> dropped
     assert not KrishaParser._apartment_matches_criteria(
-        apt(rooms=5, price=160_000_000, district="Бостандыкский р-н"), criteria  # noqa: RUF001
+        apt(rooms=5, price=160_000_000, district="Бостандыкский р-н"),  # noqa: RUF001
+        criteria,
     )
     # right district but over budget -> dropped
     assert not KrishaParser._apartment_matches_criteria(
-        apt(rooms=2, price=66_800_000, district="Бостандыкский р-н"), criteria  # noqa: RUF001
+        apt(rooms=2, price=66_800_000, district="Бостандыкский р-н"),  # noqa: RUF001
+        criteria,
     )
     # fully matching -> kept
     assert KrishaParser._apartment_matches_criteria(
-        apt(rooms=2, price=40_000_000, district="Бостандыкский р-н"), criteria  # noqa: RUF001
+        apt(rooms=2, price=40_000_000, district="Бостандыкский р-н"),  # noqa: RUF001
+        criteria,
     )
     # rooms unknown even after detail, but price/district ok -> kept (None tolerated)
     assert KrishaParser._apartment_matches_criteria(
-        apt(rooms=None, price=43_500_000, district="Бостандыкский р-н"), criteria  # noqa: RUF001
+        apt(rooms=None, price=43_500_000, district="Бостандыкский р-н"),  # noqa: RUF001
+        criteria,
     )
     # in budget and right rooms but wrong district -> dropped
     assert not KrishaParser._apartment_matches_criteria(
-        apt(rooms=2, price=40_000_000, district="Медеуский р-н"), criteria  # noqa: RUF001
+        apt(rooms=2, price=40_000_000, district="Медеуский р-н"),  # noqa: RUF001
+        criteria,
     )
 
 
@@ -694,11 +728,7 @@ def test_apartment_matches_criteria_rechecks_rooms_and_price_after_detail() -> N
 async def test_search_ignores_recaptcha_legal_footer() -> None:
     # krisha adds this reCAPTCHA legal footer to every normal page; the parser
     # must not treat a content-rich result page as an anti-bot interstitial.
-    recaptcha_footer = (
-        '<p class="g-recaptcha-policy">'
-        "Этот сайт защищён "
-        "сервисом reCAPTCHA</p>"
-    )
+    recaptcha_footer = '<p class="g-recaptcha-policy">Этот сайт защищён сервисом reCAPTCHA</p>'
     listing_html = load_fixture("listing_page.html") + recaptcha_footer
     detail_html = load_fixture("detail_123456789.html") + recaptcha_footer
 
@@ -793,9 +823,7 @@ async def test_search_propagates_listing_timeout_when_no_pages_succeed() -> None
     )
     criteria = build_criteria(page_limit=1)
     listing_url = parser._build_listing_urls(criteria)[0]
-    context = FakeBrowserContext(
-        {listing_url: PlaywrightTimeoutError("listing timeout")}
-    )
+    context = FakeBrowserContext({listing_url: PlaywrightTimeoutError("listing timeout")})
 
     with pytest.raises(PlaywrightTimeoutError):
         await parser.search(context, criteria)
@@ -824,9 +852,7 @@ RICH_DETAIL_BLOB = (
 
 def rich_detail_html() -> str:
     """Detail fixture augmented with the rich blocks a real advert always has."""
-    return load_fixture("detail_123456789.html").replace(
-        "</body>", RICH_DETAIL_BLOB + "</body>"
-    )
+    return load_fixture("detail_123456789.html").replace("</body>", RICH_DETAIL_BLOB + "</body>")
 
 
 @pytest.mark.asyncio
@@ -942,11 +968,7 @@ def test_detail_page_extracts_listing_map_pin() -> None:
     assert plain.longitude is None
 
     # garbage coordinates outside the KZ bounding box are rejected by the model
-    bad_blob = (
-        "<script>window.data={"
-        '"map":{"lat":13.37,"lon":52.52,"zoom":14}'
-        "}</script>"
-    )
+    bad_blob = '<script>window.data={"map":{"lat":13.37,"lon":52.52,"zoom":14}}</script>'
     with pytest.raises(ValidationError):
         parser.parse_detail_page(
             base_html.replace("</body>", bad_blob + "</body>"),

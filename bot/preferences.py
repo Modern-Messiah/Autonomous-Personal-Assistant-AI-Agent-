@@ -58,9 +58,7 @@ def build_preference_profile(
     """Summarize taste from saved (liked) and rejected (disliked) apartments."""
     liked_districts = {d for item in saved if (d := _district(item)) is not None}
     disliked_districts = {
-        d
-        for item in rejected
-        if (d := _district(item)) is not None and d not in liked_districts
+        d for item in rejected if (d := _district(item)) is not None and d not in liked_districts
     }
     prices = [item.apartment.price_kzt for item in saved if item.apartment.price_kzt]
     areas = [item.apartment.area_m2 for item in saved if item.apartment.area_m2]
@@ -77,9 +75,7 @@ def build_preference_profile(
     )
 
 
-def score_candidate(
-    item: EnrichedApartment, profile: PreferenceProfile
-) -> tuple[float, list[str]]:
+def score_candidate(item: EnrichedApartment, profile: PreferenceProfile) -> tuple[float, list[str]]:
     """Return a preference-fit score and the human reasons behind it."""
     score = 0.0
     reasons: list[str] = []

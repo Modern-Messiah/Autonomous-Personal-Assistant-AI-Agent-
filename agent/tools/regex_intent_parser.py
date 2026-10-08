@@ -261,8 +261,7 @@ class RegexIntentParser:
 
         if min_price is None and max_price is None:
             price_values = [
-                self._to_kzt(amount, unit)
-                for amount, unit in PRICE_VALUE_PATTERN.findall(text)
+                self._to_kzt(amount, unit) for amount, unit in PRICE_VALUE_PATTERN.findall(text)
             ]
             concrete = [value for value in price_values if value is not None]
             if len(concrete) == 1:

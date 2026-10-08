@@ -25,8 +25,7 @@ def build_kato_fixture(
     sheet_rows = []
     cursor = len(headers)
     header_cells = "".join(
-        f'<c r="{chr(65 + index)}1" t="s"><v>{index}</v></c>'
-        for index in range(len(headers))
+        f'<c r="{chr(65 + index)}1" t="s"><v>{index}</v></c>' for index in range(len(headers))
     )
     sheet_rows.append(f'<row r="1">{header_cells}</row>')
     for row_number, row_values in enumerate(data_rows, start=2):

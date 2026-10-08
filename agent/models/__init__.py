@@ -6,4 +6,3 @@ from agent.models.enriched import EnrichedApartment
 from agent.models.score import ApartmentScore
 
 __all__ = ["Apartment", "ApartmentScore", "EnrichedApartment", "SearchCriteria"]
-

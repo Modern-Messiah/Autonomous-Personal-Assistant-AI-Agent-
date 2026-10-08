@@ -46,9 +46,7 @@ async def upsert_telegram_user(
     username: str | None,
 ) -> User:
     """Insert or update Telegram user record."""
-    result = await session.execute(
-        select(User).where(User.telegram_user_id == telegram_user_id)
-    )
+    result = await session.execute(select(User).where(User.telegram_user_id == telegram_user_id))
     user = result.scalar_one_or_none()
     normalized_username = username or None
     if user is None:
@@ -299,12 +297,9 @@ async def upsert_apartment_records(
         },
     ).returning(ApartmentRecord)
     result = await session.execute(statement)
-    records_by_key = {
-        (record.source, record.external_id): record for record in result.scalars()
-    }
+    records_by_key = {(record.source, record.external_id): record for record in result.scalars()}
     return [
-        records_by_key[(item.apartment.source, item.apartment.external_id)]
-        for item in apartments
+        records_by_key[(item.apartment.source, item.apartment.external_id)] for item in apartments
     ]
 
 
@@ -454,23 +449,14 @@ async def mark_apartments_seen(
     unique_ids = list(records_by_id)
     statement = (
         insert(SeenApartment)
-        .values(
-            [
-                {"user_id": user_id, "apartment_id": apartment_id}
-                for apartment_id in unique_ids
-            ]
-        )
-        .on_conflict_do_nothing(
-            index_elements=[SeenApartment.user_id, SeenApartment.apartment_id]
-        )
+        .values([{"user_id": user_id, "apartment_id": apartment_id} for apartment_id in unique_ids])
+        .on_conflict_do_nothing(index_elements=[SeenApartment.user_id, SeenApartment.apartment_id])
         .returning(SeenApartment.apartment_id)
     )
     result = await session.execute(statement)
     inserted_ids = set(result.scalars())
     return [
-        records_by_id[apartment_id]
-        for apartment_id in unique_ids
-        if apartment_id in inserted_ids
+        records_by_id[apartment_id] for apartment_id in unique_ids if apartment_id in inserted_ids
     ]
 
 
@@ -492,11 +478,7 @@ async def get_unseen_apartment_records(
         )
     )
     existing_ids = set(result.scalars())
-    return [
-        apartment
-        for apartment in apartments
-        if apartment.id not in existing_ids
-    ]
+    return [apartment for apartment in apartments if apartment.id not in existing_ids]
 
 
 async def list_seen_apartments(
@@ -515,10 +497,7 @@ async def list_seen_apartments(
         .limit(limit)
     )
     result = await session.execute(statement)
-    return [
-        _load_enriched_apartment(payload)
-        for payload in result.scalars()
-    ]
+    return [_load_enriched_apartment(payload) for payload in result.scalars()]
 
 
 async def list_feedback_apartments(
@@ -542,10 +521,7 @@ async def list_feedback_apartments(
         .limit(limit)
     )
     result = await session.execute(statement)
-    return [
-        _load_enriched_apartment(payload)
-        for payload in result.scalars()
-    ]
+    return [_load_enriched_apartment(payload) for payload in result.scalars()]
 
 
 async def list_trashed_apartments(

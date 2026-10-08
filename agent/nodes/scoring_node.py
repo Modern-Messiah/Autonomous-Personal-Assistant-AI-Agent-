@@ -35,8 +35,7 @@ class ScoringNode:
         source_items = state.get("enriched_apartments")
         if source_items is None:
             source_items = [
-                EnrichedApartment(apartment=apartment)
-                for apartment in state["apartments"]
+                EnrichedApartment(apartment=apartment) for apartment in state["apartments"]
             ]
 
         if not source_items:

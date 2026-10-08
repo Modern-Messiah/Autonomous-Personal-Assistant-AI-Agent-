@@ -423,9 +423,7 @@ class StubService:
             raise ActiveCriteriaNotFoundError()
         return self.rerun_result
 
-    async def set_active_city(
-        self, *, telegram_user_id: int, username: str | None, city_text: str
-    ):
+    async def set_active_city(self, *, telegram_user_id: int, username: str | None, city_text: str):
         self._record("set_active_city", city_text=city_text)
         return build_criteria(), self.set_city_resolved
 
@@ -450,9 +448,7 @@ class StubService:
         self._record("toggle_active_owner_only")
         if self.owner_toggle_error is not None:
             raise self.owner_toggle_error
-        return build_criteria().model_copy(
-            update={"owner_only": self.owner_only_after_toggle}
-        )
+        return build_criteria().model_copy(update={"owner_only": self.owner_only_after_toggle})
 
     async def apply_refinement_value(
         self, *, telegram_user_id: int, username: str | None, message: str
@@ -906,7 +902,8 @@ async def test_refine_set_district_and_clear() -> None:
     service.active_criteria = build_criteria()
 
     session = await feed(
-        service, build_callback_update(data="refine:distr:Бостандыкский р-н")  # noqa: RUF001
+        service,
+        build_callback_update(data="refine:distr:Бостандыкский р-н"),  # noqa: RUF001
     )
     assert ("set_active_district", {"district": "Бостандыкский р-н"}) in service.calls  # noqa: RUF001
     assert session.callback_answers == ["Район обновлён"]
@@ -961,8 +958,7 @@ async def test_refine_run_without_criteria_prompts_search() -> None:
     session = await feed(service, build_callback_update(data="refine:run"))
 
     assert (
-        "Активные критерии не найдены. Сначала выполни поиск через /search."
-        in session.sent_texts
+        "Активные критерии не найдены. Сначала выполни поиск через /search." in session.sent_texts
     )
 
 

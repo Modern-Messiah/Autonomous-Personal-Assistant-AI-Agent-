@@ -251,9 +251,7 @@ class TwoGISClient:
         return count, nearest_m
 
     @staticmethod
-    def _nearest_distance_m(
-        items: object, *, lat: float, lon: float
-    ) -> int | None:
+    def _nearest_distance_m(items: object, *, lat: float, lon: float) -> int | None:
         if not isinstance(items, list):
             return None
         distances: list[float] = []

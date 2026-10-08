@@ -225,9 +225,7 @@ class DialogAgent:
             return {
                 **state,
                 "result": DialogTurnResult(
-                    messages=[
-                        "Активные критерии не найдены. Сначала выполни поиск через /search."
-                    ]
+                    messages=["Активные критерии не найдены. Сначала выполни поиск через /search."]
                 ),
             }
         except CriteriaUnchangedError:
@@ -270,16 +268,12 @@ class DialogAgent:
             return {
                 **state,
                 "result": DialogTurnResult(
-                    messages=[
-                        "Активные критерии не найдены. Сначала выполни поиск через /search."
-                    ]
+                    messages=["Активные критерии не найдены. Сначала выполни поиск через /search."]
                 ),
             }
         return {
             **state,
-            "result": DialogTurnResult(
-                messages=[format_criteria(criteria)]
-            ),
+            "result": DialogTurnResult(messages=[format_criteria(criteria)]),
         }
 
     async def _handle_show_monitor(self, state: DialogTurnState) -> DialogTurnState:
@@ -290,9 +284,7 @@ class DialogAgent:
             status = self._service.get_default_monitor_status()
         return {
             **state,
-            "result": DialogTurnResult(
-                messages=[format_monitor_status(status)]
-            ),
+            "result": DialogTurnResult(messages=[format_monitor_status(status)]),
         }
 
     async def _handle_help(self, state: DialogTurnState) -> DialogTurnState:

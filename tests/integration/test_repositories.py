@@ -56,9 +56,7 @@ async def test_concurrent_apartment_upsert_creates_one_row(
     await asyncio.gather(write(), write())
 
     async with session_factory() as session:
-        assert (
-            await session.scalar(select(func.count()).select_from(ApartmentRecord))
-        ) == 1
+        assert (await session.scalar(select(func.count()).select_from(ApartmentRecord))) == 1
 
 
 @pytest.mark.asyncio
@@ -66,9 +64,7 @@ async def test_feedback_soft_delete_and_restore_round_trip(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     async with session_factory() as session:
-        user = await upsert_telegram_user(
-            session, telegram_user_id=1001, username="integration"
-        )
+        user = await upsert_telegram_user(session, telegram_user_id=1001, username="integration")
         record = (await upsert_apartment_records(session, apartments=[apartment()]))[0]
         await upsert_apartment_feedback(
             session, user_id=user.id, apartments=[record], decision="saved"
@@ -76,32 +72,26 @@ async def test_feedback_soft_delete_and_restore_round_trip(
         await session.commit()
 
     async with session_factory() as session:
-        assert len(
-            await list_feedback_apartments(
-                session, telegram_user_id=1001, decision="saved"
-            )
-        ) == 1
-        assert await delete_apartment_feedback(
-            session, telegram_user_id=1001, external_id="apt-1"
+        assert (
+            len(await list_feedback_apartments(session, telegram_user_id=1001, decision="saved"))
+            == 1
         )
+        assert await delete_apartment_feedback(session, telegram_user_id=1001, external_id="apt-1")
         await session.commit()
 
     async with session_factory() as session:
-        assert await list_feedback_apartments(
-            session, telegram_user_id=1001, decision="saved"
-        ) == []
+        assert (
+            await list_feedback_apartments(session, telegram_user_id=1001, decision="saved") == []
+        )
         assert len(await list_trashed_apartments(session, telegram_user_id=1001)) == 1
-        assert await restore_apartment_feedback(
-            session, telegram_user_id=1001, external_id="apt-1"
-        )
+        assert await restore_apartment_feedback(session, telegram_user_id=1001, external_id="apt-1")
         await session.commit()
 
     async with session_factory() as session:
-        assert len(
-            await list_feedback_apartments(
-                session, telegram_user_id=1001, decision="saved"
-            )
-        ) == 1
+        assert (
+            len(await list_feedback_apartments(session, telegram_user_id=1001, decision="saved"))
+            == 1
+        )
 
 
 @pytest.mark.asyncio
@@ -109,9 +99,7 @@ async def test_clear_rejected_feedback_removes_it_from_search_and_trash(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     async with session_factory() as session:
-        user = await upsert_telegram_user(
-            session, telegram_user_id=1003, username="integration"
-        )
+        user = await upsert_telegram_user(session, telegram_user_id=1003, username="integration")
         record = (await upsert_apartment_records(session, apartments=[apartment()]))[0]
         await upsert_apartment_feedback(
             session, user_id=user.id, apartments=[record], decision="rejected"
@@ -120,11 +108,10 @@ async def test_clear_rejected_feedback_removes_it_from_search_and_trash(
 
     async with session_factory() as session:
         # A rejected item is active feedback (hidden from search) and shows in trash.
-        assert len(
-            await list_feedback_apartments(
-                session, telegram_user_id=1003, decision="rejected"
-            )
-        ) == 1
+        assert (
+            len(await list_feedback_apartments(session, telegram_user_id=1003, decision="rejected"))
+            == 1
+        )
         assert await clear_apartment_feedback(
             session, telegram_user_id=1003, external_id="apt-1", decision="rejected"
         )
@@ -132,9 +119,10 @@ async def test_clear_rejected_feedback_removes_it_from_search_and_trash(
 
     async with session_factory() as session:
         # Un-rejected: no feedback row remains, so it can resurface in search.
-        assert await list_feedback_apartments(
-            session, telegram_user_id=1003, decision="rejected"
-        ) == []
+        assert (
+            await list_feedback_apartments(session, telegram_user_id=1003, decision="rejected")
+            == []
+        )
         assert not await clear_apartment_feedback(
             session, telegram_user_id=1003, external_id="apt-1", decision="rejected"
         )
@@ -145,9 +133,7 @@ async def test_tombstone_removes_from_trash_but_keeps_it_hidden(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     async with session_factory() as session:
-        user = await upsert_telegram_user(
-            session, telegram_user_id=1004, username="integration"
-        )
+        user = await upsert_telegram_user(session, telegram_user_id=1004, username="integration")
         record = (await upsert_apartment_records(session, apartments=[apartment()]))[0]
         user_id = user.id
         await upsert_apartment_feedback(
@@ -164,9 +150,10 @@ async def test_tombstone_removes_from_trash_but_keeps_it_hidden(
     async with session_factory() as session:
         record = (await upsert_apartment_records(session, apartments=[apartment()]))[0]
         # Gone from both trash views...
-        assert await list_feedback_apartments(
-            session, telegram_user_id=1004, decision="rejected"
-        ) == []
+        assert (
+            await list_feedback_apartments(session, telegram_user_id=1004, decision="rejected")
+            == []
+        )
         assert await list_trashed_apartments(session, telegram_user_id=1004) == []
         # ...but the feedback row still exists, so search keeps hiding it.
         feedback_map = await get_apartment_feedback_map(
@@ -187,14 +174,10 @@ async def test_concurrent_seen_insert_reports_only_one_new_row(
 
     async def mark() -> int:
         async with session_factory() as session:
-            result = await mark_apartments_seen(
-                session, user_id=user_id, apartments=[record]
-            )
+            result = await mark_apartments_seen(session, user_id=user_id, apartments=[record])
             await session.commit()
             return len(result)
 
     assert sorted(await asyncio.gather(mark(), mark())) == [0, 1]
     async with session_factory() as session:
-        assert (
-            await session.scalar(select(func.count()).select_from(SeenApartment))
-        ) == 1
+        assert (await session.scalar(select(func.count()).select_from(SeenApartment))) == 1

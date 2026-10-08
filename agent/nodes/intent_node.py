@@ -424,12 +424,8 @@ class IntentNode:
             deal_type=deal_type,
             rent_period=rent_period,
             property_type=criteria.property_type,
-            min_price_kzt=(
-                inherited_min if patch.min_price_kzt is None else patch.min_price_kzt
-            ),
-            max_price_kzt=(
-                inherited_max if patch.max_price_kzt is None else patch.max_price_kzt
-            ),
+            min_price_kzt=(inherited_min if patch.min_price_kzt is None else patch.min_price_kzt),
+            max_price_kzt=(inherited_max if patch.max_price_kzt is None else patch.max_price_kzt),
             rooms=criteria.rooms if patch.rooms is None else patch.rooms,
             districts=list(locations.districts) if locations.districts else None,
             min_area_m2=criteria.min_area_m2 if patch.min_area_m2 is None else patch.min_area_m2,

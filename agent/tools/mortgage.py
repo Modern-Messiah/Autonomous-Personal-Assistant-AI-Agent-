@@ -43,4 +43,3 @@ def calculate_annuity_payment(
     total_paid = monthly_payment * months
     overpayment = max(total_paid - principal_kzt, 0)
     return monthly_payment, overpayment
-

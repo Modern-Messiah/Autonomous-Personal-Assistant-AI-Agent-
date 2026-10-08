@@ -15,4 +15,3 @@ class ApartmentScore(BaseModel):
     # срок сдачи, отделка, мебель, торг) without realtor marketing fluff. The
     # card shows this instead of a truncated raw description when present.
     description_summary: str | None = None
-

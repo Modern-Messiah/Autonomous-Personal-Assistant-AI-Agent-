@@ -63,9 +63,7 @@ CEILING_PATTERN = re.compile(r"(\d+(?:[.,]\d+)?)")
 # krisha pins each advert on the map inside the embedded advert JSON:
 # "map":{"lat":43.29,"lon":77.01,"zoom":14,...} — exactly one occurrence per
 # detail page, block-level precise (better than any geocoder can do).
-MAP_COORDS_PATTERN = re.compile(
-    r'"map":\s*\{"lat":(\d+(?:\.\d+)?),"lon":(\d+(?:\.\d+)?)'
-)
+MAP_COORDS_PATTERN = re.compile(r'"map":\s*\{"lat":(\d+(?:\.\d+)?),"lon":(\d+(?:\.\d+)?)')
 # Longest real descriptions are ~2k chars; cap guards against spam blobs.
 DESCRIPTION_MAX_CHARS = 2000
 

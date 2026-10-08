@@ -178,8 +178,7 @@ class RouterHelpers:
             )
             return
         await target.answer(
-            f"🗑 Корзина ({len(apartments)}) — отклонённые и удалённые, "
-            "можно вернуть кнопкой ♻️:"
+            f"🗑 Корзина ({len(apartments)}) — отклонённые и удалённые, можно вернуть кнопкой ♻️:"
         )
         for index, item in enumerate(apartments, start=1):
             keyboard = build_trashed_item_keyboard(
@@ -201,12 +200,8 @@ class RouterHelpers:
                 "Загляните позже или уточните поиск через /search."
             )
             return
-        await target.answer(
-            f"⭐ Подобрал под ваши предпочтения ({len(result.recommendations)}):"
-        )
-        price_stats = batch_price_stats(
-            [rec.apartment for rec in result.recommendations]
-        )
+        await target.answer(f"⭐ Подобрал под ваши предпочтения ({len(result.recommendations)}):")
+        price_stats = batch_price_stats([rec.apartment for rec in result.recommendations])
         for index, rec in enumerate(result.recommendations, start=1):
             keyboard = build_apartment_actions_keyboard(
                 rec.apartment.apartment.external_id,

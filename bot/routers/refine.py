@@ -106,7 +106,7 @@ def create_refine_router(service: SearchBotService, helpers: RouterHelpers) -> R
         if callback.from_user is None or not isinstance(callback.message, Message):
             await callback.answer()
             return
-        field = (callback.data or "")[len(REFINE_FIELD_PREFIX):]
+        field = (callback.data or "")[len(REFINE_FIELD_PREFIX) :]
         message = callback.message
         if field == "city":
             with contextlib.suppress(Exception):
@@ -146,7 +146,7 @@ def create_refine_router(service: SearchBotService, helpers: RouterHelpers) -> R
         if callback.from_user is None or not isinstance(callback.message, Message):
             await callback.answer()
             return
-        canonical = (callback.data or "")[len(REFINE_SET_CITY_PREFIX):]
+        canonical = (callback.data or "")[len(REFINE_SET_CITY_PREFIX) :]
         await service.set_active_city(
             telegram_user_id=callback.from_user.id,
             username=callback.from_user.username,
@@ -157,9 +157,7 @@ def create_refine_router(service: SearchBotService, helpers: RouterHelpers) -> R
         await callback.answer("Город обновлён")
 
     @router.callback_query(F.data == REFINE_CITY_OTHER)
-    async def handle_refine_city_other_callback(
-        callback: CallbackQuery, state: FSMContext
-    ) -> None:
+    async def handle_refine_city_other_callback(callback: CallbackQuery, state: FSMContext) -> None:
         if callback.from_user is None or not isinstance(callback.message, Message):
             await callback.answer()
             return
@@ -218,7 +216,7 @@ def create_refine_router(service: SearchBotService, helpers: RouterHelpers) -> R
         if callback.from_user is None or not isinstance(callback.message, Message):
             await callback.answer()
             return
-        deal_type = (callback.data or "")[len(REFINE_SET_DEAL_PREFIX):]
+        deal_type = (callback.data or "")[len(REFINE_SET_DEAL_PREFIX) :]
         if deal_type == "rent":
             # Rent has a term (like krisha's selector): ask it as the second step
             # before persisting anything.
@@ -231,10 +229,8 @@ def create_refine_router(service: SearchBotService, helpers: RouterHelpers) -> R
         await apply_deal_choice(callback, state, deal_type=deal_type, rent_period=None)
 
     @router.callback_query(F.data.startswith(REFINE_SET_PERIOD_PREFIX))
-    async def handle_refine_set_period_callback(
-        callback: CallbackQuery, state: FSMContext
-    ) -> None:
-        rent_period = (callback.data or "")[len(REFINE_SET_PERIOD_PREFIX):]
+    async def handle_refine_set_period_callback(callback: CallbackQuery, state: FSMContext) -> None:
+        rent_period = (callback.data or "")[len(REFINE_SET_PERIOD_PREFIX) :]
         await apply_deal_choice(callback, state, deal_type="rent", rent_period=rent_period)
 
     @router.callback_query(F.data.startswith(REFINE_SET_DISTRICT_PREFIX))
@@ -244,7 +240,7 @@ def create_refine_router(service: SearchBotService, helpers: RouterHelpers) -> R
         if callback.from_user is None or not isinstance(callback.message, Message):
             await callback.answer()
             return
-        value = (callback.data or "")[len(REFINE_SET_DISTRICT_PREFIX):]
+        value = (callback.data or "")[len(REFINE_SET_DISTRICT_PREFIX) :]
         district = None if value == REFINE_DISTRICT_CLEAR else value
         await service.set_active_district(
             telegram_user_id=callback.from_user.id,

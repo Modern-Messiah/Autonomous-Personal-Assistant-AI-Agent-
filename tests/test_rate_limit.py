@@ -58,9 +58,7 @@ def test_limiter_rejects_non_positive_limit() -> None:
 @pytest.mark.asyncio
 async def test_budget_reports_user_window_first() -> None:
     clock = FakeClock()
-    budget = SearchBudget(
-        per_user_limit=1, global_limit=100, clock=clock
-    )
+    budget = SearchBudget(per_user_limit=1, global_limit=100, clock=clock)
 
     assert await budget.try_acquire(7) is BudgetDecision.ALLOWED
     assert await budget.try_acquire(7) is BudgetDecision.USER_EXHAUSTED
@@ -71,9 +69,7 @@ async def test_budget_reports_user_window_first() -> None:
 @pytest.mark.asyncio
 async def test_budget_global_window_caps_all_users_together() -> None:
     clock = FakeClock()
-    budget = SearchBudget(
-        per_user_limit=10, global_limit=2, clock=clock
-    )
+    budget = SearchBudget(per_user_limit=10, global_limit=2, clock=clock)
 
     assert await budget.try_acquire(1) is BudgetDecision.ALLOWED
     assert await budget.try_acquire(2) is BudgetDecision.ALLOWED
@@ -96,9 +92,7 @@ async def test_service_blocks_paid_search_when_budget_spent() -> None:
     service = SearchBotService(
         session_factory=None,  # type: ignore[arg-type]
         search_runner=fake_runner,
-        search_budget=SearchBudget(
-            per_user_limit=1, global_limit=10, clock=FakeClock()
-        ),
+        search_budget=SearchBudget(per_user_limit=1, global_limit=10, clock=FakeClock()),
     )
 
     first = await service._run_search_graph(
@@ -107,9 +101,7 @@ async def test_service_blocks_paid_search_when_budget_spent() -> None:
     assert first == []
 
     with pytest.raises(SearchExecutionError) as exc_info:
-        await service._run_search_graph(
-            telegram_user_id=7, user_id=1, criteria=_build_criteria()
-        )
+        await service._run_search_graph(telegram_user_id=7, user_id=1, criteria=_build_criteria())
     assert exc_info.value.user_message == SEARCH_RATE_LIMITED_MESSAGE
 
 
@@ -130,18 +122,14 @@ async def test_service_reports_busy_when_global_budget_spent() -> None:
     service = SearchBotService(
         session_factory=None,  # type: ignore[arg-type]
         search_runner=fake_runner,
-        search_budget=SearchBudget(
-            per_user_limit=10, global_limit=1, clock=clock
-        ),
+        search_budget=SearchBudget(per_user_limit=10, global_limit=1, clock=clock),
     )
     budget = service._search_budget
     assert budget is not None
     await budget.try_acquire(999)  # a different user drains the global window
 
     with pytest.raises(SearchExecutionError) as exc_info:
-        await service._run_search_graph(
-            telegram_user_id=7, user_id=1, criteria=_build_criteria()
-        )
+        await service._run_search_graph(telegram_user_id=7, user_id=1, criteria=_build_criteria())
     assert exc_info.value.user_message == SEARCH_BUSY_MESSAGE
 
 
@@ -164,16 +152,17 @@ class FakeBudgetRedis:
         user_key, global_key = args[0], args[1]
         now_ms, window_ms, user_limit, global_limit, member = args[2:]
         now, window, user_limit, global_limit = (
-            int(now_ms), int(window_ms), int(user_limit), int(global_limit)
+            int(now_ms),
+            int(window_ms),
+            int(user_limit),
+            int(global_limit),
         )
 
         def count(key: str) -> int:
             window_set = self.windows.get(key)
             if not window_set:
                 return 0
-            for member_key in [
-                m for m, score in window_set.items() if score <= now - window
-            ]:
+            for member_key in [m for m, score in window_set.items() if score <= now - window]:
                 del window_set[member_key]
             return len(window_set)
 
@@ -189,9 +178,7 @@ class FakeBudgetRedis:
 @pytest.mark.asyncio
 async def test_redis_budget_caps_user_and_global_without_phantom_usage() -> None:
     redis = FakeBudgetRedis()
-    budget = SearchBudget(
-        per_user_limit=2, global_limit=3, window_seconds=3600.0, redis=redis
-    )
+    budget = SearchBudget(per_user_limit=2, global_limit=3, window_seconds=3600.0, redis=redis)
 
     assert await budget.try_acquire(1) is BudgetDecision.ALLOWED
     assert await budget.try_acquire(1) is BudgetDecision.ALLOWED
@@ -211,9 +198,7 @@ async def test_redis_budget_caps_user_and_global_without_phantom_usage() -> None
 async def test_redis_budget_fails_open_on_redis_error() -> None:
     redis = FakeBudgetRedis()
     redis.fail = RuntimeError("connection reset")
-    budget = SearchBudget(
-        per_user_limit=1, global_limit=1, window_seconds=3600.0, redis=redis
-    )
+    budget = SearchBudget(per_user_limit=1, global_limit=1, window_seconds=3600.0, redis=redis)
 
     # a quota guard, not a security boundary: Redis down must not brick searches
     assert await budget.try_acquire(1) is BudgetDecision.ALLOWED

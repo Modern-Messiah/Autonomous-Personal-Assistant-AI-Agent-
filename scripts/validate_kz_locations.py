@@ -40,11 +40,7 @@ def _xlsx_rows(path: Path) -> list[dict[str, str]]:
     if not raw_rows:
         return []
     headers = raw_rows[0]
-    return [
-        dict(zip(headers, values, strict=False))
-        for values in raw_rows[1:]
-        if values
-    ]
+    return [dict(zip(headers, values, strict=False)) for values in raw_rows[1:] if values]
 
 
 def _city_name(value: str) -> str:
@@ -78,9 +74,7 @@ def compare_catalog_to_kato(
     official_districts = {row["te"]: row for row in rows if _is_city_district(row)}
     catalog_cities = {city.kato_code: city for city in catalog.cities}
     catalog_districts = {
-        district.kato_code: district
-        for city in catalog.cities
-        for district in city.districts
+        district.kato_code: district for city in catalog.cities for district in city.districts
     }
 
     problems: list[str] = []
@@ -89,16 +83,14 @@ def compare_catalog_to_kato(
         problems.append(f"missing official city KATO={code} name={name}")
     for code in sorted(catalog_cities.keys() - official_cities.keys()):
         problems.append(
-            f"catalog city absent from KATO KATO={code} "
-            f"name={catalog_cities[code].name_ru}"
+            f"catalog city absent from KATO KATO={code} name={catalog_cities[code].name_ru}"
         )
     for code in sorted(official_districts.keys() - catalog_districts.keys()):
         name = official_districts[code]["rus_name"]
         problems.append(f"missing official city district KATO={code} name={name}")
     for code in sorted(catalog_districts.keys() - official_districts.keys()):
         problems.append(
-            f"catalog district absent from KATO KATO={code} "
-            f"name={catalog_districts[code].name_ru}"
+            f"catalog district absent from KATO KATO={code} name={catalog_districts[code].name_ru}"
         )
 
     for code in sorted(official_cities.keys() & catalog_cities.keys()):
@@ -182,8 +174,7 @@ def main() -> int:
     searchable = sum(city.krisha_slug is not None for city in LOCATIONS.cities)
     districts = sum(len(city.districts) for city in LOCATIONS.cities)
     print(
-        f"OK: {len(LOCATIONS.cities)} cities, {districts} city districts, "
-        f"{searchable} Krisha slugs"
+        f"OK: {len(LOCATIONS.cities)} cities, {districts} city districts, {searchable} Krisha slugs"
     )
     return 0
 

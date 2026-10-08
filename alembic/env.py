@@ -61,9 +61,7 @@ def _include_object(
     the SQLAlchemy metadata on purpose); without this filter ``alembic check``
     reports them as drift on every run.
     """
-    if type_ == "table" and (name or "").startswith("checkpoint"):
-        return False
-    return True
+    return not (type_ == "table" and (name or "").startswith("checkpoint"))
 
 
 def run_migrations_offline() -> None:

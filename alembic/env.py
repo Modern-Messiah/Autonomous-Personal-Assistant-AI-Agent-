@@ -47,6 +47,23 @@ def get_database_url() -> str:
     return config.get_main_option("sqlalchemy.url")
 
 
+def _include_object(
+    object_: object,
+    name: str | None,
+    type_: str,
+    reflected: bool,
+    compare_to: object,
+) -> bool:
+    """Hide tables not owned by this project's models from autogenerate.
+
+    The langgraph checkpoint tables are created by raw SQL in migration
+    202610070008 (they mirror AsyncPostgresSaver.setup() and are absent from
+    the SQLAlchemy metadata on purpose); without this filter ``alembic check``
+    reports them as drift on every run.
+    """
+    return not (type_ == "table" and (name or "").startswith("checkpoint"))
+
+
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""
     context.configure(
@@ -55,6 +72,7 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
+        include_object=_include_object,
     )
 
     with context.begin_transaction():
@@ -62,7 +80,12 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        compare_type=True,
+        include_object=_include_object,
+    )
 
     with context.begin_transaction():
         context.run_migrations()

@@ -41,6 +41,136 @@ def _sanitize_summary(text: str) -> str:
     return " ".join(cleaned.split()).strip()
 
 
+# --- precomputed analysis verdicts ------------------------------------------------
+# The model's arithmetic is unreliable, so every relative/distance claim is
+# computed here, deterministically, and the prompt forbids recomputing.
+
+
+def _proximity_class(nearest_m: int | None) -> str:
+    if nearest_m is None:
+        return "unknown"
+    if nearest_m <= 400:
+        return "excellent(<=400m)"
+    if nearest_m <= 800:
+        return "good(<=800m)"
+    if nearest_m <= 2000:
+        return "far(~2km)"
+    return "beyond_radius"
+
+
+def _floor_class(floor: str | None) -> str:
+    if not floor:
+        return "unknown"
+    head = floor.split("/", 1)[0].strip()
+    try:
+        current = int(head)
+    except ValueError:
+        return "unknown"
+    if current == 1:
+        return "first"
+    total_part = floor.split("/", 1)[1].strip() if "/" in floor else ""
+    try:
+        total = int(total_part)
+    except ValueError:
+        return "mid"  # not first and no total -> cannot be the last floor
+    if current == total:
+        return "last"
+    return "mid"
+
+
+_CONDITION_CLASSES: tuple[tuple[tuple[str, ...], str], ...] = (
+    (("евроремонт", "дизайнерский"), "renovated_high"),
+    (("свежий ремонт", "свежая отделка", "хорошем ремонте"), "renovated"),
+    (("среднем ремонте", "средний ремонт", "удовлетворительн"), "average"),
+    (("требует ремонта", "нуждается в ремонте", "под ремонт"), "needs_repair"),
+    (("черновая", "без отделки", "prefinish"), "raw"),
+)
+
+
+def _condition_class(condition: str | None) -> str:
+    if not condition:
+        return "unknown"
+    lowered = condition.lower()
+    for needles, verdict in _CONDITION_CLASSES:
+        if any(needle in lowered for needle in needles):
+            return verdict
+    return "average"
+
+
+def _days_bucket(days: int | None) -> str:
+    if days is None:
+        return "unknown"
+    if days <= 7:
+        return "fresh(<=7d)"
+    if days <= 30:
+        return "recent(<=30d)"
+    if days <= 60:
+        return "normal"
+    return "stale(>60d), bargain leverage"
+
+
+def _vs_batch_percent(price_per_m2: float, avg_per_m2: float) -> str:
+    if avg_per_m2 <= 0:
+        return "n/a"
+    diff = (price_per_m2 - avg_per_m2) / avg_per_m2 * 100
+    return f"{diff:+.0f}%"
+
+
+def _analysis_line(enriched: EnrichedApartment, avg_per_m2: float | None) -> str:
+    """Deterministic verdicts the model must copy instead of recomputing."""
+    apartment = enriched.apartment
+    parts: list[str] = []
+    if apartment.area_m2 and apartment.area_m2 > 0 and avg_per_m2:
+        per_m2 = apartment.price_kzt / apartment.area_m2
+        parts.append(f"vs_batch_avg_per_m2={_vs_batch_percent(per_m2, avg_per_m2)}")
+    parts.append(f"floor_class={_floor_class(apartment.floor)}")
+    parts.append(f"metro_proximity={_proximity_class(enriched.nearby_metro_m)}")
+    parts.append(f"schools_proximity={_proximity_class(enriched.nearby_school_m)}")
+    parts.append(f"parks_proximity={_proximity_class(enriched.nearby_park_m)}")
+    parts.append(f"condition_class={_condition_class(apartment.condition)}")
+    parts.append(f"days_bucket={_days_bucket(apartment.days_on_market())}")
+    return "    analysis: " + ", ".join(parts)
+
+
+def _recommendation_for_score(score: float) -> str:
+    """Deterministic score→recommendation band.
+
+    The prompt asks the model to stay consistent, but consistency is a
+    contract better enforced by code: the card label must always match the
+    number the user sees.
+    """
+    if score >= 80:
+        return "strong_buy"
+    if score >= 60:
+        return "consider"
+    return "skip"
+
+
+def _concrete_reasons(reasons: object) -> list[str]:
+    """Keep only reasons carrying a number — the prompt demands them.
+
+    Digitless praise slips through occasionally; dropping it keeps cards
+    factual. If none qualify, the first two survive rather than showing an
+    empty explanation.
+    """
+    if not isinstance(reasons, list):
+        return []
+    cleaned = [r.strip() for r in reasons if isinstance(r, str) and r.strip()]
+    with_digits = [r for r in cleaned if any(ch.isdigit() for ch in r)]
+    return (with_digits or cleaned)[:4]
+
+
+def _batch_avg_per_m2(apartments: list[EnrichedApartment]) -> float | None:
+    per_m2 = [
+        item.apartment.price_kzt / item.apartment.area_m2
+        for item in apartments
+        if item.apartment.area_m2 and item.apartment.area_m2 > 0
+    ]
+    if len(per_m2) < 2:
+        return None
+    return sum(per_m2) / len(per_m2)
+
+
 def _or_unknown(value: int | None) -> int | str:
     """Keep a real 0 (truly none) but report missing data as 'unknown'."""
     return value if value is not None else "unknown"
@@ -208,6 +338,13 @@ class DeepSeekApartmentScorer:
             "среднего за м²»); do not invent numbers not derivable from the data.",
             "Format money in reasons with space-separated thousands and the ₸ "
             "sign: «931 818 ₸/м²», «45 000 000 ₸» — never «931818 KZT».",
+            "Each listing carries an `analysis` line of PRECOMPUTED verdicts "
+            "(vs_batch_avg_per_m2, floor_class, metro/schools/parks_proximity, "
+            "condition_class, days_bucket). They were computed by "
+            "deterministic code from the data above. COPY these numbers and "
+            "verdicts verbatim; NEVER compute percentages, differences or "
+            "distance ratings yourself — your arithmetic is the least "
+            "reliable part of this task.",
             "For each listing that has an «описание», also return summary: a "
             "digest in Russian of ONLY the concrete essentials from it — ЖК и "
             "класс, срок сдачи, отделка/ремонт, мебель/техника, планировка, "
@@ -217,13 +354,20 @@ class DeepSeekApartmentScorer:
             'Respond with one JSON object: {"items": [{"index": <listing number>, '
             '"score": <0-100>, "recommendation": "strong_buy"|"consider"|"skip", '
             '"reasons": ["..."], "summary": "..."|null}]}. Include every listing '
-            "exactly once.",
+            "exactly once. One item, as an example of the expected shape and "
+            "reason style (numbers copied from data/analysis, not invented): "
+            '{"index": 1, "score": 87, "recommendation": "strong_buy", '
+            '"reasons": ["самая низкая ₸/м² в подборке — 712 000 ₸/м² '
+            '(vs_batch_avg_per_m2=-12%)", "метро в 350 м — ближайшее в подборке"], '
+            '"summary": "ЖК Orynbor Tale, сдача Q4 2026, чистовая отделка, торг."}',
         ]
         lines.extend(self._criteria_lines(criteria))
+        avg_per_m2 = _batch_avg_per_m2(apartments)
         lines.extend(self._batch_stats_lines(apartments))
         lines.append("--- listings ---")
         for index, enriched in enumerate(apartments, start=1):
             lines.append(self._listing_line(index, enriched))
+            lines.append(_analysis_line(enriched, avg_per_m2))
 
         return {
             "model": self._model,
@@ -327,17 +471,26 @@ class DeepSeekApartmentScorer:
             sanitized_summary = (
                 _sanitize_summary(summary) if isinstance(summary, str) and summary.strip() else ""
             )
+            # validate the score first; recommendation and reasons are then
+            # normalized deterministically (band mapping + digit filter)
             try:
-                scores[index - 1] = ApartmentScore.model_validate(
+                probe = ApartmentScore.model_validate(
                     {
                         "score": entry.get("score"),
-                        "reasons": entry.get("reasons"),
-                        "recommendation": entry.get("recommendation"),
-                        "description_summary": sanitized_summary or None,
+                        "reasons": ["0"],
+                        "recommendation": "consider",
+                        "description_summary": None,
                     }
                 )
             except Exception:
                 continue
+            scores[index - 1] = probe.model_copy(
+                update={
+                    "recommendation": _recommendation_for_score(probe.score),
+                    "reasons": _concrete_reasons(entry.get("reasons")),
+                    "description_summary": sanitized_summary or None,
+                }
+            )
         return scores
 
     @staticmethod

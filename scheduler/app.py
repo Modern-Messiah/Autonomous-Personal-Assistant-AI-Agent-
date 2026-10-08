@@ -61,11 +61,7 @@ def create_scheduler_service(bot: Bot | None = None) -> SchedulerService:
     settings = get_settings()
     return SchedulerService(
         session_factory=get_session_factory(),
-        notifier=(
-            TelegramMonitorNotifier(bot)
-            if bot is not None
-            else noop_monitor_notifier
-        ),
+        notifier=(TelegramMonitorNotifier(bot) if bot is not None else noop_monitor_notifier),
         batch_size=settings.scheduler.batch_size,
     )
 
@@ -76,9 +72,7 @@ def _build_arq_redis_settings(arq_settings: ArqSettings) -> Any:
     redis_settings_cls = connections_module.RedisSettings
     del arq_settings
     password = (
-        settings.redis.password.get_secret_value()
-        if settings.redis.password is not None
-        else None
+        settings.redis.password.get_secret_value() if settings.redis.password is not None else None
     )
     return redis_settings_cls(
         host=settings.redis.host,

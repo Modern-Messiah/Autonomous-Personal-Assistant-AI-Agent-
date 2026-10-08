@@ -53,16 +53,13 @@ def create_monitor_router(service: SearchBotService) -> Router:
         if action == "interval":
             interval_input = rest.strip()
             if not interval_input:
-                await message.answer(
-                    "Укажи интервал после команды, например: /monitor interval 6h"
-                )
+                await message.answer("Укажи интервал после команды, например: /monitor interval 6h")
                 return
             try:
                 interval_minutes = parse_monitor_interval(interval_input)
             except ValueError as exc:
                 await message.answer(
-                    "Некорректный интервал. Используй формат вроде 30m, 6h или 1d.\n"
-                    f"Детали: {exc}"
+                    f"Некорректный интервал. Используй формат вроде 30m, 6h или 1d.\nДетали: {exc}"  # noqa: RUF001
                 )
                 return
 
@@ -77,8 +74,7 @@ def create_monitor_router(service: SearchBotService) -> Router:
             return
 
         await message.answer(
-            "Поддерживаются команды: /monitor, /monitor on, /monitor off, "
-            "/monitor interval 6h"
+            "Поддерживаются команды: /monitor, /monitor on, /monitor off, /monitor interval 6h"
         )
 
     return router

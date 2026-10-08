@@ -990,8 +990,13 @@ async def test_set_active_city_resolves_typo_and_clears_districts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     active = SearchCriteria(
-        user_id=77, city="Almaty", deal_type="sale", property_type="apartment",
-        districts=["Medeu"], rooms=[2], page_limit=3,
+        user_id=77,
+        city="Almaty",
+        deal_type="sale",
+        property_type="apartment",
+        districts=["Medeu"],
+        rooms=[2],
+        page_limit=3,
     )
     service = SearchBotService(
         session_factory=FakeSessionFactory(), search_runner=fake_search_runner
@@ -999,7 +1004,9 @@ async def test_set_active_city_resolves_typo_and_clears_districts(
     _patch_refine_db(monkeypatch, active)
 
     updated, ok = await service.set_active_city(
-        telegram_user_id=77, username="t", city_text="Астанна"  # typo -> Astana
+        telegram_user_id=77,
+        username="t",
+        city_text="Астанна",  # typo -> Astana
     )
 
     assert ok is True
@@ -1053,9 +1060,7 @@ async def test_set_active_deal_and_district(monkeypatch: pytest.MonkeyPatch) -> 
     )
     assert with_district.districts == ["Medeu"]
 
-    cleared = await service.set_active_district(
-        telegram_user_id=77, username="t", district=None
-    )
+    cleared = await service.set_active_district(telegram_user_id=77, username="t", district=None)
     assert cleared.districts is None
 
 
@@ -1092,14 +1097,16 @@ def test_format_apartment_card_market_features_description() -> None:
 
     def make(**over: object) -> EnrichedApartment:
         base = build_apartment()
-        return base.model_copy(
-            update={"apartment": base.apartment.model_copy(update=over)}
-        )
+        return base.model_copy(update={"apartment": base.apartment.model_copy(update=over)})
 
     # krisha market verdict preferred over the batch line; avg derived from ₸/м²
     item = make(
-        price_kzt=35_343_990, area_m2=55.5, market_diff_percent=-9.2,
-        build_year=2019, building_type="монолитный", ceiling_height_m=2.7,
+        price_kzt=35_343_990,
+        area_m2=55.5,
+        market_diff_percent=-9.2,
+        build_year=2019,
+        building_type="монолитный",
+        ceiling_height_m=2.7,
         furnished="частично",
         description="Тёплая, свежий ремонт, распашонка. Торг. " * 6,  # noqa: RUF001
     )
@@ -1198,9 +1205,7 @@ def test_refine_deal_keyboard_is_two_step_with_periods() -> None:
 
     # step 1: only Купить / Снять
     deal_datas = [
-        b.callback_data
-        for row in build_refine_deal_keyboard().inline_keyboard
-        for b in row
+        b.callback_data for row in build_refine_deal_keyboard().inline_keyboard for b in row
     ]
     assert f"{REFINE_SET_DEAL_PREFIX}sale" in deal_datas
     assert f"{REFINE_SET_DEAL_PREFIX}rent" in deal_datas
@@ -1208,9 +1213,7 @@ def test_refine_deal_keyboard_is_two_step_with_periods() -> None:
 
     # step 2 (after Снять): the krisha rent terms
     period_datas = [
-        b.callback_data
-        for row in build_refine_rent_period_keyboard().inline_keyboard
-        for b in row
+        b.callback_data for row in build_refine_rent_period_keyboard().inline_keyboard for b in row
     ]
     assert f"{REFINE_SET_PERIOD_PREFIX}monthly" in period_datas
     assert f"{REFINE_SET_PERIOD_PREFIX}daily" in period_datas
@@ -1253,9 +1256,7 @@ def test_refine_menu_keyboard_shows_district_only_when_city_has_them() -> None:
 
     def datas(city: str) -> list[str]:
         return [
-            b.callback_data
-            for row in build_refine_menu_keyboard(city).inline_keyboard
-            for b in row
+            b.callback_data for row in build_refine_menu_keyboard(city).inline_keyboard for b in row
         ]
 
     almaty = datas("Almaty")
@@ -1491,9 +1492,7 @@ def test_formatters_render_expected_content() -> None:
     assert keyboard.inline_keyboard[1][0].callback_data == REFINE_CALLBACK_DATA
     assert keyboard.inline_keyboard[1][1].callback_data == LIST_CALLBACK_DATA
 
-    actions = build_apartment_actions_keyboard(
-        "1013149871", "https://krisha.kz/a/show/1013149871"
-    )
+    actions = build_apartment_actions_keyboard("1013149871", "https://krisha.kz/a/show/1013149871")
     assert actions.inline_keyboard[0][0].url == "https://krisha.kz/a/show/1013149871"
     assert actions.inline_keyboard[1][0].callback_data == f"{APT_SAVE_PREFIX}1013149871"
     assert actions.inline_keyboard[1][1].callback_data == f"{APT_REJECT_PREFIX}1013149871"
@@ -1540,8 +1539,14 @@ def test_format_apartment_card_price_vs_batch_and_metro_zero() -> None:
     def make(price: int, area: float, metro: int | None) -> EnrichedApartment:
         return EnrichedApartment(
             apartment=Apartment(
-                external_id="1", source="krisha", url="https://krisha.kz/a/show/1",
-                title="t", price_kzt=price, city="Almaty", rooms=2, area_m2=area,
+                external_id="1",
+                source="krisha",
+                url="https://krisha.kz/a/show/1",
+                title="t",
+                price_kzt=price,
+                city="Almaty",
+                rooms=2,
+                area_m2=area,
                 photos=[],
             ),
             nearby_schools=7,

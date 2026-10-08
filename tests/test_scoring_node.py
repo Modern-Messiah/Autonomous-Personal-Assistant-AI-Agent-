@@ -413,9 +413,7 @@ async def test_deepseek_scorer_parses_description_summary() -> None:
             json={"choices": [{"message": {"content": json.dumps(batch)}}]},
         )
 
-    scorer = DeepSeekApartmentScorer(
-        api_key="test-key", transport=httpx.MockTransport(handler)
-    )
+    scorer = DeepSeekApartmentScorer(api_key="test-key", transport=httpx.MockTransport(handler))
     first, second = await scorer.score_apartments(
         [build_enriched_apartment(), build_enriched_apartment()]
     )
@@ -462,9 +460,7 @@ async def test_deepseek_scorer_strips_injected_contacts_from_summary() -> None:
             json={"choices": [{"message": {"content": json.dumps(batch)}}]},
         )
 
-    scorer = DeepSeekApartmentScorer(
-        api_key="test-key", transport=httpx.MockTransport(handler)
-    )
+    scorer = DeepSeekApartmentScorer(api_key="test-key", transport=httpx.MockTransport(handler))
     first, second = await scorer.score_apartments(
         [build_enriched_apartment(), build_enriched_apartment()]
     )

@@ -77,9 +77,7 @@ async def test_worker_startup_populates_ctx(monkeypatch: pytest.MonkeyPatch) -> 
         scheduler.jobs, "configure_observability", lambda: observability_calls.append(True)
     )
     monkeypatch.setattr(scheduler.jobs, "create_bot", lambda: fake_bot)
-    monkeypatch.setattr(
-        scheduler.jobs, "create_scheduler_service", lambda bot: fake_service
-    )
+    monkeypatch.setattr(scheduler.jobs, "create_scheduler_service", lambda bot: fake_service)
 
     ctx: dict[str, Any] = {}
     await worker_startup(ctx)

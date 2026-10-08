@@ -371,8 +371,7 @@ class KrishaParser:
                 failures.append(f"no address on {checked} detail page(s) (address parsing broke)")
             if with_posted_by == 0:
                 failures.append(
-                    f"no posted_by on {checked} detail page(s) "
-                    "(advert-author JSON parsing broke)"
+                    f"no posted_by on {checked} detail page(s) (advert-author JSON parsing broke)"
                 )
             if with_description == 0:
                 failures.append(
@@ -437,9 +436,7 @@ class KrishaParser:
             if criteria.deal_type == "rent" and criteria.rent_period in ("daily", "hourly"):
                 # krisha's rent term (verified live via page titles):
                 # 1 = посуточно, 2 = помесячно (default), 4 = по часам.
-                params.append(
-                    ("das[rent.period]", "1" if criteria.rent_period == "daily" else "4")
-                )
+                params.append(("das[rent.period]", "1" if criteria.rent_period == "daily" else "4"))
             urls.append(f"{base_url}?{urlencode(params)}")
         return urls
 
@@ -483,8 +480,7 @@ class KrishaParser:
 
         if (
             criteria.districts
-            and KrishaParser._preview_district_match(preview, criteria)
-            == DistrictMatch.MISMATCH
+            and KrishaParser._preview_district_match(preview, criteria) == DistrictMatch.MISMATCH
         ):
             return False
 

@@ -21,9 +21,7 @@ def build_settings() -> Settings:
     """A fully explicit Settings object — no .env file, no environment."""
     return Settings(
         _env_file=None,
-        db=DatabaseSettings(
-            host="db.test", name="krisha", user="krisha", password=SecretStr("pw")
-        ),
+        db=DatabaseSettings(host="db.test", name="krisha", user="krisha", password=SecretStr("pw")),
         redis=RedisSettings(host="redis.test"),
         telegram=TelegramSettings(bot_token=SecretStr("42:token")),
         api=APISettings(

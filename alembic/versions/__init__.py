@@ -1,2 +1,1 @@
 """Alembic revisions package."""
-

@@ -113,7 +113,7 @@ def _overpass_query(lat: float, lon: float, radius_meters: int) -> str:
         f"relation{around}[leisure=park];"
         f"node{around}[railway=subway];"
         f"node{around}[railway=subway_entrance];"
-        f'node{around}[railway=station][station=subway];'
+        f"node{around}[railway=station][station=subway];"
         ");"
         "out center;"
     )
@@ -263,9 +263,7 @@ class OsmAreaClient:
                 )
         return point
 
-    async def _geocode_address(
-        self, *, city: str, address: str
-    ) -> tuple[float, float] | None:
+    async def _geocode_address(self, *, city: str, address: str) -> tuple[float, float] | None:
         """Address → point, with Kazakhstan-specific guarding.
 
         Nominatim freely returns same-named streets from OTHER settlements
@@ -292,9 +290,7 @@ class OsmAreaClient:
             secondary = await self._best_candidate(
                 f"{city}, {street_only}", center=center.point, city_names=center.names
             )
-        if secondary is not None and (
-            primary is None or secondary.distance_m < primary.distance_m
-        ):
+        if secondary is not None and (primary is None or secondary.distance_m < primary.distance_m):
             return secondary.point
         return primary.point if primary is not None else None
 
@@ -350,9 +346,7 @@ class OsmAreaClient:
                 best = candidate
         return best
 
-    async def _nominatim_search(
-        self, *, q: str, limit: int
-    ) -> list[dict[str, Any]]:
+    async def _nominatim_search(self, *, q: str, limit: int) -> list[dict[str, Any]]:
         params = {
             "q": q,
             "format": "jsonv2",
@@ -405,14 +399,10 @@ class OsmAreaClient:
         elements = await self._fetch_pois_api(lat=lat, lon=lon)
 
         if self._cache is not None and elements is not None:
-            await self._cache.set(
-                cache_key, json.dumps(elements), ex=self._counts_ttl_seconds
-            )
+            await self._cache.set(cache_key, json.dumps(elements), ex=self._counts_ttl_seconds)
         return elements
 
-    async def _fetch_pois_api(
-        self, *, lat: float, lon: float
-    ) -> list[dict[str, Any]] | None:
+    async def _fetch_pois_api(self, *, lat: float, lon: float) -> list[dict[str, Any]] | None:
         query = _overpass_query(lat, lon, self._radius_meters)
         for url in self._overpass_urls:
             elements = await self._fetch_pois_from(url, query=query)
@@ -420,9 +410,7 @@ class OsmAreaClient:
                 return elements
         return None
 
-    async def _fetch_pois_from(
-        self, url: str, *, query: str
-    ) -> list[dict[str, Any]] | None:
+    async def _fetch_pois_from(self, url: str, *, query: str) -> list[dict[str, Any]] | None:
         """One Overpass instance; None means try the next mirror.
 
         Single attempt per instance: the retry budget here is the OTHER

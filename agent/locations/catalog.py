@@ -16,9 +16,7 @@ from typing import Any
 _FUZZY_CITY_MIN_RATIO = 0.82
 _FUZZY_CITY_MIN_GAP = 0.06
 
-_DASHES = str.maketrans(
-    {"\u2013": "-", "\u2014": "-", "\u2212": "-", "\u2011": "-"}
-)
+_DASHES = str.maketrans({"\u2013": "-", "\u2014": "-", "\u2212": "-", "\u2011": "-"})
 _NON_WORD = re.compile(r"[^\w-]+", re.UNICODE)
 _WHITESPACE = re.compile(r"\s+")
 _LETTER_SUFFIX = r"[\w]{0,4}"
@@ -154,9 +152,7 @@ class LocationCatalog:
             aliases = {city.canonical, city.name_ru, city.name_kk, *city.aliases}
             for alias in aliases:
                 for variant in _alias_variants(alias):
-                    matchers.append(
-                        (len(variant), _city_alias_pattern(variant), city.canonical)
-                    )
+                    matchers.append((len(variant), _city_alias_pattern(variant), city.canonical))
         return tuple(sorted(matchers, key=lambda item: item[0], reverse=True))
 
     @staticmethod
@@ -173,9 +169,7 @@ class LocationCatalog:
             }
             for alias in aliases:
                 for variant in _alias_variants(alias):
-                    matchers.append(
-                        (len(variant), _alias_pattern(variant), district.canonical)
-                    )
+                    matchers.append((len(variant), _alias_pattern(variant), district.canonical))
         return tuple(sorted(matchers, key=lambda item: item[0], reverse=True))
 
     def _validate(self) -> None:
@@ -197,8 +191,7 @@ class LocationCatalog:
                 owner = city_alias_owners.setdefault(normalized, city.canonical)
                 if owner != city.canonical:
                     raise ValueError(
-                        f"city alias {alias!r} belongs to both {owner!r} and "
-                        f"{city.canonical!r}"
+                        f"city alias {alias!r} belongs to both {owner!r} and {city.canonical!r}"
                     )
             for district in city.districts:
                 if district.kato_code in district_codes:
@@ -294,8 +287,10 @@ class LocationCatalog:
     ) -> tuple[str, ...]:
         """Return all distinct district values mentioned in text."""
         normalized = normalize_location_text(text)
-        cities = self.cities if city is None else tuple(
-            record for record in (self.get_city(city),) if record is not None
+        cities = (
+            self.cities
+            if city is None
+            else tuple(record for record in (self.get_city(city),) if record is not None)
         )
         found: list[str] = []
         for record in cities:

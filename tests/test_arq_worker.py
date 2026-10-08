@@ -58,9 +58,7 @@ def _fake_settings(**overrides: Any) -> Any:
 def test_canary_cron_disabled_yields_no_jobs(
     arq_worker: ModuleType, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(
-        arq_worker, "get_settings", lambda: _fake_settings(canary_enabled=False)
-    )
+    monkeypatch.setattr(arq_worker, "get_settings", lambda: _fake_settings(canary_enabled=False))
     assert arq_worker.build_canary_cron_jobs() == []
 
 
@@ -97,9 +95,7 @@ def test_worker_redis_settings_with_and_without_password(
     assert with_password.database == 3
     assert with_password.password == "redis-secret"
 
-    monkeypatch.setattr(
-        arq_worker, "get_settings", lambda: _fake_settings(password=None)
-    )
+    monkeypatch.setattr(arq_worker, "get_settings", lambda: _fake_settings(password=None))
     without_password = arq_worker.build_worker_redis_settings()
     assert without_password.password is None
 

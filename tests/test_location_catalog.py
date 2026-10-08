@@ -85,11 +85,7 @@ def test_district_lookup_is_scoped_to_city() -> None:
 
 
 def test_catalog_contains_all_official_city_districts() -> None:
-    counts = {
-        city.canonical: len(city.districts)
-        for city in LOCATIONS.cities
-        if city.districts
-    }
+    counts = {city.canonical: len(city.districts) for city in LOCATIONS.cities if city.districts}
 
     assert counts == {
         "Aktobe": 2,
@@ -110,10 +106,8 @@ def test_every_district_resolves_only_under_its_parent_city() -> None:
     for city in LOCATIONS.cities:
         for district in city.districts:
             assert (
-                LOCATIONS.canonical_district(district.name_ru, city.canonical)
-                == district.canonical
+                LOCATIONS.canonical_district(district.name_ru, city.canonical) == district.canonical
             )
             assert (
-                LOCATIONS.canonical_district(district.name_kk, city.canonical)
-                == district.canonical
+                LOCATIONS.canonical_district(district.name_kk, city.canonical) == district.canonical
             )

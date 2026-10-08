@@ -38,7 +38,9 @@ class DatabaseSettings(BaseModel):
     @property
     def sqlalchemy_url(self) -> str:
         safe_password = quote_plus(self.password.get_secret_value())
-        return f"postgresql+asyncpg://{self.user}:{safe_password}@{self.host}:{self.port}/{self.name}"
+        return (
+            f"postgresql+asyncpg://{self.user}:{safe_password}@{self.host}:{self.port}/{self.name}"
+        )
 
     @property
     def psycopg_url(self) -> str:
@@ -102,9 +104,7 @@ class TelegramSettings(BaseModel):
     @property
     def allowed_ids(self) -> frozenset[int]:
         return frozenset(
-            int(part)
-            for part in self.allowed_user_ids.replace(";", ",").split(",")
-            if part.strip()
+            int(part) for part in self.allowed_user_ids.replace(";", ",").split(",") if part.strip()
         )
 
 

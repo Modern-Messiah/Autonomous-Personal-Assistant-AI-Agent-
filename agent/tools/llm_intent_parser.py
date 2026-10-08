@@ -122,10 +122,7 @@ class LLMIntentParser:
                     "guess, or replace a location. Deterministic application code "
                     "validates locations after extraction."
                 ),
-                (
-                    'Interpret room phrases like "двухкомнатная" as [2] and '
-                    '"2-3 комнаты" as [2, 3].'
-                ),
+                ('Interpret room phrases like "двухкомнатная" as [2] and "2-3 комнаты" as [2, 3].'),
                 "If a field is not stated or not reliable, return null for that field.",
                 (
                     "If current criteria are provided, only return fields that are explicitly "
@@ -142,8 +139,7 @@ class LLMIntentParser:
                 {
                     "role": "system",
                     "content": (
-                        "You extract structured apartment-search filters. "
-                        "Output strict JSON only."
+                        "You extract structured apartment-search filters. Output strict JSON only."
                     ),
                 },
                 {"role": "user", "content": user_prompt},

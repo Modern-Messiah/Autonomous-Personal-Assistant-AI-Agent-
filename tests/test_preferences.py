@@ -113,8 +113,13 @@ def test_taste_criteria_searches_what_the_user_saves() -> None:
     ]
     profile = build_preference_profile(saved, [])
     base = SearchCriteria(
-        user_id=77, city="Almaty", deal_type="rent", property_type="apartment",
-        max_price_kzt=500_000, rooms=[2], page_limit=3,
+        user_id=77,
+        city="Almaty",
+        deal_type="rent",
+        property_type="apartment",
+        max_price_kzt=500_000,
+        rooms=[2],
+        page_limit=3,
     )
 
     taste = build_taste_criteria(profile, saved, base=base)
@@ -133,7 +138,10 @@ def test_taste_criteria_infers_rent_and_falls_back_to_base() -> None:
     saved = [apt(ext="1", district=None, price=300_000, area=45, rooms=1)]
     profile = build_preference_profile(saved, [])
     base = SearchCriteria(
-        user_id=1, city="Astana", deal_type="sale", property_type="apartment",
+        user_id=1,
+        city="Astana",
+        deal_type="sale",
+        property_type="apartment",
         page_limit=3,
     )
 

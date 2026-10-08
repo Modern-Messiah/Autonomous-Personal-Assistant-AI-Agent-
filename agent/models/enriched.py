@@ -20,4 +20,3 @@ class EnrichedApartment(BaseModel):
     nearby_metro_m: int | None = Field(default=None, ge=0)
     mortgage_monthly_payment_kzt: int | None = Field(default=None, ge=0)
     mortgage_total_overpayment_kzt: int | None = Field(default=None, ge=0)
-

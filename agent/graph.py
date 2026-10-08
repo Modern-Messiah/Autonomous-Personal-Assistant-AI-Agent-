@@ -94,24 +94,10 @@ async def run_search_graph(
     or a ``checkpointer_factory`` supplied by the composition root — the agent
     package is persistence-agnostic and no longer defaults to Postgres.
     """
-    active_node = search_node or create_default_search_node(
-        dedup_namespace=dedup_namespace
-    )
-    use_default_pipeline = (
-        search_node is None
-        and enrich_node is None
-        and scoring_node is None
-    )
-    active_enrich_node = (
-        create_default_enrich_node()
-        if use_default_pipeline
-        else enrich_node
-    )
-    active_scoring_node = (
-        create_default_scoring_node()
-        if use_default_pipeline
-        else scoring_node
-    )
+    active_node = search_node or create_default_search_node(dedup_namespace=dedup_namespace)
+    use_default_pipeline = search_node is None and enrich_node is None and scoring_node is None
+    active_enrich_node = create_default_enrich_node() if use_default_pipeline else enrich_node
+    active_scoring_node = create_default_scoring_node() if use_default_pipeline else scoring_node
     if thread_id is None:
         return await _invoke_search_graph(
             criteria=criteria,

@@ -24,6 +24,7 @@ def telegram_text_length(text: str) -> int:
     """Length as Telegram counts it — UTF-16 code units (astral emoji = 2)."""
     return len(text.encode("utf-16-le")) // 2
 
+
 RECOMMENDATION_LABELS = {
     "strong_buy": "🟢 Брать",
     "consider": "🟡 Стоит посмотреть",
@@ -208,9 +209,7 @@ def format_apartment_card(
             f"🏫 школы: {item.nearby_schools}{_nearby_distance(item.nearby_school_m)}"
         )
     if item.nearby_parks is not None:
-        nearby_chips.append(
-            f"🌳 парки: {item.nearby_parks}{_nearby_distance(item.nearby_park_m)}"
-        )
+        nearby_chips.append(f"🌳 парки: {item.nearby_parks}{_nearby_distance(item.nearby_park_m)}")
     if item.nearby_metro is not None:
         # A true zero means "checked, no station within the search radius" —
         # say that in words instead of a cryptic "метро: 0".
@@ -222,9 +221,7 @@ def format_apartment_card(
     if nearby_chips:
         lines.append(" · ".join(nearby_chips))
     if item.score is not None:
-        label = RECOMMENDATION_LABELS.get(
-            item.score.recommendation, item.score.recommendation
-        )
+        label = RECOMMENDATION_LABELS.get(item.score.recommendation, item.score.recommendation)
         lines.append(f"{label} · {item.score.score:.0f}/100")
         lines.extend(f"   • {reason}" for reason in item.score.reasons[:3])
     # Prefer the AI digest of the description (the concrete essentials, no
@@ -342,11 +339,7 @@ def format_monitor_status(status: MonitorStatus | None) -> str:
 
     state = "включен" if status.enabled else "выключен"
     interval = format_monitor_interval(status.interval_minutes)
-    return (
-        "Статус мониторинга:\n"
-        f"Состояние: {state}\n"
-        f"Интервал: {interval}"
-    )
+    return f"Статус мониторинга:\nСостояние: {state}\nИнтервал: {interval}"  # noqa: RUF001
 
 
 def _format_specs(apartment: Apartment) -> str:

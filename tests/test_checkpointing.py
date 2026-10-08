@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import pytest
 from langgraph.checkpoint.memory import InMemorySaver
@@ -124,3 +125,52 @@ def test_build_checkpoint_config_sets_expected_keys() -> None:
     assert config["configurable"]["thread_id"] == "thread-42"
     assert config["configurable"]["checkpoint_ns"] == "search"
     assert config["configurable"]["checkpoint_id"] == "checkpoint-7"
+
+
+@pytest.mark.asyncio
+async def test_postgres_checkpointer_skips_runtime_ddl_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The checkpoint schema is owned by Alembic; searches must not run DDL."""
+    import db.checkpoints as checkpoints_module
+
+    setup_calls = 0
+
+    class FakeSaver:
+        async def setup(self) -> None:
+            nonlocal setup_calls
+            setup_calls += 1
+
+        async def __aenter__(self) -> FakeSaver:
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+        @classmethod
+        def from_conn_string(cls, _url: str) -> FakeSaver:
+            return cls()
+
+    fake_module = SimpleNamespace(AsyncPostgresSaver=FakeSaver)
+    monkeypatch.setattr(checkpoints_module, "import_module", lambda _name: fake_module)
+    monkeypatch.setattr(
+        checkpoints_module,
+        "get_settings",
+        lambda: SimpleNamespace(db=SimpleNamespace(psycopg_url="postgresql://u:p@h:5432/d")),
+    )
+    monkeypatch.setattr(checkpoints_module, "_checkpoint_setup_done", False)
+
+    async with checkpoints_module.get_async_postgres_checkpointer() as saver:
+        assert isinstance(saver, FakeSaver)
+    async with checkpoints_module.get_async_postgres_checkpointer() as saver:
+        assert isinstance(saver, FakeSaver)
+
+    assert setup_calls == 0
+
+    # explicit bootstrap opt-in still works and runs at most once per process
+    async with checkpoints_module.get_async_postgres_checkpointer(setup=True) as saver:
+        assert isinstance(saver, FakeSaver)
+    async with checkpoints_module.get_async_postgres_checkpointer(setup=True) as saver:
+        assert isinstance(saver, FakeSaver)
+
+    assert setup_calls == 1

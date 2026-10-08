@@ -44,6 +44,40 @@ services:
       retries: 5
     logging: *default-logging
 
+  postgres-backup:
+    # Nightly pg_dump into its own volume with retention. The database holds
+    # user feedback and taste profiles — the one dataset that cannot be
+    # re-scraped — so it gets the only backup in the stack.
+    image: docker.io/postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGDATABASE: ${DB__NAME}
+      PGUSER: ${DB__USER}
+      PGPASSWORD: ${DB__PASSWORD}
+      BACKUP_RETENTION_DAYS: 14
+      BACKUP_INTERVAL_SECONDS: 86400
+    volumes:
+      - postgres_backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        echo "postgres-backup: first dump at startup, then every $${BACKUP_INTERVAL_SECONDS}s"
+        while true; do
+          ts=$$(date +%Y%m%d_%H%M%S)
+          pg_dump --format=custom --file="/backups/krisha_$${ts}.dump"
+          echo "postgres-backup: wrote krisha_$${ts}.dump"
+          find /backups -name 'krisha_*.dump' -mtime +$${BACKUP_RETENTION_DAYS} -delete
+          sleep "$${BACKUP_INTERVAL_SECONDS}"
+        done
+    logging: *default-logging
+
   migrate:
     image: localhost/krisha-agent:dev
     build:
@@ -97,4 +131,5 @@ services:
 
 volumes:
   postgres_data:
+  postgres_backups:
   redis_data:

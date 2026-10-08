@@ -1,13 +1,105 @@
 name: CI
 
 # Push to main runs through cd.yml (which calls this workflow), so tests gate
-# the deploy instead of racing it.
+# the deploy instead of racing it. Each concern is its own check so a PR page
+# shows exactly what broke.
 on:
   pull_request:
   workflow_call:
 
 jobs:
-  lint-type-test:
+  lint:
+    name: ruff lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990
+
+      - name: Install dependencies
+        run: uv sync --dev --locked
+
+      - name: Ruff
+        run: uv run ruff check .
+
+  typecheck:
+    name: mypy strict
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990
+
+      - name: Install dependencies
+        run: uv sync --dev --locked
+
+      - name: MyPy
+        run: uv run mypy agent bot config db scheduler
+
+  lockfile:
+    name: lockfile up to date
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990
+
+      # pyproject.toml and uv.lock must agree: a drifted lock silently ships
+      # something other than what was reviewed.
+      - name: Verify lockfile
+        run: uv lock --check
+
+  migrations:
+    name: alembic upgrade/downgrade cycle
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: krisha_test
+          POSTGRES_USER: krisha_test
+          POSTGRES_PASSWORD: test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U krisha_test -d krisha_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+asyncpg://krisha_test:test_password@localhost:5432/krisha_test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990
+
+      - name: Install dependencies
+        run: uv sync --dev --locked
+
+      # Every migration must apply and cleanly revert on the target Postgres
+      # major version before it can reach production.
+      - name: Verify migrations
+        run: |
+          uv run alembic upgrade head
+          uv run alembic downgrade -1
+          uv run alembic upgrade head
+      # A model change without a migration deploys code the schema can't
+      # support; two heads make `upgrade head` ambiguous. Both fail here first.
+      - name: No drift between models and migrations
+        run: uv run alembic check
+      - name: Single migration head
+        run: test "$(uv run alembic heads | wc -l)" -eq 1
+
+  tests:
+    name: pytest with coverage
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -29,33 +121,83 @@ jobs:
       CI: "true"
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         with:
           python-version: "3.12"
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@v8.3.2
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990
 
       - name: Install dependencies
         run: uv sync --dev --locked
 
-      - name: Verify migrations
-        run: |
-          uv run alembic upgrade head
-          uv run alembic downgrade -1
-          uv run alembic upgrade head
-
-      - name: Ruff
-        run: uv run ruff check .
-
-      - name: MyPy
-        run: uv run mypy agent bot config db scheduler
+      # Integration tests hit the real schema; the downgrade cycle itself is
+      # validated separately in the migrations job.
+      - name: Apply migrations for integration tests
+        run: uv run alembic upgrade head
 
       - name: Pytest
         run: >-
           uv run pytest
           --cov=agent --cov=bot --cov=config --cov=db --cov=scheduler
           --cov-report=term-missing --cov-fail-under=70
+
+  security-audit:
+    name: bandit + pip-audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990
+
+      - name: Bandit (SAST)
+        run: uvx bandit -q -c pyproject.toml -r agent bot db scheduler config
+
+      # Audit the exact locked dependency set (minus the editable project
+      # itself, which pip-audit cannot hash-install).
+      - name: pip-audit (known vulnerabilities)
+        run: |
+          uv export --frozen --no-dev --format requirements-txt -o requirements-lock.txt
+          grep -v '^-e\|^file:' requirements-lock.txt > requirements-audit.txt
+          uvx pip-audit --no-deps -r requirements-audit.txt
+
+  secrets-scan:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0  # scan the whole history, not just the last commit
+
+      # Nobody should be able to push a leaked token/-key, even on a branch.
+      # Image digest-pinned; version bumps are deliberate.
+      - name: Gitleaks
+        run: >-
+          docker run --rm -v "$PWD:/repo"
+          zricethezav/gitleaks:v8.28.0@sha256:cdbb7c955abce02001a9f6c9f602fb195b7fadc1e812065883f695d1eeaba854 git --redact /repo
+
+  infra-lint:
+    name: actionlint + shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # Workflows hold production secrets; lint them like code. Version pinned;
+      # bumps are deliberate.
+      - name: Install actionlint
+        run: |
+          curl -sSL https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz \
+            | sudo tar -C /usr/local/bin -xz actionlint
+
+      - name: Actionlint
+        run: actionlint
+
+      - name: Shellcheck deploy scripts
+        run: shellcheck deploy/vps/*.sh deploy/systemd/*.sh

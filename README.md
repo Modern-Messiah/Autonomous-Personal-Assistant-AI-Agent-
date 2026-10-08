@@ -364,45 +364,26 @@ podman-compose -f podman-compose.yml -f podman-compose.prod.yml pull
 podman-compose -f podman-compose.yml -f podman-compose.prod.yml up -d
 ```
 
-## Continuous Deployment
-
-> ⚠️ **Every push to `main` deploys to production automatically.** Do not push
-> to `main` unless you intend a production rollout; use a branch + PR otherwise.
+## Continuous Delivery
 
 [cd.yml](.github/workflows/cd.yml) runs on each push to `main`:
 
-1. `test` — the full CI suite (ruff, mypy, pytest) via `ci.yml`.
+1. `test` — the full CI suite via `ci.yml`.
 2. `build-push` — builds the runtime image, smoke-tests it, and pushes it to
-   GHCR via `container.yml` (runs in parallel with `test`).
-3. `deploy` — only when **both** succeed, connects to the server over SSH
-   (`appleboy/ssh-action`), does `git pull --ff-only`, pulls the fresh GHCR
-   image (`podman-compose.prod.yml` overlay), runs the one-shot `migrate`
-   service, and restarts `bot` / `scheduler-producer` / `scheduler-worker`.
+   GHCR via `container.yml` (runs in parallel with `test`), tagged both
+   `:latest` and `sha-<commit>`.
 
-A `production-deploy` concurrency group serializes deploys: a queued push waits
-for the previous rollout instead of racing it.
-
-Every rollout runs the exact artifact this workflow built and tested: the image
-is referenced by its `sha-<commit>` GHCR tag (exported as `IMAGE_TAG`), not the
-floating `:latest`. To roll back, restart the stack on an older tag on the server:
+**There is no deployment target right now** — the published GHCR image is the
+deliverable. When a server exists again, either run the stack from it manually
+(`podman-compose.prod.yml` consumes `IMAGE_TAG`; pin a `sha-<commit>` tag to
+run the exact tested artifact, or an older one to roll back):
 
 ```bash
-IMAGE_TAG=sha-<old-commit> docker compose -f podman-compose.yml -f podman-compose.prod.yml up -d
+IMAGE_TAG=sha-<commit> docker compose -f podman-compose.yml -f podman-compose.prod.yml up -d
 ```
 
-Required repository secrets (Settings → Secrets → Actions):
-
-- `DEPLOY_HOST` — server address,
-- `DEPLOY_USER` — SSH user on the server,
-- `DEPLOY_SSH_KEY` — private key whose public half is in that user's
-  `~/.ssh/authorized_keys`,
-- `DEPLOY_PATH` — path to the repository clone on the server,
-- `DEPLOY_PORT` — optional, defaults to 22.
-
-The manual systemd/podman-compose flow below still works for the first
-bootstrap and for servers without the CD pipeline; day-to-day updates normally
-arrive via `cd.yml`, which drives `docker compose` directly rather than the
-systemd unit.
+…or re-add an SSH `deploy` job to `cd.yml` (the repo secrets, deploy scripts
+and the systemd unit below all remain in place for that).
 
 ## VPS Deploy
 

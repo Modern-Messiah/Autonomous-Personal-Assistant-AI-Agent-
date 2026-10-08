@@ -157,11 +157,7 @@ def _concrete_reasons(reasons: object) -> list[str]:
         return []
     # strip injected contact channels first (same rules as summaries): a
     # digit-carrying phone number would otherwise sail through the digit filter
-    cleaned = [
-        _sanitize_summary(r)
-        for r in reasons
-        if isinstance(r, str) and r.strip()
-    ]
+    cleaned = [_sanitize_summary(r) for r in reasons if isinstance(r, str) and r.strip()]
     cleaned = [r for r in cleaned if r]
     with_digits = [r for r in cleaned if any(ch.isdigit() for ch in r)]
     return (with_digits or cleaned)[:4]

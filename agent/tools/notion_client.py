@@ -330,9 +330,7 @@ class NotionClient:
         if apartment.floor is not None:
             lines.append(f"Этаж: {apartment.floor}")
         if item.score is not None:
-            lines.append(
-                f"Score: {item.score.score:.1f} ({item.score.recommendation})"
-            )
+            lines.append(f"Score: {item.score.score:.1f} ({item.score.recommendation})")
             if item.score.reasons:
                 lines.append("Причины: " + "; ".join(item.score.reasons))
         if item.mortgage_monthly_payment_kzt is not None:
@@ -381,9 +379,7 @@ class NotionClient:
             timeout=self._timeout_seconds,
             transport=self._transport,
         ) as client:
-            response = await request_with_retry(
-                lambda: client.request(method, path, json=json)
-            )
+            response = await request_with_retry(lambda: client.request(method, path, json=json))
             payload = response.json()
         if not isinstance(payload, dict):
             msg = "Notion API returned non-object JSON payload"

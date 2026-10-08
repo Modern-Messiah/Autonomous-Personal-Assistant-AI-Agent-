@@ -75,7 +75,7 @@ def create_feedback_router(service: SearchBotService, helpers: RouterHelpers) ->
         if callback.from_user is None or callback.data is None:
             await callback.answer()
             return
-        external_id = callback.data[len(APT_SAVE_PREFIX):]
+        external_id = callback.data[len(APT_SAVE_PREFIX) :]
         saved = await service.save_apartment(
             telegram_user_id=callback.from_user.id,
             username=callback.from_user.username,
@@ -91,7 +91,7 @@ def create_feedback_router(service: SearchBotService, helpers: RouterHelpers) ->
         if callback.from_user is None or callback.data is None:
             await callback.answer()
             return
-        external_id = callback.data[len(APT_REJECT_PREFIX):]
+        external_id = callback.data[len(APT_REJECT_PREFIX) :]
         rejected = await service.reject_apartment(
             telegram_user_id=callback.from_user.id,
             username=callback.from_user.username,
@@ -117,7 +117,7 @@ def create_feedback_router(service: SearchBotService, helpers: RouterHelpers) ->
         if callback.from_user is None or callback.data is None:
             await callback.answer()
             return
-        external_id = callback.data[len(DELETE_SAVED_PREFIX):]
+        external_id = callback.data[len(DELETE_SAVED_PREFIX) :]
         removed = await service.delete_saved_apartment(
             telegram_user_id=callback.from_user.id,
             external_id=external_id,
@@ -127,16 +127,14 @@ def create_feedback_router(service: SearchBotService, helpers: RouterHelpers) ->
         if removed and isinstance(callback.message, Message):
             with contextlib.suppress(Exception):
                 await callback.message.delete()
-        await callback.answer(
-            "🗑 Удалено (вернуть — /trash)" if removed else "Уже удалено"
-        )
+        await callback.answer("🗑 Удалено (вернуть — /trash)" if removed else "Уже удалено")
 
     @router.callback_query(F.data.startswith(RESTORE_TRASH_PREFIX))
     async def handle_restore_trash_callback(callback: CallbackQuery) -> None:
         if callback.from_user is None or callback.data is None:
             await callback.answer()
             return
-        external_id = callback.data[len(RESTORE_TRASH_PREFIX):]
+        external_id = callback.data[len(RESTORE_TRASH_PREFIX) :]
         outcome = await service.restore_apartment(
             telegram_user_id=callback.from_user.id,
             external_id=external_id,
@@ -157,7 +155,7 @@ def create_feedback_router(service: SearchBotService, helpers: RouterHelpers) ->
         if callback.from_user is None or callback.data is None:
             await callback.answer()
             return
-        external_id = callback.data[len(PURGE_TRASH_PREFIX):]
+        external_id = callback.data[len(PURGE_TRASH_PREFIX) :]
         purged = await service.purge_trashed_apartment(
             telegram_user_id=callback.from_user.id,
             external_id=external_id,
@@ -165,8 +163,6 @@ def create_feedback_router(service: SearchBotService, helpers: RouterHelpers) ->
         if purged and isinstance(callback.message, Message):
             with contextlib.suppress(Exception):
                 await callback.message.delete()
-        await callback.answer(
-            "🗑 Удалено навсегда — больше не покажу" if purged else "Уже удалено"
-        )
+        await callback.answer("🗑 Удалено навсегда — больше не покажу" if purged else "Уже удалено")
 
     return router

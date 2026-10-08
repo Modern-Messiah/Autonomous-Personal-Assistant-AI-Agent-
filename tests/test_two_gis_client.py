@@ -85,9 +85,7 @@ async def test_geocode_miss_is_cached_to_avoid_refetch() -> None:
         return handler(request)
 
     cache = FakeCache()
-    client = TwoGISClient(
-        api_key="k", cache=cache, transport=httpx.MockTransport(counting_handler)
-    )
+    client = TwoGISClient(api_key="k", cache=cache, transport=httpx.MockTransport(counting_handler))
 
     assert await client.get_nearby_summary(city="Almaty", address="nowhere") is None
     assert await client.get_nearby_summary(city="Almaty", address="nowhere") is None
@@ -144,9 +142,9 @@ async def test_missing_total_is_unknown_instead_of_page_length() -> None:
 
     client = TwoGISClient(api_key="k", transport=httpx.MockTransport(handler))
 
-    assert await client.get_nearby_summary(
-        city="Almaty", address="Абая 10"
-    ) == NearbySummary(schools=None, parks=None, metro=None)
+    assert await client.get_nearby_summary(city="Almaty", address="Абая 10") == NearbySummary(
+        schools=None, parks=None, metro=None
+    )
 
 
 @pytest.mark.asyncio

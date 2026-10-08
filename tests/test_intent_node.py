@@ -148,9 +148,7 @@ async def test_district_followed_by_budget_does_not_crash() -> None:
     # «...Бостандыкский район до 45 млн»: the «район <X>» capture grabs the
     # budget tail; that heuristic noise must not fail the whole search.
     node = IntentNode(llm_parser_factory=lambda: None)
-    criteria = await node.parse(
-        user_id=1, message="2 ком в Алматы Бостандыкский район до 45 млн"
-    )
+    criteria = await node.parse(user_id=1, message="2 ком в Алматы Бостандыкский район до 45 млн")
     assert criteria.city == "Almaty"
     assert criteria.districts == ["Bostandyk"]
     assert criteria.max_price_kzt == 45_000_000
@@ -169,9 +167,7 @@ async def test_city_after_district_marker_is_recovered() -> None:
 async def test_price_range_first_unit_optional() -> None:
     # «от 30 до 50 млн»: the first bound inherits the second bound's unit.
     node = IntentNode(llm_parser_factory=lambda: None)
-    criteria = await node.parse(
-        user_id=1, message="2-3 комнатная в Алматы от 30 до 50 млн"
-    )
+    criteria = await node.parse(user_id=1, message="2-3 комнатная в Алматы от 30 до 50 млн")
     assert criteria.min_price_kzt == 30_000_000
     assert criteria.max_price_kzt == 50_000_000
     assert criteria.rooms == [2, 3]
@@ -207,8 +203,14 @@ async def test_intent_node_parses_rent_period() -> None:
 async def test_refine_rent_period_switch_resets_budget() -> None:
     node = IntentNode(llm_parser_factory=lambda: None)
     monthly = SearchCriteria(
-        user_id=1, city="Almaty", deal_type="rent", rent_period="monthly",
-        property_type="apartment", max_price_kzt=300_000, rooms=[1], page_limit=3,
+        user_id=1,
+        city="Almaty",
+        deal_type="rent",
+        rent_period="monthly",
+        property_type="apartment",
+        max_price_kzt=300_000,
+        rooms=[1],
+        page_limit=3,
     )
 
     # month -> daily without a new budget: the monthly budget is dropped
@@ -252,8 +254,13 @@ async def test_intent_node_parses_owner_only_markers() -> None:
 async def test_refine_toggles_owner_only_and_keeps_it() -> None:
     node = IntentNode(llm_parser_factory=lambda: None)
     base = SearchCriteria(
-        user_id=1, city="Almaty", deal_type="sale", property_type="apartment",
-        max_price_kzt=45_000_000, rooms=[2], page_limit=3,
+        user_id=1,
+        city="Almaty",
+        deal_type="sale",
+        property_type="apartment",
+        max_price_kzt=45_000_000,
+        rooms=[2],
+        page_limit=3,
     )
 
     switched = await node.refine(criteria=base, message="только от хозяина")
@@ -269,8 +276,14 @@ async def test_refine_toggles_owner_only_and_keeps_it() -> None:
 async def test_refine_deal_switch_resets_stale_budget() -> None:
     node = IntentNode(llm_parser_factory=lambda: None)
     sale = SearchCriteria(
-        user_id=1, city="Almaty", deal_type="sale", property_type="apartment",
-        min_price_kzt=20_000_000, max_price_kzt=45_000_000, rooms=[2], page_limit=3,
+        user_id=1,
+        city="Almaty",
+        deal_type="sale",
+        property_type="apartment",
+        min_price_kzt=20_000_000,
+        max_price_kzt=45_000_000,
+        rooms=[2],
+        page_limit=3,
     )
 
     # switch to rent without naming a budget -> the purchase budget is dropped
@@ -304,9 +317,7 @@ async def test_refine_deal_switch_resets_stale_budget() -> None:
     ],
 )
 @pytest.mark.asyncio
-async def test_intent_node_parses_room_word_forms(
-    message: str, expected_rooms: list[int]
-) -> None:
+async def test_intent_node_parses_room_word_forms(message: str, expected_rooms: list[int]) -> None:
     node = IntentNode(llm_parser_factory=lambda: None)
     criteria = await node.parse(user_id=1, message=message)
     assert criteria.rooms == expected_rooms
@@ -338,9 +349,7 @@ async def test_intent_node_reports_when_default_city_is_used() -> None:
     ],
 )
 @pytest.mark.asyncio
-async def test_intent_node_recognizes_kazakhstan_cities(
-    message: str, expected_city: str
-) -> None:
+async def test_intent_node_recognizes_kazakhstan_cities(message: str, expected_city: str) -> None:
     node = IntentNode(llm_parser_factory=lambda: None)
     criteria = await node.parse(user_id=1, message=message)
     assert criteria.city == expected_city
@@ -369,13 +378,9 @@ async def test_regex_fallback_recognizes_new_catalog_city_and_district() -> None
 async def test_misspelled_llm_city_is_corrected() -> None:
     # The LLM echoes the user's typo ("Алмата"); the resolver corrects it instead
     # of failing with "город не удалось распознать".
-    node = IntentNode(
-        llm_parser=StubLLMIntentParser({"city": "Алмата", "rooms": [2]})
-    )
+    node = IntentNode(llm_parser=StubLLMIntentParser({"city": "Алмата", "rooms": [2]}))
 
-    criteria = await node.parse(
-        user_id=1, message="двух комнатная квартира Алмата до 50 миллионов"
-    )
+    criteria = await node.parse(user_id=1, message="двух комнатная квартира Алмата до 50 миллионов")
 
     assert criteria.city == "Almaty"
     assert criteria.rooms == [2]
@@ -402,9 +407,7 @@ async def test_llm_location_text_is_validated_against_catalog() -> None:
 @pytest.mark.asyncio
 async def test_intent_rejects_city_district_mismatch_from_llm() -> None:
     node = IntentNode(
-        llm_parser=StubLLMIntentParser(
-            {"city": "Астана", "districts": ["Бостандыкский район"]}
-        )
+        llm_parser=StubLLMIntentParser({"city": "Астана", "districts": ["Бостандыкский район"]})
     )
 
     with pytest.raises(LocationInputError, match="не относится"):
@@ -573,9 +576,7 @@ async def test_intent_node_clamps_user_driven_page_limit() -> None:
     # regardless of whether the number came from the LLM patch or the regex.
     from agent.models.criteria import SearchCriteria as Criteria
 
-    llm_node = IntentNode(
-        llm_parser=StubLLMIntentParser({"city": "Almaty", "page_limit": 20})
-    )
+    llm_node = IntentNode(llm_parser=StubLLMIntentParser({"city": "Almaty", "page_limit": 20}))
     parsed = await llm_node.parse(user_id=1, message="2-комнатная в Алматы")
     assert parsed.page_limit == 10
 

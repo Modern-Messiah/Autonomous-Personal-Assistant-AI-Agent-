@@ -292,8 +292,7 @@ class FeedbackService:
             )
             if decision == "saved" and self._notion_sync is not None:
                 feedback_by_apartment_id = {
-                    record.apartment_id: record
-                    for record in feedback_records
+                    record.apartment_id: record for record in feedback_records
                 }
                 apartments_to_sync = [
                     (

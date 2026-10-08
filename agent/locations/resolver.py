@@ -23,9 +23,7 @@ _DISTRICT_AFTER_MARKER = re.compile(
 
 # First words that mark the captured "district" as price/limit text, not a name
 # (e.g. «район до 45 млн» captures «до 45 млн»).
-_NON_LOCATION_LEADS = frozenset(
-    {"до", "от", "за", "по", "на", "или", "не", "около", "под"}
-)
+_NON_LOCATION_LEADS = frozenset({"до", "от", "за", "по", "на", "или", "не", "около", "под"})
 
 
 def _looks_like_location(candidate: str) -> bool:
@@ -146,9 +144,7 @@ def resolve_locations(
         # in the text) — a bare «в районе Алматы» stays ambiguous and keeps
         # asking for the city.
         fallback_city = catalog.find_city_in_text(message)
-        if fallback_city is not None and catalog.find_districts_in_text(
-            message, fallback_city
-        ):
+        if fallback_city is not None and catalog.find_districts_in_text(message, fallback_city):
             message_city = fallback_city
     selected_city = explicit_city or message_city
     city_was_supplied = selected_city is not None
@@ -228,9 +224,7 @@ def resolve_locations(
         and not llm_raw
         and not marker_candidates
     ):
-        selected_districts = (
-            tuple(existing_districts) if existing_districts is not None else None
-        )
+        selected_districts = tuple(existing_districts) if existing_districts is not None else None
 
     if catalog.city_slug(selected_city) is None:
         city_record = catalog.get_city(selected_city)

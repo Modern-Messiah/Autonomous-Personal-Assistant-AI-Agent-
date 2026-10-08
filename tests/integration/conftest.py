@@ -52,6 +52,4 @@ async def session_factory(
         yield factory
     finally:
         async with integration_engine.begin() as connection:
-            await connection.execute(
-                text(f"TRUNCATE {', '.join(TABLES)} RESTART IDENTITY CASCADE")
-            )
+            await connection.execute(text(f"TRUNCATE {', '.join(TABLES)} RESTART IDENTITY CASCADE"))

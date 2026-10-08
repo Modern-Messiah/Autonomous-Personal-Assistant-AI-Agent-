@@ -125,9 +125,7 @@ async def test_search_node_scrapes_inside_the_lock() -> None:
         yield object()
 
     node = SearchNode(parser=LockAwareParser(), context_factory=factory, fetch_lock=lock)
-    criteria = SearchCriteria(
-        user_id=1, city="Almaty", deal_type="sale", property_type="apartment"
-    )
+    criteria = SearchCriteria(user_id=1, city="Almaty", deal_type="sale", property_type="apartment")
 
     result = await node({"criteria": criteria, "apartments": []})
 

@@ -56,12 +56,7 @@ def test_podman_compose_contains_core_services() -> None:
 
 
 def test_container_workflow_builds_containerfile_to_ghcr() -> None:
-    workflow = (
-        Path(__file__).resolve().parents[1]
-        / ".github"
-        / "workflows"
-        / "container.yml"
-    )
+    workflow = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "container.yml"
     text = workflow.read_text(encoding="utf-8")
 
     # SHA-pinned (bumps must not silently regress to floating tags)
@@ -84,9 +79,9 @@ def test_workflow_actions_are_pinned_to_commit_shas() -> None:
             if ref.startswith("./"):
                 continue
             action = ref.split("@", 1)[0]
-            assert re.fullmatch(
-                r"[0-9a-f]{40}", ref.split("@", 1)[1]
-            ), f"{workflow.name}: {action} must be pinned to a commit SHA, not a tag"
+            assert re.fullmatch(r"[0-9a-f]{40}", ref.split("@", 1)[1]), (
+                f"{workflow.name}: {action} must be pinned to a commit SHA, not a tag"
+            )
 
 
 def test_ci_defines_the_full_check_matrix() -> None:
@@ -97,6 +92,7 @@ def test_ci_defines_the_full_check_matrix() -> None:
     # coverage back to "two green checks".
     for job in (
         "lint:",
+        "format:",
         "typecheck:",
         "lockfile:",
         "migrations:",
@@ -110,6 +106,7 @@ def test_ci_defines_the_full_check_matrix() -> None:
     assert "alembic downgrade -1" in text
     assert "uv run alembic check" in text  # model drift guard
     assert "uv lock --check" in text
+    assert "ruff format --check" in text
     assert "pip-audit" in text
     assert "gitleaks" in text  # secrets scan
     assert "actionlint" in text
@@ -134,21 +131,16 @@ def test_prod_compose_pins_image_per_deploy() -> None:
 
 def test_systemd_deploy_files_exist_with_expected_commands() -> None:
     project_root = Path(__file__).resolve().parents[1]
-    unit_template = (
-        project_root
-        / "deploy"
-        / "systemd"
-        / "krisha-agent-compose.service.template"
-    )
+    unit_template = project_root / "deploy" / "systemd" / "krisha-agent-compose.service.template"
     install_script = project_root / "deploy" / "systemd" / "install_user_service.sh"
     bootstrap_script = project_root / "deploy" / "vps" / "bootstrap_ubuntu_24.sh"
 
     unit_text = unit_template.read_text(encoding="utf-8")
     install_text = install_script.read_text(encoding="utf-8")
     bootstrap_text = bootstrap_script.read_text(encoding="utf-8")
-    wait_script = (
-        project_root / "deploy" / "systemd" / "wait_for_datastores.sh"
-    ).read_text(encoding="utf-8")
+    wait_script = (project_root / "deploy" / "systemd" / "wait_for_datastores.sh").read_text(
+        encoding="utf-8"
+    )
 
     # One compose tooling everywhere: the unit must drive `docker compose`,
     # the same binary the CD pipeline uses over SSH.

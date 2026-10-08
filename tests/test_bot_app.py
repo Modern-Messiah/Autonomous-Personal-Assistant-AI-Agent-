@@ -99,8 +99,16 @@ def test_create_dispatcher_includes_bot_routes() -> None:
 def test_bot_commands_cover_user_facing_commands() -> None:
     names = {command.command for command in BOT_COMMANDS}
     assert {
-        "start", "search", "criteria", "list", "trash", "foryou",
-        "refine", "cancel", "monitor", "help",
+        "start",
+        "search",
+        "criteria",
+        "list",
+        "trash",
+        "foryou",
+        "refine",
+        "cancel",
+        "monitor",
+        "help",
     } <= names
     assert all(command.description for command in BOT_COMMANDS)
 
@@ -108,9 +116,7 @@ def test_bot_commands_cover_user_facing_commands() -> None:
 def test_create_bot_does_not_force_html_parse_mode(monkeypatch) -> None:
     monkeypatch.setattr(
         "bot.app.get_settings",
-        lambda: SimpleNamespace(
-            telegram=SimpleNamespace(bot_token=SecretStr("123456:ABCDEF"))
-        ),
+        lambda: SimpleNamespace(telegram=SimpleNamespace(bot_token=SecretStr("123456:ABCDEF"))),
     )
 
     bot = create_bot()

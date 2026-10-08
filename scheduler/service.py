@@ -36,6 +36,8 @@ async def run_search_graph_with_postgres(
     return await run_search_graph(
         criteria, checkpointer_factory=get_async_postgres_checkpointer, **kwargs
     )
+
+
 MonitorNotifier = Callable[[int, SearchCriteria, list[EnrichedApartment]], Awaitable[None]]
 logger = logging.getLogger(__name__)
 

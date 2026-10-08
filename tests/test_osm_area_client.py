@@ -131,9 +131,7 @@ def _handler_factory(
 
 @pytest.mark.asyncio
 async def test_nearby_summary_counts_and_distances() -> None:
-    client = OsmAreaClient(
-        transport=_handler_factory(), min_request_interval_seconds=0.0
-    )
+    client = OsmAreaClient(transport=_handler_factory(), min_request_interval_seconds=0.0)
 
     summary = await client.get_nearby_summary(city="Almaty", address="Сатпаева 30")
 
@@ -151,9 +149,7 @@ async def test_nearby_summary_counts_and_distances() -> None:
 
 @pytest.mark.asyncio
 async def test_metro_stays_none_outside_metro_cities() -> None:
-    client = OsmAreaClient(
-        transport=_handler_factory(), min_request_interval_seconds=0.0
-    )
+    client = OsmAreaClient(transport=_handler_factory(), min_request_interval_seconds=0.0)
 
     summary = await client.get_nearby_summary(city="Astana", address="Сатпаева 30")
 
@@ -296,6 +292,7 @@ def test_blank_two_gis_key_is_treated_as_unset() -> None:
 
 def _mirror_transport(primary_status: int, *, mirror_status: int = 200) -> httpx.MockTransport:
     """Primary overpass answers with a failure; the mirror serves the data."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         if "nominatim" in str(request.url):
             q = dict(request.url.params).get("q", "")

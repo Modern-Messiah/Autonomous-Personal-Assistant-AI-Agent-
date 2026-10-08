@@ -19,6 +19,7 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
+
 def load_orm_models() -> None:
     """Import ORM models so metadata is populated before migrations run."""
     import_module("db.models")

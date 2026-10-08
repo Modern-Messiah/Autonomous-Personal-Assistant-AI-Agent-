@@ -14,9 +14,9 @@ APT_SAVE_PREFIX = "apt:save:"
 APT_REJECT_PREFIX = "apt:reject:"
 
 # Guided-refine menu callbacks.
-REFINE_FIELD_PREFIX = "refine:field:"       # + city|deal|district|rooms|budget|area
-REFINE_SET_CITY_PREFIX = "refine:city:"     # + canonical city
-REFINE_SET_DEAL_PREFIX = "refine:deal:"     # + sale|rent
+REFINE_FIELD_PREFIX = "refine:field:"  # + city|deal|district|rooms|budget|area
+REFINE_SET_CITY_PREFIX = "refine:city:"  # + canonical city
+REFINE_SET_DEAL_PREFIX = "refine:deal:"  # + sale|rent
 REFINE_SET_DISTRICT_PREFIX = "refine:distr:"  # + canonical district, or "*" to clear
 REFINE_CITY_OTHER = "refine:city_other"
 REFINE_SET_PERIOD_PREFIX = "refine:period:"  # + monthly|daily|hourly
@@ -103,9 +103,7 @@ def build_refine_city_keyboard() -> InlineKeyboardMarkup:
             )
         )
     rows = _rows(buttons, 2)
-    rows.append(
-        [InlineKeyboardButton(text="✏️ Другой город", callback_data=REFINE_CITY_OTHER)]
-    )
+    rows.append([InlineKeyboardButton(text="✏️ Другой город", callback_data=REFINE_CITY_OTHER)])
     rows.append([InlineKeyboardButton(text="← Назад", callback_data=REFINE_BACK)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -204,9 +202,7 @@ def build_apartment_actions_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def build_saved_item_keyboard(
-    external_id: str, url: str | None = None
-) -> InlineKeyboardMarkup:
+def build_saved_item_keyboard(external_id: str, url: str | None = None) -> InlineKeyboardMarkup:
     """Keyboard for a saved apartment: open it on Krisha (if known) + delete."""
     rows: list[list[InlineKeyboardButton]] = []
     if url:
@@ -222,9 +218,7 @@ def build_saved_item_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def build_trashed_item_keyboard(
-    external_id: str, url: str | None = None
-) -> InlineKeyboardMarkup:
+def build_trashed_item_keyboard(external_id: str, url: str | None = None) -> InlineKeyboardMarkup:
     """Keyboard for a trashed apartment: open on Krisha (if known), restore, or
     delete it forever (permanent dismiss — stays hidden, not recoverable)."""
     rows: list[list[InlineKeyboardButton]] = []

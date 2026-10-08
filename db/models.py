@@ -76,9 +76,7 @@ class ApartmentRecord(Base):
 
     __tablename__ = "apartments"
     __table_args__ = (
-        UniqueConstraint(
-            "source", "external_id", name="uq_apartments_source_external_id"
-        ),
+        UniqueConstraint("source", "external_id", name="uq_apartments_source_external_id"),
         UniqueConstraint("url", name="uq_apartments_url"),
         Index("idx_apartments_created_at", desc("created_at")),
     )
@@ -123,9 +121,7 @@ class MonitorSettingsRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
-    last_checked_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="monitor_settings")
 
@@ -184,9 +180,7 @@ class ApartmentFeedbackRecord(Base):
     )
     # Soft delete: a saved row removed from /list keeps the row (recoverable via
     # /trash) until restored; deleted_at IS NULL means the feedback is active.
-    deleted_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="apartment_feedback")
     apartment: Mapped["ApartmentRecord"] = relationship(back_populates="feedback_by_users")

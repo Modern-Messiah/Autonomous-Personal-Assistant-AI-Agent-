@@ -25,6 +25,28 @@ logger = logging.getLogger(__name__)
 PURGE_INTERVAL = timedelta(hours=24)
 
 
+class _DailyPurge:
+    """Runs the stale-rows purge at most once per PURGE_INTERVAL.
+
+    Owned by whichever scheduler loop is running — inline mode used to never
+    purge at all (the call lived only in the ARQ producer loop), letting
+    seen_apartments/apartments accumulate forever on default local setups.
+    """
+
+    def __init__(self) -> None:
+        self._last_run: datetime | None = None
+
+    async def run_if_due(self, service: SchedulerService) -> None:
+        now = datetime.now(UTC)
+        if self._last_run is not None and now - self._last_run < PURGE_INTERVAL:
+            return
+        try:
+            logger.info("scheduler purge: %s", await service.purge_stale())
+        except Exception:
+            logger.exception("scheduler purge failed")
+        self._last_run = now
+
+
 async def noop_monitor_notifier(
     telegram_user_id: int,
     criteria: SearchCriteria,
@@ -143,8 +165,10 @@ async def run_scheduler_forever(
         return
 
     if service is not None:
+        purge = _DailyPurge()
         while not active_stop_event.is_set():
             await service.run_pending_monitors()
+            await purge.run_if_due(service)
             await _wait_for_stop(
                 active_stop_event,
                 settings.scheduler.poll_interval_seconds,
@@ -154,8 +178,10 @@ async def run_scheduler_forever(
     bot = create_bot()
     try:
         active_service = create_scheduler_service(bot)
+        purge = _DailyPurge()
         while not active_stop_event.is_set():
             await active_service.run_pending_monitors()
+            await purge.run_if_due(active_service)
             await _wait_for_stop(
                 active_stop_event,
                 settings.scheduler.poll_interval_seconds,
@@ -177,7 +203,7 @@ async def run_scheduler_enqueue_forever(
     active_queue = queue or await create_arq_pool()
     active_stop_event = stop_event or asyncio.Event()
 
-    last_purge: datetime | None = None
+    purge = _DailyPurge()
     try:
         while not active_stop_event.is_set():
             producer = SchedulerJobProducer(
@@ -187,13 +213,7 @@ async def run_scheduler_enqueue_forever(
             )
             await producer.enqueue_due_monitor_jobs()
 
-            now = datetime.now(UTC)
-            if last_purge is None or now - last_purge >= PURGE_INTERVAL:
-                try:
-                    logger.info("scheduler purge: %s", await active_service.purge_stale())
-                except Exception:
-                    logger.exception("scheduler purge failed")
-                last_purge = now
+            await purge.run_if_due(active_service)
 
             await _wait_for_stop(
                 active_stop_event,

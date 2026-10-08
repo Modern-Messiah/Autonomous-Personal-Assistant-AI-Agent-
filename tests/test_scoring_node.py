@@ -494,3 +494,110 @@ def test_sanitize_summary_strips_urls_emails_handles_and_phones() -> None:
     assert "700 123 45 67" not in cleaned
     assert "12 000 000" in cleaned
     assert "60 м²" in cleaned
+
+
+def test_scorer_prompt_carries_precomputed_analysis_verdicts() -> None:
+    scorer = DeepSeekApartmentScorer(api_key="test-key")
+    one = build_enriched_apartment()
+    two = build_enriched_apartment()
+    two = two.model_copy(
+        update={
+            "apartment": two.apartment.model_copy(update={"price_kzt": 50_000_000}),
+            "nearby_metro_m": 350,
+        }
+    )
+
+    prompt = scorer._build_payload([one, two], None)["messages"][1]["content"]
+
+    # deterministic verdicts computed by code, one per listing
+    assert prompt.count("analysis: ") == 2
+    assert "vs_batch_avg_per_m2=" in prompt
+    assert "floor_class=" in prompt
+    assert "metro_proximity=excellent(<=400m)" in prompt
+    assert "condition_class=" in prompt
+    assert "days_bucket=" in prompt
+    # ...and the model is explicitly forbidden from recomputing them
+    assert "NEVER compute percentages" in prompt
+    # a worked JSON example shapes the output format
+    assert '"score": 87' in prompt
+
+
+def test_recommendation_is_derived_from_score_band() -> None:
+    from agent.tools.deepseek_scorer import _recommendation_for_score
+
+    assert _recommendation_for_score(95) == "strong_buy"
+    assert _recommendation_for_score(80) == "strong_buy"
+    assert _recommendation_for_score(79.9) == "consider"
+    assert _recommendation_for_score(60) == "consider"
+    assert _recommendation_for_score(12) == "skip"
+
+
+def test_concrete_reasons_drop_digitless_praise() -> None:
+    from agent.tools.deepseek_scorer import _concrete_reasons
+
+    kept = _concrete_reasons(
+        ["метро в 350 м — ближайшее в подборке", "хороший вариант", "-12% к среднему за м²"]
+    )
+    assert kept == ["метро в 350 м — ближайшее в подборке", "-12% к среднему за м²"]
+
+    # everything digitless -> first two survive rather than an empty card
+    fallback = _concrete_reasons(["отличная квартира", "хороший район"])
+    assert fallback == ["отличная квартира", "хороший район"]
+
+    assert _concrete_reasons(None) == []
+    assert _concrete_reasons("не список") == []
+
+
+@pytest.mark.asyncio
+async def test_parse_scores_normalizes_recommendation_and_reasons() -> None:
+    batch = {
+        "items": [
+            {
+                "index": 1,
+                # model said "skip" at 92 and padded reasons with filler
+                "score": 92,
+                "recommendation": "skip",
+                "reasons": ["прекрасный вариант", "712 000 ₸/м², на 12% ниже среднего"],
+                "summary": None,
+            },
+            {"index": 2, "score": 45, "recommendation": "strong_buy", "reasons": ["дешево"]},
+        ]
+    }
+    payload = json.dumps(batch)
+
+    from agent.tools.deepseek_scorer import DeepSeekApartmentScorer as Scorer
+
+    first, second = Scorer._parse_scores(payload, count=2)
+
+    assert first is not None
+    assert first.recommendation == "strong_buy"  # band from the score, not the label
+    assert first.reasons == ["712 000 ₸/м², на 12% ниже среднего"]  # filler dropped
+    assert second is not None
+    assert second.recommendation == "skip"
+    assert second.reasons == ["дешево"]  # digitless survives only as the fallback
+
+
+def test_analysis_classifiers() -> None:
+    from agent.tools.deepseek_scorer import (
+        _condition_class,
+        _days_bucket,
+        _floor_class,
+        _proximity_class,
+    )
+
+    assert _proximity_class(350) == "excellent(<=400m)"
+    assert _proximity_class(700) == "good(<=800m)"
+    assert _proximity_class(1500) == "far(~2km)"
+    assert _proximity_class(None) == "unknown"
+
+    assert _floor_class("1/9") == "first"
+    assert _floor_class("9/9") == "last"
+    assert _floor_class("4/9") == "mid"
+    assert _floor_class(None) == "unknown"
+
+    assert _condition_class("евроремонт") == "renovated_high"
+    assert _condition_class("требует ремонта") == "needs_repair"
+    assert _condition_class(None) == "unknown"
+
+    assert _days_bucket(3) == "fresh(<=7d)"
+    assert _days_bucket(90) == "stale(>60d), bargain leverage"
